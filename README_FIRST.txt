@@ -10,3 +10,9 @@ Setup:
 3. Click "QUOTE BUILDER" on the left or "Open Quote Builder" on the Dashboard.
 
 If the embedded frame gives trouble, click "Open Full Page" inside the Quote Builder tab.
+
+Labor settings update:
+Run supabase_setup.sql again in Supabase to add editable system labor fields:
+- default crew size
+- default labor days
+- labor notes
