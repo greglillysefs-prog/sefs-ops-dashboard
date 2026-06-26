@@ -15,4 +15,5 @@ Labor settings update:
 Run supabase_setup.sql again in Supabase to add editable system labor fields:
 - default crew size
 - default labor days
+- default labor rate per man-day
 - labor notes

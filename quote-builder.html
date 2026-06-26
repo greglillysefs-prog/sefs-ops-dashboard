@@ -256,6 +256,7 @@ overscroll-behavior:none;
     <div id="manualLaborBox" class="grid two hidden">
       <div><label>Total Job Men</label><input id="jobMen" type="number" inputmode="decimal"></div>
       <div><label>Total Job Days</label><input id="jobDays" type="number" inputmode="decimal"></div>
+      <div><label>Labor Rate / Man-Day</label><input id="jobLaborRate" type="number" inputmode="decimal" value="250"></div>
     </div>
     <div class="grid two">
       <div><label>Out of Town?</label><select id="outTown" onchange="toggleOutTown()"><option>No</option><option>Yes</option></select></div>
@@ -307,13 +308,16 @@ const COSTS = {
   wbEpoxy2g:145,flakeBox:175,quartzBag:20,metallicPowder:48,solidColorPod:35,
   aliphatic:305,coveMortar:55,lowLusterAcrylic:120,glossAcrylic:140
 };
-const WASTE_FACTOR=1.05, LABOR_PER_DAY=250, ADMIN_PER_DAY=150, MIN_JOB_PRICE=1500, OUT_TOWN=150;
+const WASTE_FACTOR=1.05, DEFAULT_LABOR_PER_DAY=250, ADMIN_PER_DAY=150, MIN_JOB_PRICE=1500, OUT_TOWN=150;
 let lastQuoteHTML="", lastPlainText="", lastData=null;
 
 function $(id){return document.getElementById(id)}
 function val(id){return $(id)?.value||""}
 function num(id){return parseFloat($(id)?.value)||0}
 function money(n){return "$"+Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}
+function storedLaborRates(){try{return JSON.parse(localStorage.getItem("sefsSystemLaborRates")||"{}")||{}}catch(e){return {}}}
+function laborRateForSystem(system){let rates=storedLaborRates(); return +rates[system]||DEFAULT_LABOR_PER_DAY}
+function suggestedManualLaborRate(){for(let i=1;i<=num("floorCount");i++){let system=val("system"+i); if(system)return laborRateForSystem(system)} return DEFAULT_LABOR_PER_DAY}
 function kitsNeeded(amount, coverage){return Math.ceil((amount*WASTE_FACTOR)/coverage)}
 function kitsNeededNoWaste(amount, coverage){return Math.ceil(amount/coverage)}
 function addMaterial(materials,name,qty,unitCost){ if(qty>0) materials.push({name,qty,unitCost,total:qty*unitCost}) }
@@ -426,7 +430,7 @@ function renderOptions(i){
 function toggleExtra(i,type){$(type+"FinishBox"+i)?.classList.toggle("hidden",val(type+"Extra"+i)!=="Yes")}
 function toggleJoint(i){$("jointBox"+i)?.classList.toggle("hidden",val("mortarFill"+i)!=="Yes")}
 function toggleCove(i){$("coveBox"+i)?.classList.toggle("hidden",val("cove"+i)!=="Yes")}
-function toggleManualLabor(){$("manualLaborBox").classList.toggle("hidden",val("laborMode")!=="manual")}
+function toggleManualLabor(){let manual=val("laborMode")==="manual"; $("manualLaborBox").classList.toggle("hidden",!manual); if(manual&&$("jobLaborRate")&&!num("jobLaborRate"))$("jobLaborRate").value=suggestedManualLaborRate()}
 function toggleOutTown(){$("outTownBox").classList.toggle("hidden",val("outTown")!=="Yes")}
 function toggleMargin(){$("marginBox").classList.toggle("hidden",val("useMargin")!=="Yes")}
 
@@ -462,9 +466,9 @@ function calculate(){
   if(system==="Polish"){sell=sqft*4;notes.push("Polish materials: densifier and guard/seal as needed.")}
   if(system==="Prep Only"){let prep=val("prepType"+i);sell=sqft*(prep==="Blast"?.40:1.00);notes.push(prep==="Blast"?"Blast prep estimated around 7,000 sq ft per day.":"Grind prep estimated around 2,000 sq ft per day.");notes.push("No coating materials required for prep-only scope.")}
   if(["Flake","Quartz","Mortar/Prime & Coat"].includes(system)&&val("cove"+i)==="Yes"){let size=val("coveSize"+i),lf=num("coveLF"+i),cov=size==="4"?25:20;addMaterial(materials,"Cove Base Mortar Kit",kitsNeededNoWaste(lf,cov),COSTS.coveMortar);sell+=size==="4"?Math.ceil(lf/25)*250:Math.ceil(lf/20)*300;}
-  let labor=laborForSystem(system,sqft,extraDay),mat=materialTotal(materials);totalSell+=sell;totalMat+=mat;autoLaborDetails.push(`Floor ${i} ${system}: ${labor.men} men / ${labor.days} day(s)`);if(val("laborMode")==="auto"){totalLabor+=labor.men*labor.days*LABOR_PER_DAY;totalAdmin+=labor.days*ADMIN_PER_DAY;}floors.push({i,system,sqft,materials,mat,sell,labor,notes});
+  let labor=laborForSystem(system,sqft,extraDay),mat=materialTotal(materials),laborRate=laborRateForSystem(system);totalSell+=sell;totalMat+=mat;autoLaborDetails.push(`Floor ${i} ${system}: ${labor.men} men / ${labor.days} day(s) @ ${money(laborRate)} per man-day`);if(val("laborMode")==="auto"){totalLabor+=labor.men*labor.days*laborRate;totalAdmin+=labor.days*ADMIN_PER_DAY;}floors.push({i,system,sqft,materials,mat,sell,labor,laborRate,notes});
  }
- if(val("laborMode")==="manual"){let days=num("jobDays"),men=num("jobMen");totalLabor=men*days*LABOR_PER_DAY;totalAdmin=days*ADMIN_PER_DAY;autoLaborDetails=[`Manual total job labor used at $250 per man/day: ${men} men / ${days} day(s)`];}
+ if(val("laborMode")==="manual"){let days=num("jobDays"),men=num("jobMen"),rate=num("jobLaborRate")||suggestedManualLaborRate();totalLabor=men*days*rate;totalAdmin=days*ADMIN_PER_DAY;autoLaborDetails=[`Manual total job labor used at ${money(rate)} per man-day: ${men} men / ${days} day(s)`];}
  if(val("outTown")==="Yes"){totalOut=num("ootMen")*num("ootDays")*OUT_TOWN;totalSell+=totalOut;}
  let companyCost=totalMat+totalLabor+totalAdmin;
  if(val("useMargin")==="Yes"){let margin=num("targetMargin")/100;if(margin>0&&margin<1)totalSell=(companyCost/(1-margin))+totalOut;}

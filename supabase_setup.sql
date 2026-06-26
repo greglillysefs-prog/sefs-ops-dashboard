@@ -178,6 +178,7 @@ create table if not exists system_recipes (
   default_waste_percent numeric default 5,
   default_crew_size numeric default 2,
   default_labor_days numeric default 1,
+  default_labor_rate numeric default 250,
   labor_notes text,
   active boolean not null default true,
   sort_order numeric default 0,
@@ -203,6 +204,7 @@ alter table system_recipes add column if not exists description text;
 alter table system_recipes add column if not exists default_waste_percent numeric default 5;
 alter table system_recipes add column if not exists default_crew_size numeric default 2;
 alter table system_recipes add column if not exists default_labor_days numeric default 1;
+alter table system_recipes add column if not exists default_labor_rate numeric default 250;
 alter table system_recipes add column if not exists labor_notes text;
 alter table system_recipes add column if not exists active boolean default true;
 alter table system_recipes add column if not exists sort_order numeric default 0;
@@ -235,20 +237,22 @@ where not exists (select 1 from system_recipes r where r.name = v.name);
 
 update system_recipes r set
   default_crew_size = v.default_crew_size,
-  default_labor_days = v.default_labor_days
+  default_labor_days = v.default_labor_days,
+  default_labor_rate = v.default_labor_rate
 from (values
-('Flake',3,2),
-('Metallic',3,3),
-('Quartz',3,2),
-('Mortar',4,3),
-('Wood/Stone Overlay',3,3),
-('Broom Overlay',3,1),
-('Grind/Stain/Seal',3,3),
-('Prep Only',2,1)
-) as v(name, default_crew_size, default_labor_days)
+('Flake',3,2,250),
+('Metallic',3,3,250),
+('Quartz',3,2,250),
+('Mortar',4,3,250),
+('Wood/Stone Overlay',3,3,250),
+('Broom Overlay',3,1,250),
+('Grind/Stain/Seal',3,3,250),
+('Prep Only',2,1,250)
+) as v(name, default_crew_size, default_labor_days, default_labor_rate)
 where r.name = v.name
   and (r.default_crew_size is null or r.default_crew_size = 2)
-  and (r.default_labor_days is null or r.default_labor_days = 1);
+  and (r.default_labor_days is null or r.default_labor_days = 1)
+  and (r.default_labor_rate is null or r.default_labor_rate = 250);
 
 -- Seed default material recipes only when each system has no materials yet.
 do $$
