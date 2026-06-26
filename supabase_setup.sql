@@ -63,7 +63,7 @@ create table if not exists jobs (
   system_type text,
   square_feet numeric default 0,
   cove_lf numeric default 0,
-  status text not null default 'Scheduled',
+  status text not null default 'Awaiting Schedule',
   start_date date,
   end_date date,
   crew text,
@@ -81,7 +81,8 @@ alter table jobs add column if not exists address text;
 alter table jobs add column if not exists system_type text;
 alter table jobs add column if not exists square_feet numeric default 0;
 alter table jobs add column if not exists cove_lf numeric default 0;
-alter table jobs add column if not exists status text default 'Scheduled';
+alter table jobs add column if not exists status text default 'Awaiting Schedule';
+alter table jobs alter column status set default 'Awaiting Schedule';
 alter table jobs add column if not exists start_date date;
 alter table jobs add column if not exists end_date date;
 alter table jobs add column if not exists crew text;

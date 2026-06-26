@@ -588,7 +588,7 @@ async function createLeadFromQuote(id){
   phone:quote.phone||"",
   email:quote.email||"",
   address:quote.address||"",
-  stage:"Estimate Sent",
+  stage:"New Lead",
   estimated_value:quote.sale_price||0,
   notes:`Created from quote ${quote.quote_name||quote.id}`,
   converted_quote_id:quote.id
@@ -603,6 +603,7 @@ async function createLeadFromQuote(id){
 async function createJobFromQuote(id){
  const quote=await loadQuote(id);if(!quote)return;
  if(quote.job_id&&!confirm("This quote already has a job. Create another job anyway?"))return;
+ const jobStatus=await jobStatusForQuote(quote);if(!jobStatus)return;
  const payload={
   customer:quote.customer||quote.quote_name||"Quote Job",
   job_name:quote.quote_name||quote.customer||"Quote Job",
@@ -610,7 +611,7 @@ async function createJobFromQuote(id){
   system_type:quote.system_type||"",
   square_feet:quote.square_feet||0,
   cove_lf:quote.cove_lf||0,
-  status:"Scheduled",
+  status:jobStatus,
   sale_price:quote.sale_price||0,
   material_cost:quote.material_cost||0,
   labor_cost:quote.labor_cost||0,
@@ -627,6 +628,12 @@ async function createJobFromQuote(id){
  if(quote.lead_id)await supa.from("leads").update({converted_job_id:result.data.id}).eq("id",quote.lead_id);
  alert("Job created from quote.");
  renderHistory();renderRecentQuotes();syncParentDashboard();
+}
+async function jobStatusForQuote(quote){
+ if(!quote.lead_id)return "Awaiting Schedule";
+ const result=await supa.from("leads").select("next_followup").eq("id",quote.lead_id).maybeSingle();
+ if(result.error){alert("Could not check the linked lead schedule: "+result.error.message);return "";}
+ return result.data?.next_followup?"Awaiting Follow Up":"Awaiting Schedule";
 }
 function clearHistory(){renderHistory();}
 function downloadHTML(){if(!lastQuoteHTML)return;let full=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>SEFS Quote</title>
