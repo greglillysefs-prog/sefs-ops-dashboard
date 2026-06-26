@@ -247,13 +247,9 @@ overscroll-behavior:none;
 
   <section id="summaryControls" class="card hidden">
     <div class="stepTitle"><span class="bubble">3</span> Labor / Final Options</div>
-    <label>Labor Calculation</label>
-    <select id="laborMode" onchange="toggleManualLabor()">
-      <option value="auto">Auto labor by each floor system</option>
-      <option value="manual">Manual total job labor</option>
-    </select>
-    <p class="small">For multi-floor jobs, manual total job labor is usually more accurate because the crew is already on site.</p>
-    <div id="manualLaborBox" class="grid two hidden">
+    <label>Quote Labor</label>
+    <p class="small">Labor cost is entered for this quote only.</p>
+    <div id="manualLaborBox" class="grid two">
       <div><label>Total Job Men</label><input id="jobMen" type="number" inputmode="decimal"></div>
       <div><label>Total Job Days</label><input id="jobDays" type="number" inputmode="decimal"></div>
       <div><label>Labor Rate / Man-Day</label><input id="jobLaborRate" type="number" inputmode="decimal" value="250"></div>
@@ -315,9 +311,6 @@ function $(id){return document.getElementById(id)}
 function val(id){return $(id)?.value||""}
 function num(id){return parseFloat($(id)?.value)||0}
 function money(n){return "$"+Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}
-function storedLaborRates(){try{return JSON.parse(localStorage.getItem("sefsSystemLaborRates")||"{}")||{}}catch(e){return {}}}
-function laborRateForSystem(system){let rates=storedLaborRates(); return +rates[system]||DEFAULT_LABOR_PER_DAY}
-function suggestedManualLaborRate(){for(let i=1;i<=num("floorCount");i++){let system=val("system"+i); if(system)return laborRateForSystem(system)} return DEFAULT_LABOR_PER_DAY}
 function kitsNeeded(amount, coverage){return Math.ceil((amount*WASTE_FACTOR)/coverage)}
 function kitsNeededNoWaste(amount, coverage){return Math.ceil(amount/coverage)}
 function addMaterial(materials,name,qty,unitCost){ if(qty>0) materials.push({name,qty,unitCost,total:qty*unitCost}) }
@@ -352,9 +345,9 @@ function clearQuoteFields(){
 
   // Reset visible sections
   if($("summaryControls")) $("summaryControls").classList.add("hidden");
-  if($("manualLaborBox")) $("manualLaborBox").classList.add("hidden");
   if($("outTownBox")) $("outTownBox").classList.add("hidden");
   if($("marginBox")) $("marginBox").classList.add("hidden");
+  if($("jobLaborRate")) $("jobLaborRate").value = DEFAULT_LABOR_PER_DAY;
 
   // Reset stored working quote data, but do NOT clear saved quote history
   lastQuoteHTML = "";
@@ -378,9 +371,9 @@ function startNewQuote(){
   if($("results")) $("results").innerHTML = "";
 
   if($("summaryControls")) $("summaryControls").classList.add("hidden");
-  if($("manualLaborBox")) $("manualLaborBox").classList.add("hidden");
   if($("outTownBox")) $("outTownBox").classList.add("hidden");
   if($("marginBox")) $("marginBox").classList.add("hidden");
+  if($("jobLaborRate")) $("jobLaborRate").value = DEFAULT_LABOR_PER_DAY;
 
   lastQuoteHTML = "";
   lastPlainText = "";
@@ -409,7 +402,6 @@ function buildFloorForms(){
   html += `<div class="btnRow"><button class="secondary" onclick="goTo('setup')">Back</button><button onclick="goTo('summaryControls')">Next: Labor / Final Options →</button></div>`;
   $("floors").innerHTML=html;
   $("summaryControls").classList.remove("hidden");
-  if(count>1){ $("laborMode").value="manual"; toggleManualLabor(); }
   goTo("floors");
 }
 
@@ -430,21 +422,8 @@ function renderOptions(i){
 function toggleExtra(i,type){$(type+"FinishBox"+i)?.classList.toggle("hidden",val(type+"Extra"+i)!=="Yes")}
 function toggleJoint(i){$("jointBox"+i)?.classList.toggle("hidden",val("mortarFill"+i)!=="Yes")}
 function toggleCove(i){$("coveBox"+i)?.classList.toggle("hidden",val("cove"+i)!=="Yes")}
-function toggleManualLabor(){let manual=val("laborMode")==="manual"; $("manualLaborBox").classList.toggle("hidden",!manual); if(manual&&$("jobLaborRate")&&!num("jobLaborRate"))$("jobLaborRate").value=suggestedManualLaborRate()}
 function toggleOutTown(){$("outTownBox").classList.toggle("hidden",val("outTown")!=="Yes")}
 function toggleMargin(){$("marginBox").classList.toggle("hidden",val("useMargin")!=="Yes")}
-
-function laborForSystem(system,sqft,extraDay=0){
- let men=2,days=1;
- if(system==="Flake"){if(sqft<500){men=2;days=2}else if(sqft<=2000){men=3;days=2}else{men=4;days=3}}
- else if(system==="Metallic"){if(sqft<500){men=2;days=3}else if(sqft<=2000){men=3;days=3}else{men=4;days=4}}
- else if(system==="Wood/Stone Overlay"){if(sqft<500){men=2;days=2}else if(sqft<=1500){men=3;days=3}else{men=3;days=4}}
- else if(system==="Broom Overlay"){if(sqft<500){men=2;days=1}else if(sqft<=1000){men=3;days=1}else{men=3;days=2}}
- else if(system==="Mortar/Prime & Coat"){if(sqft<500){men=2;days=1}else{men=4;days=3}}
- else if(system==="Quartz"){if(sqft<500){men=2;days=2}else if(sqft<=2000){men=3;days=2}else{men=4;days=3}}
- else if(system==="Grind/Stain & Seal"){if(sqft<500){men=2;days=2}else if(sqft<=2000){men=3;days=3}else{men=4;days=3}}
- return {men,days:days+extraDay};
-}
 function proposalText(system){
  return {"Flake":"Mechanically prepare concrete, apply primer/base coat, broadcast decorative flake, scrape excess flake, clean, and apply selected sealer system.","Metallic":"Mechanically prepare concrete, apply pigmented primer, install metallic epoxy layer, and apply selected protective finish coat.","Wood/Stone Overlay":"Mechanically prepare concrete, apply primer with sand broadcast, install decorative overlay, stain/scribe as needed, and apply selected sealer system.","Broom Overlay":"Mechanically prepare concrete, apply primer with sand broadcast, install broom-finish overlay.","Mortar/Prime & Coat":"Mechanically prepare concrete, install selected mortar or prime-and-coat system, fill selected joints if included, and apply selected finish coats.","Quartz":"Mechanically prepare concrete, apply primer, broadcast quartz aggregate, clean excess material, and apply selected sealer system.","Grind/Stain & Seal":"Grind concrete surface, apply selected stain if included, and seal with selected finish system.","Polish":"Grind and polish concrete using progressive tooling, densify, and apply guard/seal as needed.","Prep Only":"Prepare concrete surface by selected method."}[system]||"";
 }
@@ -452,13 +431,13 @@ function proposalText(system){
 function calculate(){
  const count=num("floorCount"); if(!count){alert("Start a quote first.");return;}
  const customer={name:val("customerName"),phone:val("customerPhone"),address:val("customerAddress"),date:dateStamp()};
- let floors=[],totalSell=0,totalMat=0,totalLabor=0,totalAdmin=0,totalOut=0,autoLaborDetails=[];
+ let floors=[],totalSell=0,totalMat=0,totalLabor=0,totalAdmin=0,totalOut=0;
  for(let i=1;i<=count;i++){
-  let system=val("system"+i),sqft=num("sqft"+i),materials=[],extraDay=0,sell=0,notes=[];
+  let system=val("system"+i),sqft=num("sqft"+i),materials=[],sell=0,notes=[];
   if(!system||!sqft)continue;
   if(system==="Flake"){let size=val("flakeSize"+i),p=kitsNeeded(sqft,500);addMaterial(materials,"Primer 3G",p,COSTS.primer3g);if(size!=="1/16")addMaterial(materials,"Color Pod",p,COSTS.solidColorPod);addMaterial(materials,"Flake Box",kitsNeeded(sqft,280),COSTS.flakeBox);let pc=size==="1/16"?180:size==="1/4"?250:220;addMaterial(materials,"Poly 2G",kitsNeeded(sqft,pc),COSTS.poly2g);if(val("flakeExtra"+i)==="Yes"){if(val("flakeFinish"+i)==="Matte")addMaterial(materials,"WB Urethane 3G",kitsNeeded(sqft,2500),COSTS.wbUrethane3g);else addMaterial(materials,"Aliphatic Urethane",kitsNeeded(sqft,2000),COSTS.aliphatic);}sell=sqft*5;}
   if(system==="Metallic"){let p=kitsNeeded(sqft,300);addMaterial(materials,"Primer 3G",p,COSTS.primer3g);addMaterial(materials,"Color Pod",p,COSTS.solidColorPod);let xr=kitsNeeded(sqft,100);addMaterial(materials,"XR 3G",xr,COSTS.xr3g);addMaterial(materials,"Metallic Powder",Math.ceil(xr*.5),COSTS.metallicPowder);if(val("metalFinish"+i)==="Matte"){addMaterial(materials,"WB Urethane 3G",kitsNeeded(sqft,2500),COSTS.wbUrethane3g);sell=sqft*12}else{addMaterial(materials,"Aliphatic Urethane",kitsNeeded(sqft,2000),COSTS.aliphatic);sell=sqft*14}}
-  if(system==="Wood/Stone Overlay"){let loc=val("woodLoc"+i),finish=val("woodFinish"+i);addMaterial(materials,"Primer 3G Base",kitsNeeded(sqft,500),COSTS.primer3g);addMaterial(materials,"Sand",kitsNeeded(sqft,200),COSTS.sand);addMaterial(materials,"Overlay",kitsNeeded(sqft,100),COSTS.overlay);addMaterial(materials,"Stain 32oz",kitsNeeded(sqft,500),COSTS.stain32);if(loc==="Interior"){addMaterial(materials,"Primer Flood Coat",kitsNeeded(sqft,300),COSTS.primer3g);if(finish==="Matte"){addMaterial(materials,"WB Urethane 3G",kitsNeeded(sqft,2500),COSTS.wbUrethane3g);extraDay=1}else addMaterial(materials,"Aliphatic Urethane",kitsNeeded(sqft,2000),COSTS.aliphatic);}else{if(finish==="Matte")addMaterial(materials,"Low Luster Acrylic",kitsNeeded(sqft,500),COSTS.lowLusterAcrylic);else addMaterial(materials,"Poly 2G",kitsNeeded(sqft,200),COSTS.poly2g);}sell=sqft*10;}
+  if(system==="Wood/Stone Overlay"){let loc=val("woodLoc"+i),finish=val("woodFinish"+i);addMaterial(materials,"Primer 3G Base",kitsNeeded(sqft,500),COSTS.primer3g);addMaterial(materials,"Sand",kitsNeeded(sqft,200),COSTS.sand);addMaterial(materials,"Overlay",kitsNeeded(sqft,100),COSTS.overlay);addMaterial(materials,"Stain 32oz",kitsNeeded(sqft,500),COSTS.stain32);if(loc==="Interior"){addMaterial(materials,"Primer Flood Coat",kitsNeeded(sqft,300),COSTS.primer3g);if(finish==="Matte")addMaterial(materials,"WB Urethane 3G",kitsNeeded(sqft,2500),COSTS.wbUrethane3g);else addMaterial(materials,"Aliphatic Urethane",kitsNeeded(sqft,2000),COSTS.aliphatic);}else{if(finish==="Matte")addMaterial(materials,"Low Luster Acrylic",kitsNeeded(sqft,500),COSTS.lowLusterAcrylic);else addMaterial(materials,"Poly 2G",kitsNeeded(sqft,200),COSTS.poly2g);}sell=sqft*10;}
   if(system==="Broom Overlay"){addMaterial(materials,"Primer 3G",kitsNeeded(sqft,500),COSTS.primer3g);addMaterial(materials,"Sand",kitsNeeded(sqft,200),COSTS.sand);addMaterial(materials,"Overlay",kitsNeeded(sqft,180),COSTS.overlay);sell=sqft*6;}
   if(system==="Mortar/Prime & Coat"){let type=val("mortarType"+i),condition=val("mortarCondition"+i);if(type==="Mortar"){addMaterial(materials,"Primer Under Mortar 3G",kitsNeeded(sqft,500),COSTS.primer3g);addMaterial(materials,"Mortar Kit",kitsNeeded(sqft,25),COSTS.coveMortar);}let pCov=condition==="Rough"?300:500,pQty=kitsNeeded(sqft,pCov);addMaterial(materials,"Primer 3G",pQty,COSTS.primer3g);addMaterial(materials,"Color Pod - Primer",pQty,COSTS.solidColorPod);let xr=kitsNeeded(sqft,500);addMaterial(materials,"XR 3G Topcoat",xr,COSTS.xr3g);addMaterial(materials,"Color Pod - XR",xr,COSTS.solidColorPod);if(val("mortarFill"+i)==="Yes"){let lf=num("jointLF"+i);addMaterial(materials,"Clad Sand Joint Kit",kitsNeeded(lf,25),COSTS.coveMortar);sell+=Math.ceil(lf/25)*250;}if(val("mortarExtra"+i)==="Yes"){if(val("mortarFinish"+i)==="Matte")addMaterial(materials,"WB Urethane 3G",kitsNeeded(sqft,2500),COSTS.wbUrethane3g);else addMaterial(materials,"Aliphatic Urethane",kitsNeeded(sqft,2000),COSTS.aliphatic);}sell+=sqft*(type==="Mortar"?13:3.5);}
   if(system==="Quartz"){addMaterial(materials,"Primer 3G",kitsNeeded(sqft,500),COSTS.primer3g);addMaterial(materials,"Quartz",kitsNeeded(sqft,150),COSTS.quartzBag);if(val("quartzLoc"+i)==="Interior")addMaterial(materials,"XR 3G",kitsNeeded(sqft,300),COSTS.xr3g);else addMaterial(materials,"Poly 2G",kitsNeeded(sqft,200),COSTS.poly2g);if(val("quartzExtra"+i)==="Yes"){if(val("quartzFinish"+i)==="Matte")addMaterial(materials,"WB Urethane 3G",kitsNeeded(sqft,2500),COSTS.wbUrethane3g);else addMaterial(materials,"Aliphatic Urethane",kitsNeeded(sqft,2000),COSTS.aliphatic);}sell=sqft*8;}
@@ -466,15 +445,19 @@ function calculate(){
   if(system==="Polish"){sell=sqft*4;notes.push("Polish materials: densifier and guard/seal as needed.")}
   if(system==="Prep Only"){let prep=val("prepType"+i);sell=sqft*(prep==="Blast"?.40:1.00);notes.push(prep==="Blast"?"Blast prep estimated around 7,000 sq ft per day.":"Grind prep estimated around 2,000 sq ft per day.");notes.push("No coating materials required for prep-only scope.")}
   if(["Flake","Quartz","Mortar/Prime & Coat"].includes(system)&&val("cove"+i)==="Yes"){let size=val("coveSize"+i),lf=num("coveLF"+i),cov=size==="4"?25:20;addMaterial(materials,"Cove Base Mortar Kit",kitsNeededNoWaste(lf,cov),COSTS.coveMortar);sell+=size==="4"?Math.ceil(lf/25)*250:Math.ceil(lf/20)*300;}
-  let labor=laborForSystem(system,sqft,extraDay),mat=materialTotal(materials),laborRate=laborRateForSystem(system);totalSell+=sell;totalMat+=mat;autoLaborDetails.push(`Floor ${i} ${system}: ${labor.men} men / ${labor.days} day(s) @ ${money(laborRate)} per man-day`);if(val("laborMode")==="auto"){totalLabor+=labor.men*labor.days*laborRate;totalAdmin+=labor.days*ADMIN_PER_DAY;}floors.push({i,system,sqft,materials,mat,sell,labor,laborRate,notes});
+  let mat=materialTotal(materials);totalSell+=sell;totalMat+=mat;floors.push({i,system,sqft,materials,mat,sell,notes});
  }
- if(val("laborMode")==="manual"){let days=num("jobDays"),men=num("jobMen"),rate=num("jobLaborRate")||suggestedManualLaborRate();totalLabor=men*days*rate;totalAdmin=days*ADMIN_PER_DAY;autoLaborDetails=[`Manual total job labor used at ${money(rate)} per man-day: ${men} men / ${days} day(s)`];}
+ let laborMen=num("jobMen"),laborDays=num("jobDays"),laborRate=num("jobLaborRate")||DEFAULT_LABOR_PER_DAY;
+ if(!laborMen||!laborDays){alert("Enter total job men and days.");return;}
+ totalLabor=laborMen*laborDays*laborRate;
+ totalAdmin=laborDays*ADMIN_PER_DAY;
+ let laborDetails=[`Quote labor: ${laborMen} men / ${laborDays} day(s) @ ${money(laborRate)} per man-day`];
  if(val("outTown")==="Yes"){totalOut=num("ootMen")*num("ootDays")*OUT_TOWN;totalSell+=totalOut;}
  let companyCost=totalMat+totalLabor+totalAdmin;
  if(val("useMargin")==="Yes"){let margin=num("targetMargin")/100;if(margin>0&&margin<1)totalSell=(companyCost/(1-margin))+totalOut;}
  if(totalSell<MIN_JOB_PRICE)totalSell=MIN_JOB_PRICE;
  let marginDollars=totalSell-companyCost,marginPercent=totalSell?marginDollars/totalSell*100:0;
- lastData={customer,floors,totalSell,totalMat,totalLabor,totalAdmin,totalOut,companyCost,marginDollars,marginPercent,autoLaborDetails};
+ lastData={customer,floors,totalSell,totalMat,totalLabor,totalAdmin,totalOut,companyCost,marginDollars,marginPercent,laborMen,laborDays,laborRate,laborDetails};
  renderResults(lastData); $("results").scrollIntoView({behavior:"smooth"});
 }
 
@@ -486,7 +469,7 @@ function renderResults(data){
 
  let installer=`<div class="paper"><div class="paperHeader"><img class="paperLogo" src="${LOGO_URI}"><div><strong>MATERIALS NEEDED</strong><br><small>NO COST OR MARGIN</small></div></div><div class="paperBody"><h3>Materials Sheet</h3><p><strong>Customer:</strong> ${data.customer.name}</p>${data.floors.map(f=>`<h3>Floor ${f.i}: ${f.system} - ${f.sqft} SQ FT</h3>${f.materials.length?`<table><tr><th>Material</th><th>Qty</th></tr>${f.materials.map(m=>`<tr><td>${m.name}</td><td>${m.qty}</td></tr>`).join("")}</table>`:`<p>No coating materials required.</p>`}${f.notes.map(n=>`<p>${n}</p>`).join("")}`).join("")}</div></div>`;
 
- let summary=`<div class="paper"><div class="paperHeader"><img class="paperLogo" src="${LOGO_URI}"><div><strong>MANAGEMENT SUMMARY</strong><br><small>FULL COST BREAKDOWN</small></div></div><div class="paperBody"><h3>Management Summary</h3>${data.floors.map(f=>`<div class="summaryLine"><span>Floor ${f.i}: ${f.system}</span><strong>${f.sqft} SQ FT</strong></div>`).join("")}<div class="summaryLine"><span>Material Cost</span><strong>${money(data.totalMat)}</strong></div><div class="summaryLine"><span>Labor Cost</span><strong>${money(data.totalLabor)}</strong></div><div class="summaryLine"><span>Admin Cost</span><strong>${money(data.totalAdmin)}</strong></div><div class="summaryLine"><span>Out Of Town</span><strong>${money(data.totalOut)}</strong></div><div class="summaryLine"><span>Company Cost</span><strong>${money(data.companyCost)}</strong></div><div class="orangeBar"><span>CUSTOMER PRICE</span><span>${money(data.totalSell)}</span></div><div class="summaryLine"><span>Margin Dollars</span><strong>${money(data.marginDollars)}</strong></div><div class="summaryLine"><span>Margin Percent</span><strong>${data.marginPercent.toFixed(1)}%</strong></div><h3>Labor Notes</h3><p>${data.autoLaborDetails.join("<br>")}</p></div></div>`;
+ let summary=`<div class="paper"><div class="paperHeader"><img class="paperLogo" src="${LOGO_URI}"><div><strong>MANAGEMENT SUMMARY</strong><br><small>FULL COST BREAKDOWN</small></div></div><div class="paperBody"><h3>Management Summary</h3>${data.floors.map(f=>`<div class="summaryLine"><span>Floor ${f.i}: ${f.system}</span><strong>${f.sqft} SQ FT</strong></div>`).join("")}<div class="summaryLine"><span>Material Cost</span><strong>${money(data.totalMat)}</strong></div><div class="summaryLine"><span>Labor Cost</span><strong>${money(data.totalLabor)}</strong></div><div class="summaryLine"><span>Admin Cost</span><strong>${money(data.totalAdmin)}</strong></div><div class="summaryLine"><span>Out Of Town</span><strong>${money(data.totalOut)}</strong></div><div class="summaryLine"><span>Company Cost</span><strong>${money(data.companyCost)}</strong></div><div class="orangeBar"><span>CUSTOMER PRICE</span><span>${money(data.totalSell)}</span></div><div class="summaryLine"><span>Margin Dollars</span><strong>${money(data.marginDollars)}</strong></div><div class="summaryLine"><span>Margin Percent</span><strong>${data.marginPercent.toFixed(1)}%</strong></div><h3>Quote Labor</h3><p>${data.laborDetails.join("<br>")}</p></div></div>`;
 
  proposal += customer+installer+summary+`</div><div class="btnRow noPrint"><button onclick="saveQuote()">Save Quote</button><button onclick="window.print()">Print / Save PDF</button><button class="secondary" onclick="downloadHTML()">Download HTML</button></div></div>`;
  $("results").innerHTML=proposal; lastQuoteHTML=proposal; lastPlainText=dataToText(data);
