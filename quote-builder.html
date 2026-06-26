@@ -492,7 +492,7 @@ function renderResults(data){
 
  let summary=`<div class="paper summaryPaper"><div class="paperHeader"><img class="paperLogo" src="${LOGO_URI}"><div><strong>MANAGEMENT SUMMARY</strong><br><small>FULL COST BREAKDOWN</small></div></div><div class="paperBody"><h3>Management Summary</h3>${data.floors.map(f=>`<div class="summaryLine"><span>Floor ${f.i}: ${f.system}</span><strong>${f.sqft} SQ FT</strong></div>`).join("")}<div class="summaryLine"><span>Material Cost</span><strong>${money(data.totalMat)}</strong></div><div class="summaryLine"><span>Labor Cost</span><strong>${money(data.totalLabor)}</strong></div><div class="summaryLine"><span>Admin Cost</span><strong>${money(data.totalAdmin)}</strong></div><div class="summaryLine"><span>Out Of Town</span><strong>${money(data.totalOut)}</strong></div><div class="summaryLine"><span>Company Cost</span><strong>${money(data.companyCost)}</strong></div><div class="orangeBar"><span>CUSTOMER PRICE</span><span>${money(data.totalSell)}</span></div><div class="summaryLine"><span>Margin Dollars</span><strong>${money(data.marginDollars)}</strong></div><div class="summaryLine"><span>Margin Percent</span><strong>${data.marginPercent.toFixed(1)}%</strong></div><h3>Quote Labor</h3><p>${data.laborDetails.join("<br>")}</p></div></div>`;
 
- proposal += customer+installer+summary+`</div><div class="btnRow noPrint"><button onclick="saveQuote()">Save Quote</button><button onclick="window.print()">Print / Save PDF</button><button class="secondary" onclick="downloadHTML()">Download HTML</button></div></div>`;
+ proposal += customer+installer+summary+`</div><div class="btnRow noPrint"><button onclick="saveQuote()">Save Quote</button><button class="secondary" onclick="createLeadFromCurrentQuote()">Create Lead</button><button class="secondary" onclick="createJobFromCurrentQuote()">Create Job</button><button onclick="window.print()">Print / Save PDF</button><button class="secondary" onclick="downloadHTML()">Download HTML</button></div></div>`;
  $("results").innerHTML=proposal; lastQuoteHTML=proposal; lastPlainText=dataToText(data);
 }
 
@@ -520,7 +520,7 @@ function quotePayload(){
   notes:lastPlainText||""
  };
 }
-async function saveQuote(){
+async function saveQuote(options={}){
  if(!lastData){alert("Generate a quote first.");return;}
  if(!supa){alert("Supabase is not loaded yet.");return;}
  const payload=quotePayload();
@@ -528,8 +528,9 @@ async function saveQuote(){
  const result=existing?await supa.from("quotes").update(payload).eq("id",existing).select().single():await supa.from("quotes").insert(payload).select().single();
  if(result.error){alert("Quote save failed: "+result.error.message);return;}
  lastData.quoteId=result.data.id;
- alert("Quote saved to Supabase.");
+ if(!options.quiet)alert("Quote saved to Supabase.");
  renderRecentQuotes();renderHistory();syncParentDashboard();
+ return result.data.id;
 }
 async function fetchQuotes(){
  if(!supa)return {data:[],error:{message:"Supabase is not loaded yet."}};
@@ -551,7 +552,7 @@ async function renderHistory(){
  if(result.error){list.innerHTML=`<p class="small">Could not load quotes: ${qEsc(result.error.message)}</p>`;return;}
  const search=String(val("quoteSearch")||"").toLowerCase();
  savedQuotesCache=(result.data||[]).filter(q=>!search||[q.quote_name,q.customer,q.phone,q.address,q.status,String(q.sale_price||"")].some(v=>String(v||"").toLowerCase().includes(search)));
- list.innerHTML=savedQuotesCache.length?savedQuotesCache.map(q=>`<div class="card"><div class="summaryLine"><strong>${qEsc(q.customer||q.quote_name||"Saved Quote")}</strong><span>${money(q.sale_price)}</span></div><p class="small">${qEsc(q.status||"Draft")} - ${qEsc((q.created_at||"").slice(0,10))}</p><button class="secondary" onclick="viewSaved('${q.id}')">View</button></div>`).join(""):`<p class="small">No saved quotes yet.</p>`;
+ list.innerHTML=savedQuotesCache.length?savedQuotesCache.map(q=>`<div class="card"><div class="summaryLine"><strong>${qEsc(q.customer||q.quote_name||"Saved Quote")}</strong><span>${money(q.sale_price)}</span></div><p class="small">${qEsc(q.status||"Draft")} - ${qEsc((q.created_at||"").slice(0,10))}${q.lead_id?" - Lead created":""}${q.job_id?" - Job created":""}</p><div class="btnRow"><button class="secondary" onclick="viewSaved('${q.id}')">View</button><button class="secondary" onclick="createLeadFromQuote('${q.id}')">Create Lead</button><button class="secondary" onclick="createJobFromQuote('${q.id}')">Create Job</button></div></div>`).join(""):`<p class="small">No saved quotes yet.</p>`;
 }
 function quoteById(id){return savedQuotesCache.find(q=>q.id===id);}
 async function loadQuote(id){
@@ -568,6 +569,64 @@ async function viewSaved(id){
  lastPlainText=data.plainText||quote.notes||"";
  $("results").innerHTML=lastQuoteHTML;
  $("results").scrollIntoView({behavior:"smooth"});
+}
+async function createLeadFromCurrentQuote(){
+ if(!lastData){alert("Generate a quote first.");return;}
+ const id=lastData.quoteId||await saveQuote({quiet:true});
+ if(id)await createLeadFromQuote(id);
+}
+async function createJobFromCurrentQuote(){
+ if(!lastData){alert("Generate a quote first.");return;}
+ const id=lastData.quoteId||await saveQuote({quiet:true});
+ if(id)await createJobFromQuote(id);
+}
+async function createLeadFromQuote(id){
+ const quote=await loadQuote(id);if(!quote)return;
+ if(quote.lead_id&&!confirm("This quote already has a lead. Create another lead anyway?"))return;
+ const payload={
+  customer:quote.customer||quote.quote_name||"Quote Lead",
+  phone:quote.phone||"",
+  email:quote.email||"",
+  address:quote.address||"",
+  stage:"Estimate Sent",
+  estimated_value:quote.sale_price||0,
+  notes:`Created from quote ${quote.quote_name||quote.id}`,
+  converted_quote_id:quote.id
+ };
+ const result=await supa.from("leads").insert(payload).select().single();
+ if(result.error){alert("Lead creation failed: "+result.error.message);return;}
+ const update=await supa.from("quotes").update({lead_id:result.data.id,status:"Lead"}).eq("id",quote.id);
+ if(update.error){alert("Lead created, but quote link update failed: "+update.error.message);return;}
+ alert("Lead created from quote.");
+ renderHistory();renderRecentQuotes();syncParentDashboard();
+}
+async function createJobFromQuote(id){
+ const quote=await loadQuote(id);if(!quote)return;
+ if(quote.job_id&&!confirm("This quote already has a job. Create another job anyway?"))return;
+ const payload={
+  customer:quote.customer||quote.quote_name||"Quote Job",
+  job_name:quote.quote_name||quote.customer||"Quote Job",
+  address:quote.address||"",
+  system_type:quote.system_type||"",
+  square_feet:quote.square_feet||0,
+  cove_lf:quote.cove_lf||0,
+  status:"Scheduled",
+  sale_price:quote.sale_price||0,
+  material_cost:quote.material_cost||0,
+  labor_cost:quote.labor_cost||0,
+  other_cost:quote.other_cost||0,
+  notes:`Created from quote ${quote.quote_name||quote.id}`,
+  source_quote_id:quote.id,
+  quote_json:quote.quote_json||{},
+  quote_status:quote.status||"Draft"
+ };
+ const result=await supa.from("jobs").insert(payload).select().single();
+ if(result.error){alert("Job creation failed: "+result.error.message);return;}
+ const update=await supa.from("quotes").update({job_id:result.data.id,status:"Job"}).eq("id",quote.id);
+ if(update.error){alert("Job created, but quote link update failed: "+update.error.message);return;}
+ if(quote.lead_id)await supa.from("leads").update({converted_job_id:result.data.id}).eq("id",quote.lead_id);
+ alert("Job created from quote.");
+ renderHistory();renderRecentQuotes();syncParentDashboard();
 }
 function clearHistory(){renderHistory();}
 function downloadHTML(){if(!lastQuoteHTML)return;let full=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>SEFS Quote</title>
