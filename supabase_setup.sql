@@ -355,6 +355,25 @@ create table if not exists quotes (
   created_at timestamptz default now()
 );
 
+alter table quotes add column if not exists lead_id uuid;
+alter table quotes add column if not exists job_id uuid;
+alter table quotes add column if not exists customer text;
+alter table quotes add column if not exists phone text;
+alter table quotes add column if not exists email text;
+alter table quotes add column if not exists address text;
+alter table quotes add column if not exists quote_name text;
+alter table quotes add column if not exists status text default 'Draft';
+alter table quotes add column if not exists system_type text;
+alter table quotes add column if not exists square_feet numeric default 0;
+alter table quotes add column if not exists cove_lf numeric default 0;
+alter table quotes add column if not exists sale_price numeric default 0;
+alter table quotes add column if not exists material_cost numeric default 0;
+alter table quotes add column if not exists labor_cost numeric default 0;
+alter table quotes add column if not exists other_cost numeric default 0;
+alter table quotes add column if not exists quote_json jsonb;
+alter table quotes add column if not exists notes text;
+alter table quotes add column if not exists created_at timestamptz default now();
+
 create table if not exists quote_systems (
   id uuid primary key default gen_random_uuid(),
   name text not null unique,
