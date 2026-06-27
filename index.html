@@ -2,9 +2,9 @@
 :root{--o:#ff7900;--g:#2bb673;--r:#d84242;--bg:#050505;--p:#181818;--l:#444;--m:#aaa}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top left,#222,#050505 45%);color:#eee;font-family:Arial,Helvetica,sans-serif}header{display:flex;gap:24px;align-items:center;padding:18px 24px;background:#000d;border-bottom:1px solid #333;position:sticky;top:0;z-index:3}.logo{width:245px;max-width:48vw}h1{margin:0;font-size:29px}.sub{color:#aaa;margin-top:6px}#status{margin-left:auto;border:1px solid #555;border-radius:99px;padding:8px 12px;color:#aaa}#status.ok{color:var(--g);border-color:var(--g)}#status.bad{color:#ff9999;border-color:var(--r)}.app{display:grid;grid-template-columns:250px 1fr;min-height:calc(100vh - 88px)}nav{border-right:1px solid #333;padding:18px;background:#0008;overflow:auto}.nav{width:100%;margin-bottom:10px;padding:13px;border:1px solid #333;border-radius:10px;background:#111;color:#ddd;font-weight:800;text-align:left;cursor:pointer}.nav.active,.nav:hover{border-color:var(--o);color:var(--o);background:#1b1209}main{padding:24px;overflow:auto}section{display:none}section.active{display:block}h2{margin:0 0 16px}h2:after{content:"";display:block;width:50px;height:3px;background:var(--o);margin-top:8px}.card{background:linear-gradient(145deg,#222,#111);border:1px solid #444;border-radius:14px;padding:18px;box-shadow:0 12px 28px #0008}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}.grid2{display:grid;grid-template-columns:1fr 380px;gap:18px;align-items:start}.big{font-size:36px;font-weight:900;color:var(--o)}.muted{color:#aaa;font-size:13px}.notice{border:1px solid #444;border-left:4px solid var(--o);padding:13px;border-radius:8px;background:#111;margin-bottom:16px;color:#ccc}label{display:block;margin:11px 0 6px;color:#bbb;text-transform:uppercase;font-size:12px;font-weight:900}input,select,textarea{width:100%;background:#101010;color:#eee;border:1px solid #4a4a4a;border-radius:8px;padding:11px;font-size:15px}textarea{min-height:82px}.primary{width:100%;border:0;border-radius:9px;padding:13px;margin-top:14px;background:linear-gradient(90deg,var(--o),#ff9b28);color:#000;font-weight:900}.secondary,.danger,.gray{border:1px solid #555;border-radius:8px;padding:9px 11px;background:#151515;color:#eee;font-weight:800;cursor:pointer}.secondary{border-color:var(--o);color:var(--o)}.danger{border-color:var(--r);color:#ff9999}.tools{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:15px;align-items:center}table{width:100%;border-collapse:collapse}th,td{text-align:left;border-bottom:1px solid #333;padding:10px 8px;vertical-align:top;font-size:14px}th{background:#111;color:#bbb;text-transform:uppercase;font-size:12px}.rowact{display:flex;gap:7px;flex-wrap:wrap}.pill{display:inline-block;border:1px solid #666;border-radius:99px;padding:4px 9px;color:#aaa;font-size:12px}.pill.ok{border-color:var(--g);color:var(--g)}.pill.warn{border-color:var(--o);color:var(--o)}.pill.bad{border-color:var(--r);color:#ff9999}.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}.three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}dialog{width:min(760px,94vw);background:#111;color:#eee;border:1px solid #555;border-radius:14px;padding:22px}dialog::backdrop{background:#000a}.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}.side{margin-top:24px;padding:16px;border:1px solid #444;border-radius:12px;background:#111}.side b{color:var(--o);font-size:20px}.photo{width:90px;height:70px;object-fit:cover;border-radius:8px;border:1px solid #555;margin:4px}.err{border:1px solid var(--r);color:#ff9999;background:#1b0909;padding:10px;border-radius:8px;margin:8px 0}.calc div{display:flex;justify-content:space-between;border-bottom:1px solid #333;padding:8px 0}.recipebox{margin-bottom:14px;border:1px solid #333;border-radius:10px;padding:12px;background:#111}.recipebox h3{margin:0 0 8px;color:var(--o)}@media(max-width:900px){header{flex-direction:column;align-items:flex-start}#status{margin-left:0}.app{grid-template-columns:1fr}nav{border-right:0;border-bottom:1px solid #333}.grid2{grid-template-columns:1fr}.logo{max-width:90vw}}
 /* v7 Quotes Center fixes */
 #quotes .card{background:#000}
-#quoteFrame{min-height:760px}
+#quoteFrame{min-height:0;overflow:hidden}
 @media(max-width:900px){
-  #quoteFrame{height:86vh;min-height:720px}
+  #quoteFrame{min-height:0}
 }
 
 
@@ -19,6 +19,8 @@
 #quotes.active{display:block!important;}
 
 /* workflow revamp */
+main{overflow:visible}
+#quotes .quote-card-force{overflow:visible!important;min-height:0!important}
 .nav-section-title{margin:18px 0 8px;color:#888;text-transform:uppercase;font-size:11px;font-weight:900;letter-spacing:.08em}
 .nav-stack{display:grid;gap:8px}
 .nav-stack .nav{margin-bottom:0}
@@ -78,15 +80,15 @@
     <h2 style="margin:0">SEFS Quote Builder</h2>
     <div class="rowact" style="display:flex;gap:8px;flex-wrap:wrap;">
       <button class="secondary" onclick="document.getElementById('quoteFrame').contentWindow.print()">Print Quote</button>
-      <button class="secondary" onclick="document.getElementById('quoteFrame').src='quote-builder.html'">Reload Quote Builder</button>
-      <button class="secondary" onclick="window.open('quote-builder.html','_blank')">Open Full Page</button>
+      <button class="secondary" onclick="document.getElementById('quoteFrame').src=quoteBuilderUrl()">Reload Quote Builder</button>
+      <button class="secondary" onclick="window.open(quoteBuilderUrl(),'_blank')">Open Full Page</button>
     </div>
   </div>
   <div class="notice no-print">
     This is your proven SEFS quote/material estimator. It is loaded directly here and can also be opened full-page.
   </div>
-  <div class="card quote-card-force" style="padding:0;overflow:hidden;min-height:84vh;background:#000;">
-    <iframe id="quoteFrame" src="quote-builder.html" title="SEFS Quote Builder" style="width:100%;height:84vh;min-height:780px;border:0;background:#000;display:block;"></iframe>
+  <div class="card quote-card-force" style="padding:0;overflow:visible;min-height:0;background:#000;">
+    <iframe id="quoteFrame" src="quote-builder.html?v=20260627b" title="SEFS Quote Builder" scrolling="no" onload="window.resizeQuoteFrame&&resizeQuoteFrame(); setTimeout(function(){window.resizeQuoteFrame&&resizeQuoteFrame()},300); setTimeout(function(){window.resizeQuoteFrame&&resizeQuoteFrame()},900)" style="width:100%;height:760px;border:0;background:#000;display:block;"></iframe>
   </div>
 </section>
 
@@ -109,7 +111,7 @@ function materialJobUrl(id){return mobileJobUrl(id)+'#materials'}
 function setStatus(t,c=''){ $('status').textContent=t; $('status').className=c; }
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
 function nav(){let tabMap=Object.fromEntries(workflowTabs); let btn=(id)=>`<button class="nav ${id==='dashboard'?'active nav-dashboard':''} ${id==='quotes'?'quote-nav-force nav-quote-primary':''}" data-tab="${id}">${tabMap[id]}</button>`; $('nav').innerHTML=navGroups.map(g=>`<div class=nav-section-title>${g[0]}</div><div class=nav-stack>${g[1].map(btn).join('')}</div>`).join('')+`<div class=side><div class=muted>System</div><b>SEFS OPS</b><div class="muted sync-note">Supabase connected<br>Static Cloudflare-ready files</div></div>`; $('main').innerHTML=workflowTabs.map((x,i)=>`<section id="${x[0]}" class="${i?'':'active'}"></section>`).join(''); document.querySelectorAll('.nav').forEach(b=>b.onclick=()=>show(b.dataset.tab)); renderQuotes();}
-function show(id){let target=$(id); if(!target)return; document.querySelectorAll('section').forEach(s=>s.classList.remove('active')); target.classList.add('active');document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));}
+function show(id){let target=$(id); if(!target)return; document.querySelectorAll('section').forEach(s=>s.classList.remove('active')); target.classList.add('active');document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.tab===id)); if(id==='quotes')setTimeout(resizeQuoteFrame,120);}
 async function loadTable(t){ const r=await supa.from(t).select('*').order('created_at',{ascending:false}); if(r.error){errors[t]=r.error.message; state[t]=[]} else {delete errors[t]; state[t]=r.data||[];} }
 async function refresh(){setStatus('Syncing...'); await Promise.all(tables.map(t=>loadTable(t))); const bad=Object.keys(errors).length; setStatus(bad?`Loaded with ${bad} table issue(s)`:'Cloud connected', bad?'bad':'ok'); renderAll();}
 function err(t){return errors[t]?`<div class=err><b>${t}</b>: ${esc(errors[t])}</div>`:''}
@@ -161,7 +163,9 @@ async function resolveCalendarConflict(id,source){let job=state.jobs.find(j=>j.i
 function openModal(t,rec={}){ $('mtitle').textContent=(rec.id?'Edit ':'Add ')+t; $('mform').innerHTML=(fields[t]||[]).map(f=>field(f,rec[f[0]])).join('')+`<div class=modal-actions><button type=button class=gray onclick="modal.close()">Cancel</button><button class=secondary>Save</button></div>`; $('mform').onsubmit=async e=>{e.preventDefault();let fd=new FormData(e.target), p={}; (fields[t]||[]).forEach(f=>{p[f[0]]=f[2]==='checkbox'?e.target.querySelector(`[name="${f[0]}"]`).checked:(fd.get(f[0])||null)}); if(t==='jobs'){p.google_calendar_sync_status='Not Synced';p.google_calendar_sync_error=null;} let r=t==='jobs'?(rec.id?await supa.from(t).update(p).eq('id',rec.id).select().single():await supa.from(t).insert(p).select().single()):(rec.id?await supa.from(t).update(p).eq('id',rec.id):await supa.from(t).insert(p)); if(r.error)return alert(r.error.message); if(t==='jobs'&&r.data)await syncJobToCalendar(r.data,{interactive:false}); modal.close(); refresh();}; modal.showModal();}
 function edit(t,id){openModal(t,state[t].find(x=>x.id===id)||{})} function scheduleJobNow(id){let j=state.jobs.find(x=>x.id===id); if(!j)return; openModal('jobs',{...j,status:'Scheduled',start_date:j.start_date||today()});} async function del(t,id){if(!confirm('Delete this record?'))return;let rec=(state[t]||[]).find(x=>x.id===id);if(t==='jobs'&&rec?.google_calendar_event_id){let removed=await deleteJobCalendarEvent(rec,{interactive:true});if(!removed&&!confirm('Could not remove the Google Calendar event. Delete the job from Supabase anyway?'))return;}let r=await supa.from(t).delete().eq('id',id);if(r.error)return alert(r.error.message);refresh();}
 async function convertLead(id){let l=state.leads.find(x=>x.id===id); if(!l)return; let jobStatus=l.next_followup?'Awaiting Follow Up':'Awaiting Schedule'; let job={customer:l.customer,phone:l.phone||'',job_name:l.customer,address:l.address,status:jobStatus,sale_price:l.estimated_value||0,notes:l.notes,material_notes:'',source_lead_id:l.id,source_quote_id:l.converted_quote_id||null}; let r=await supa.from('jobs').insert(job).select().single(); if(r.error)return alert(r.error.message); await syncJobToCalendar(r.data,{interactive:false}); await supa.from('leads').update({stage:'Won',converted_job_id:r.data.id}).eq('id',id); if(l.converted_quote_id)await supa.from('quotes').update({job_id:r.data.id,status:'Job'}).eq('id',l.converted_quote_id); for(const p of photos('lead',id)){await supa.from('photo_attachments').insert({entity_type:'job',entity_id:r.data.id,file_name:p.file_name,storage_path:p.storage_path,public_url:p.public_url,caption:p.caption,uploaded_by:p.uploaded_by});} await refresh(); show('jobs');}
-function renderQuotes(){ $('quotes').innerHTML=`<div class="tools no-print" style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:15px;"><h2 style="margin:0">SEFS Quote Builder</h2><div class="rowact" style="display:flex;gap:8px;flex-wrap:wrap;"><button class="secondary" onclick="document.getElementById('quoteFrame').contentWindow.print()">Print Quote</button><button class="secondary" onclick="document.getElementById('quoteFrame').src='quote-builder.html'">Reload Quote Builder</button><button class="secondary" onclick="window.open('quote-builder.html','_blank')">Open Full Page</button></div></div><div class="notice no-print">This is your proven SEFS quote/material estimator. It is loaded directly here and can also be opened full-page.</div><div class="card quote-card-force" style="padding:0;overflow:hidden;min-height:84vh;background:#000;"><iframe id="quoteFrame" src="quote-builder.html" title="SEFS Quote Builder" style="width:100%;height:84vh;min-height:780px;border:0;background:#000;display:block;"></iframe></div>`}
+function quoteBuilderUrl(){return 'quote-builder.html?v=20260627b'}
+function resizeQuoteFrame(){let frame=$('quoteFrame');if(!frame)return;try{let doc=frame.contentDocument||frame.contentWindow.document;let h=Math.max(760,doc.documentElement.scrollHeight||0,doc.body.scrollHeight||0);frame.style.height=h+'px';}catch(e){frame.style.height='900px';}}
+function renderQuotes(){ $('quotes').innerHTML=`<div class="tools no-print" style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:15px;"><h2 style="margin:0">SEFS Quote Builder</h2><div class="rowact" style="display:flex;gap:8px;flex-wrap:wrap;"><button class="secondary" onclick="document.getElementById('quoteFrame').contentWindow.print()">Print Quote</button><button class="secondary" onclick="document.getElementById('quoteFrame').src=quoteBuilderUrl()">Reload Quote Builder</button><button class="secondary" onclick="window.open(quoteBuilderUrl(),'_blank')">Open Full Page</button></div></div><div class="notice no-print">This is your proven SEFS quote/material estimator. It is loaded directly here and can also be opened full-page.</div><div class="card quote-card-force" style="padding:0;overflow:visible;min-height:0;background:#000;"><iframe id="quoteFrame" src="${quoteBuilderUrl()}" title="SEFS Quote Builder" scrolling="no" onload="window.resizeQuoteFrame&&resizeQuoteFrame(); setTimeout(function(){window.resizeQuoteFrame&&resizeQuoteFrame()},300); setTimeout(function(){window.resizeQuoteFrame&&resizeQuoteFrame()},900)" style="width:100%;height:760px;border:0;background:#000;display:block;"></iframe></div>`}
 function queueCard(title,items,empty){return `<div class="card queue-card"><h3>${title}</h3>${items.length?items.map(x=>`<div class=queue-item>${x}</div>`).join(''):`<div class=muted>${empty}</div>`}</div>`}
 function syncStatusClass(s){return s==='Sync Conflict'?'bad':(['Needs Review','Imported','Not Synced'].includes(s)?'warn':'ok')}
 function syncPill(j){let s=j.google_calendar_sync_status||'Not Synced';return `<span class="pill ${syncStatusClass(s)}">${esc(s)}</span>`}
@@ -272,7 +276,9 @@ function showQuotesForce(){
   });
   setTimeout(function(){
     var frame = document.getElementById("quoteFrame");
-    if(frame && !frame.src.includes("quote-builder.html")) frame.src = "quote-builder.html";
+    if(frame && !frame.src.includes("v=20260627b")) frame.src = quoteBuilderUrl();
+    resizeQuoteFrame();
+    setTimeout(resizeQuoteFrame, 300);
   }, 50);
 }
 function openOriginalQuote(quoteId){
@@ -289,7 +295,7 @@ function openOriginalQuote(quoteId){
     }
     if(!loadQuote()){
       frame.onload = loadQuote;
-      if(!frame.src.includes("quote-builder.html")) frame.src = "quote-builder.html";
+      if(!frame.src.includes("v=20260627b")) frame.src = quoteBuilderUrl();
     }
   }, 80);
 }
