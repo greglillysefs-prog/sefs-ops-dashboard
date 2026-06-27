@@ -93,6 +93,8 @@ alter table jobs add column if not exists other_cost numeric default 0;
 alter table jobs add column if not exists notes text;
 alter table jobs add column if not exists source_lead_id uuid;
 alter table jobs add column if not exists created_at timestamptz default now();
+alter table jobs add column if not exists google_calendar_event_id text;
+alter table jobs add column if not exists google_calendar_synced_at timestamptz;
 
 create table if not exists inventory_items (
   id uuid primary key default gen_random_uuid(), name text not null, category text, unit text not null default 'each', qty numeric not null default 0, min_qty numeric not null default 0, cost numeric default 0, notes text, created_at timestamptz default now()

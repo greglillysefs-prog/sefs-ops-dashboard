@@ -623,6 +623,7 @@ async function createJobFromQuote(id){
  };
  const result=await supa.from("jobs").insert(payload).select().single();
  if(result.error){alert("Job creation failed: "+result.error.message);return;}
+ try{await parent.syncJobToCalendar?.(result.data,{interactive:false})}catch(e){}
  const update=await supa.from("quotes").update({job_id:result.data.id,status:"Job"}).eq("id",quote.id);
  if(update.error){alert("Job created, but quote link update failed: "+update.error.message);return;}
  if(quote.lead_id)await supa.from("leads").update({converted_job_id:result.data.id}).eq("id",quote.lead_id);
