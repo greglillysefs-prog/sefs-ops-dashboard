@@ -85,6 +85,8 @@ alter table jobs add column if not exists status text default 'Awaiting Schedule
 alter table jobs alter column status set default 'Awaiting Schedule';
 alter table jobs add column if not exists start_date date;
 alter table jobs add column if not exists end_date date;
+alter table jobs add column if not exists start_time time;
+alter table jobs add column if not exists end_time time;
 alter table jobs add column if not exists crew text;
 alter table jobs add column if not exists sale_price numeric default 0;
 alter table jobs add column if not exists material_cost numeric default 0;
@@ -95,6 +97,11 @@ alter table jobs add column if not exists source_lead_id uuid;
 alter table jobs add column if not exists created_at timestamptz default now();
 alter table jobs add column if not exists google_calendar_event_id text;
 alter table jobs add column if not exists google_calendar_synced_at timestamptz;
+alter table jobs add column if not exists google_calendar_updated_at timestamptz;
+alter table jobs add column if not exists google_calendar_sync_status text default 'Not Synced';
+alter table jobs add column if not exists google_calendar_sync_error text;
+alter table jobs add column if not exists google_calendar_last_snapshot jsonb;
+alter table jobs add column if not exists supabase_synced_at timestamptz;
 
 create table if not exists inventory_items (
   id uuid primary key default gen_random_uuid(), name text not null, category text, unit text not null default 'each', qty numeric not null default 0, min_qty numeric not null default 0, cost numeric default 0, notes text, created_at timestamptz default now()
