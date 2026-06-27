@@ -320,6 +320,7 @@ let pendingMeasurementExport=null;
 function qEsc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
 function syncParentDashboard(){try{parent.refresh?.()}catch(e){}}
 function resizeParentQuoteFrame(){try{parent.resizeQuoteFrame?.()}catch(e){}}
+function queueQuoteResize(){requestAnimationFrame(()=>{resizeParentQuoteFrame();setTimeout(resizeParentQuoteFrame,120);});}
 function renderMeasurementImportNotice(){
   const box=$("measurementImportNotice");
   if(!box)return;
@@ -351,7 +352,7 @@ function applyMeasurementExport(payload){
     const i=idx+1;
     if($("sqft"+i))$("sqft"+i).value=area.square_feet||"";
   });
-  resizeParentQuoteFrame();
+  queueQuoteResize();
 }
 function consumeMeasurementExport(){
   try{
@@ -485,12 +486,13 @@ function renderOptions(i){
   if(system==="Prep Only") h+=selectHTML(`prepType${i}`,"Blast or Grind",["Blast","Grind"]);
   if(["Flake","Quartz","Mortar/Prime & Coat"].includes(system)){h+=selectHTML(`cove${i}`,"Add Cove Base?",["No","Yes"],`toggleCove(${i})`);h+=`<div id="coveBox${i}" class="hidden">${selectHTML(`coveSize${i}`,"Cove Size",["4","6"])}<label>Linear Feet of Cove</label><input id="coveLF${i}" type="number" inputmode="decimal"></div>`;}
   $("options"+i).innerHTML=h;
+  queueQuoteResize();
 }
-function toggleExtra(i,type){$(type+"FinishBox"+i)?.classList.toggle("hidden",val(type+"Extra"+i)!=="Yes")}
-function toggleJoint(i){$("jointBox"+i)?.classList.toggle("hidden",val("mortarFill"+i)!=="Yes")}
-function toggleCove(i){$("coveBox"+i)?.classList.toggle("hidden",val("cove"+i)!=="Yes")}
-function toggleOutTown(){$("outTownBox").classList.toggle("hidden",val("outTown")!=="Yes")}
-function toggleMargin(){$("marginBox").classList.toggle("hidden",val("useMargin")!=="Yes")}
+function toggleExtra(i,type){$(type+"FinishBox"+i)?.classList.toggle("hidden",val(type+"Extra"+i)!=="Yes");queueQuoteResize();}
+function toggleJoint(i){$("jointBox"+i)?.classList.toggle("hidden",val("mortarFill"+i)!=="Yes");queueQuoteResize();}
+function toggleCove(i){$("coveBox"+i)?.classList.toggle("hidden",val("cove"+i)!=="Yes");queueQuoteResize();}
+function toggleOutTown(){$("outTownBox").classList.toggle("hidden",val("outTown")!=="Yes");queueQuoteResize();}
+function toggleMargin(){$("marginBox").classList.toggle("hidden",val("useMargin")!=="Yes");queueQuoteResize();}
 function proposalText(system){
  return {"Flake":"Mechanically prepare concrete, apply primer/base coat, broadcast decorative flake, scrape excess flake, clean, and apply selected sealer system.","Metallic":"Mechanically prepare concrete, apply pigmented primer, install metallic epoxy layer, and apply selected protective finish coat.","Wood/Stone Overlay":"Mechanically prepare concrete, apply primer with sand broadcast, install decorative overlay, stain/scribe as needed, and apply selected sealer system.","Broom Overlay":"Mechanically prepare concrete, apply primer with sand broadcast, install broom-finish overlay.","Mortar/Prime & Coat":"Mechanically prepare concrete, install selected mortar or prime-and-coat system, fill selected joints if included, and apply selected finish coats.","Quartz":"Mechanically prepare concrete, apply primer, broadcast quartz aggregate, clean excess material, and apply selected sealer system.","Grind/Stain & Seal":"Grind concrete surface, apply selected stain if included, and seal with selected finish system.","Polish":"Grind and polish concrete using progressive tooling, densify, and apply guard/seal as needed.","Prep Only":"Prepare concrete surface by selected method."}[system]||"";
 }
