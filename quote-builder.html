@@ -606,6 +606,7 @@ async function createJobFromQuote(id){
  const jobStatus=await jobStatusForQuote(quote);if(!jobStatus)return;
  const payload={
   customer:quote.customer||quote.quote_name||"Quote Job",
+  phone:quote.phone||"",
   job_name:quote.quote_name||quote.customer||"Quote Job",
   address:quote.address||"",
   system_type:quote.system_type||"",
@@ -617,6 +618,7 @@ async function createJobFromQuote(id){
   labor_cost:quote.labor_cost||0,
   other_cost:quote.other_cost||0,
   notes:`Created from quote ${quote.quote_name||quote.id}`,
+  material_notes:"",
   source_quote_id:quote.id,
   quote_json:quote.quote_json||{},
   quote_status:quote.status||"Draft"

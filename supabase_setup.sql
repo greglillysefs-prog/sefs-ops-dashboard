@@ -76,6 +76,7 @@ create table if not exists jobs (
   created_at timestamptz default now()
 );
 alter table jobs add column if not exists customer text;
+alter table jobs add column if not exists phone text;
 alter table jobs add column if not exists job_name text;
 alter table jobs add column if not exists address text;
 alter table jobs add column if not exists system_type text;
@@ -93,6 +94,7 @@ alter table jobs add column if not exists material_cost numeric default 0;
 alter table jobs add column if not exists labor_cost numeric default 0;
 alter table jobs add column if not exists other_cost numeric default 0;
 alter table jobs add column if not exists notes text;
+alter table jobs add column if not exists material_notes text;
 alter table jobs add column if not exists source_lead_id uuid;
 alter table jobs add column if not exists created_at timestamptz default now();
 alter table jobs add column if not exists google_calendar_event_id text;
