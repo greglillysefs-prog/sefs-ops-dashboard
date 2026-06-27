@@ -604,6 +604,7 @@ async function createJobFromQuote(id){
  const quote=await loadQuote(id);if(!quote)return;
  if(quote.job_id&&!confirm("This quote already has a job. Create another job anyway?"))return;
  const jobStatus=await jobStatusForQuote(quote);if(!jobStatus)return;
+ const materialList=(quote.quote_json?.floors||[]).flatMap(f=>(f.materials||[]).map(m=>({floor:f.i,system:f.system,name:m.name,qty:m.qty})));
  const payload={
   customer:quote.customer||quote.quote_name||"Quote Job",
   phone:quote.phone||"",
@@ -621,7 +622,8 @@ async function createJobFromQuote(id){
   material_notes:"",
   source_quote_id:quote.id,
   quote_json:quote.quote_json||{},
-  quote_status:quote.status||"Draft"
+  quote_status:quote.status||"Draft",
+  material_list:materialList
  };
  const result=await supa.from("jobs").insert(payload).select().single();
  if(result.error){alert("Job creation failed: "+result.error.message);return;}
