@@ -184,6 +184,9 @@ alter table photo_attachments add column if not exists file_name text;
 alter table photo_attachments add column if not exists storage_path text;
 alter table photo_attachments add column if not exists public_url text;
 alter table photo_attachments add column if not exists caption text;
+alter table photo_attachments add column if not exists category text;
+alter table photo_attachments add column if not exists field_measurement_id uuid;
+alter table photo_attachments add column if not exists field_measurement_area_id uuid;
 alter table photo_attachments add column if not exists uploaded_by text;
 alter table photo_attachments add column if not exists created_at timestamptz default now();
 
@@ -191,6 +194,110 @@ insert into storage.buckets (id, name, public) values ('sefs-photos','sefs-photo
 do $$ begin if not exists (select 1 from pg_policies where schemaname='storage' and tablename='objects' and policyname='SEFS photos public read') then create policy "SEFS photos public read" on storage.objects for select using (bucket_id='sefs-photos'); end if; end $$;
 do $$ begin if not exists (select 1 from pg_policies where schemaname='storage' and tablename='objects' and policyname='SEFS photos public upload') then create policy "SEFS photos public upload" on storage.objects for insert with check (bucket_id='sefs-photos'); end if; end $$;
 do $$ begin if not exists (select 1 from pg_policies where schemaname='storage' and tablename='objects' and policyname='SEFS photos public delete') then create policy "SEFS photos public delete" on storage.objects for delete using (bucket_id='sefs-photos'); end if; end $$;
+
+-- Field measurement workflow. Safe additive setup for dashboard, mobile, and future iOS/LiDAR capture.
+create table if not exists field_measurements (
+  id uuid primary key default gen_random_uuid(),
+  lead_id uuid,
+  job_id uuid,
+  customer text,
+  phone text,
+  address text,
+  status text not null default 'Draft',
+  total_square_feet numeric default 0,
+  notes text,
+  source text default 'dashboard',
+  scan_payload jsonb,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+alter table field_measurements add column if not exists lead_id uuid;
+alter table field_measurements add column if not exists job_id uuid;
+alter table field_measurements add column if not exists customer text;
+alter table field_measurements add column if not exists phone text;
+alter table field_measurements add column if not exists address text;
+alter table field_measurements add column if not exists status text default 'Draft';
+alter table field_measurements add column if not exists total_square_feet numeric default 0;
+alter table field_measurements add column if not exists notes text;
+alter table field_measurements add column if not exists source text default 'dashboard';
+alter table field_measurements add column if not exists scan_payload jsonb;
+alter table field_measurements add column if not exists created_at timestamptz default now();
+alter table field_measurements add column if not exists updated_at timestamptz default now();
+
+create table if not exists field_measurement_areas (
+  id uuid primary key default gen_random_uuid(),
+  field_measurement_id uuid references field_measurements(id) on delete cascade,
+  lead_id uuid,
+  job_id uuid,
+  area_name text,
+  area_type text,
+  length numeric default 0,
+  width numeric default 0,
+  square_feet numeric default 0,
+  notes text,
+  floor_condition text,
+  cracks_spalls_joints_notes text,
+  moisture_notes text,
+  sort_order numeric default 0,
+  scan_data jsonb,
+  room_outline jsonb,
+  floor_plan jsonb,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+alter table field_measurement_areas add column if not exists field_measurement_id uuid;
+alter table field_measurement_areas add column if not exists lead_id uuid;
+alter table field_measurement_areas add column if not exists job_id uuid;
+alter table field_measurement_areas add column if not exists area_name text;
+alter table field_measurement_areas add column if not exists area_type text;
+alter table field_measurement_areas add column if not exists length numeric default 0;
+alter table field_measurement_areas add column if not exists width numeric default 0;
+alter table field_measurement_areas add column if not exists square_feet numeric default 0;
+alter table field_measurement_areas add column if not exists notes text;
+alter table field_measurement_areas add column if not exists floor_condition text;
+alter table field_measurement_areas add column if not exists cracks_spalls_joints_notes text;
+alter table field_measurement_areas add column if not exists moisture_notes text;
+alter table field_measurement_areas add column if not exists sort_order numeric default 0;
+alter table field_measurement_areas add column if not exists scan_data jsonb;
+alter table field_measurement_areas add column if not exists room_outline jsonb;
+alter table field_measurement_areas add column if not exists floor_plan jsonb;
+alter table field_measurement_areas add column if not exists created_at timestamptz default now();
+alter table field_measurement_areas add column if not exists updated_at timestamptz default now();
+
+create table if not exists field_scan_uploads (
+  id uuid primary key default gen_random_uuid(),
+  field_measurement_id uuid,
+  field_measurement_area_id uuid,
+  lead_id uuid,
+  job_id uuid,
+  provider text,
+  scan_type text,
+  storage_path text,
+  public_url text,
+  calculated_square_feet numeric default 0,
+  scan_json jsonb,
+  created_at timestamptz default now()
+);
+alter table field_scan_uploads add column if not exists field_measurement_id uuid;
+alter table field_scan_uploads add column if not exists field_measurement_area_id uuid;
+alter table field_scan_uploads add column if not exists lead_id uuid;
+alter table field_scan_uploads add column if not exists job_id uuid;
+alter table field_scan_uploads add column if not exists provider text;
+alter table field_scan_uploads add column if not exists scan_type text;
+alter table field_scan_uploads add column if not exists storage_path text;
+alter table field_scan_uploads add column if not exists public_url text;
+alter table field_scan_uploads add column if not exists calculated_square_feet numeric default 0;
+alter table field_scan_uploads add column if not exists scan_json jsonb;
+alter table field_scan_uploads add column if not exists created_at timestamptz default now();
+
+create index if not exists field_measurements_lead_idx on field_measurements(lead_id);
+create index if not exists field_measurements_job_idx on field_measurements(job_id);
+create index if not exists field_measurement_areas_measurement_idx on field_measurement_areas(field_measurement_id);
+create index if not exists field_measurement_areas_lead_idx on field_measurement_areas(lead_id);
+create index if not exists field_measurement_areas_job_idx on field_measurement_areas(job_id);
+create index if not exists field_scan_uploads_measurement_idx on field_scan_uploads(field_measurement_id);
+create index if not exists photo_attachments_measurement_idx on photo_attachments(field_measurement_id);
+create index if not exists photo_attachments_measurement_area_idx on photo_attachments(field_measurement_area_id);
 
 insert into employees (name, start_date) select 'Rhett W.', '2026-07-01' where not exists (select 1 from employees where name='Rhett W.');
 insert into employees (name, start_date) select 'Tyler C.', '2026-07-01' where not exists (select 1 from employees where name='Tyler C.');
