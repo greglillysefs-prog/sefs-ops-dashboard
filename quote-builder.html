@@ -604,14 +604,18 @@ async function createJobFromQuote(id){
  const quote=await loadQuote(id);if(!quote)return;
  if(quote.job_id&&!confirm("This quote already has a job. Create another job anyway?"))return;
  const jobStatus=await jobStatusForQuote(quote);if(!jobStatus)return;
- const materialList=(quote.quote_json?.floors||[]).flatMap(f=>(f.materials||[]).map(m=>({floor:f.i,system:f.system,name:m.name,qty:m.qty})));
+ const qFloors=quote.quote_json?.floors||[];
+ const floorScopes=qFloors.map(f=>({floor:f.i,system:f.system,sqft:f.sqft,notes:f.notes||[]}));
+ const systemType=floorScopes.map(f=>f.system).filter(Boolean).join(", ")||quote.system_type||"";
+ const squareFeet=floorScopes.reduce((sum,f)=>sum+(+f.sqft||0),0)||quote.square_feet||0;
+ const materialList=qFloors.flatMap(f=>(f.materials||[]).map(m=>({floor:f.i,system:f.system,sqft:f.sqft,name:m.name,qty:m.qty})));
  const payload={
   customer:quote.customer||quote.quote_name||"Quote Job",
   phone:quote.phone||"",
   job_name:quote.quote_name||quote.customer||"Quote Job",
   address:quote.address||"",
-  system_type:quote.system_type||"",
-  square_feet:quote.square_feet||0,
+  system_type:systemType,
+  square_feet:squareFeet,
   cove_lf:quote.cove_lf||0,
   status:jobStatus,
   sale_price:quote.sale_price||0,
@@ -623,7 +627,8 @@ async function createJobFromQuote(id){
   source_quote_id:quote.id,
   quote_json:quote.quote_json||{},
   quote_status:quote.status||"Draft",
-  material_list:materialList
+  material_list:materialList,
+  floor_scopes:floorScopes
  };
  const result=await supa.from("jobs").insert(payload).select().single();
  if(result.error){alert("Job creation failed: "+result.error.message);return;}

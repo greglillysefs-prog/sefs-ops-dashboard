@@ -96,7 +96,9 @@ alter table jobs add column if not exists other_cost numeric default 0;
 alter table jobs add column if not exists notes text;
 alter table jobs add column if not exists material_notes text;
 alter table jobs add column if not exists material_list jsonb;
+alter table jobs add column if not exists floor_scopes jsonb;
 alter table jobs add column if not exists source_lead_id uuid;
+alter table jobs add column if not exists quote_json jsonb;
 alter table jobs add column if not exists created_at timestamptz default now();
 alter table jobs add column if not exists google_calendar_event_id text;
 alter table jobs add column if not exists google_calendar_synced_at timestamptz;
@@ -105,6 +107,23 @@ alter table jobs add column if not exists google_calendar_sync_status text defau
 alter table jobs add column if not exists google_calendar_sync_error text;
 alter table jobs add column if not exists google_calendar_last_snapshot jsonb;
 alter table jobs add column if not exists supabase_synced_at timestamptz;
+
+update jobs j
+set floor_scopes = (
+  select jsonb_agg(jsonb_build_object('floor', f.value->'i', 'system', f.value->>'system', 'sqft', f.value->'sqft', 'notes', coalesce(f.value->'notes','[]'::jsonb)))
+  from jsonb_array_elements(j.quote_json->'floors') f
+)
+where (j.floor_scopes is null or j.floor_scopes = '[]'::jsonb)
+and jsonb_typeof(j.quote_json->'floors') = 'array';
+
+update jobs j
+set material_list = (
+  select jsonb_agg(jsonb_build_object('floor', f.value->'i', 'system', f.value->>'system', 'sqft', f.value->'sqft', 'name', m.value->>'name', 'qty', m.value->'qty'))
+  from jsonb_array_elements(j.quote_json->'floors') f,
+       jsonb_array_elements(coalesce(f.value->'materials','[]'::jsonb)) m
+)
+where (j.material_list is null or j.material_list = '[]'::jsonb)
+and jsonb_typeof(j.quote_json->'floors') = 'array';
 
 create table if not exists inventory_items (
   id uuid primary key default gen_random_uuid(), name text not null, category text, unit text not null default 'each', qty numeric not null default 0, min_qty numeric not null default 0, cost numeric default 0, notes text, created_at timestamptz default now()
