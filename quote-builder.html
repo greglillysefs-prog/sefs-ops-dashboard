@@ -151,6 +151,9 @@ button.danger{background:#c21d17}
 .systemList{display:grid;grid-template-columns:1fr;gap:8px}
 @media(min-width:720px){.systemList{grid-template-columns:repeat(2,1fr)}}
 .systemPill{background:linear-gradient(180deg,#202020,#121212);border:1px solid rgba(255,255,255,.13);border-radius:8px;padding:11px 12px}
+.measurementImport{border:1px solid rgba(255,106,0,.45);background:rgba(255,106,0,.08);border-radius:8px;padding:12px;margin:14px 0;color:#eee}
+.measurementImport b{color:var(--orange)}
+.measurementImport ul{margin:8px 0 0;padding-left:18px;color:#ddd}
 .outputWrap{border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:16px;margin-top:18px}
 .outputTitle{color:var(--orange);text-align:center;font-weight:950;font-size:22px;text-transform:uppercase;margin:6px 0 14px}
 .outputGrid{display:grid;grid-template-columns:1fr;gap:18px}
@@ -252,6 +255,7 @@ overscroll-behavior:none;
       <div><label>Job Address</label><input id="customerAddress" type="text"></div>
       <div><label>Number of Floor Types</label><input id="floorCount" type="number" inputmode="numeric" min="1"></div>
     </div>
+    <div id="measurementImportNotice"></div>
     <div class="btnRow"><button class="secondary" onclick="clearQuoteFields()">Clear Fields</button><button onclick="buildFloorForms()">Next</button></div>
   </section>
 
@@ -312,9 +316,51 @@ const LOGO_URI = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABgAAAAQACAYAAAAn
 const SB_URL='https://wjfewzutxvjbbnnvbylo.supabase.co', SB_KEY='sb_publishable_YWRQJz8q1lDdSz_304AUyA_YskIiTBT';
 const supa=window.supabase?.createClient(SB_URL,SB_KEY);
 let savedQuotesCache=[];
+let pendingMeasurementExport=null;
 function qEsc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
 function syncParentDashboard(){try{parent.refresh?.()}catch(e){}}
 function resizeParentQuoteFrame(){try{parent.resizeQuoteFrame?.()}catch(e){}}
+function renderMeasurementImportNotice(){
+  const box=$("measurementImportNotice");
+  if(!box)return;
+  if(!pendingMeasurementExport){box.innerHTML="";return}
+  const areas=pendingMeasurementExport.areas||[];
+  box.innerHTML=`<div class="measurementImport"><b>Imported field measurement</b><br>${qEsc(pendingMeasurementExport.total_square_feet||0)} total sq ft from ${areas.length} measured area(s). Choose the system for each area before calculating pricing.<ul>${areas.map(a=>`<li>${qEsc(a.area_name||"Area")}: ${qEsc(a.square_feet||0)} sq ft${a.floor_condition?` - ${qEsc(a.floor_condition)}`:""}</li>`).join("")}</ul></div>`;
+}
+function measurementAreaDetails(area){
+  if(!area)return "";
+  const lines=[
+    area.floor_condition?`Condition: ${area.floor_condition}`:"",
+    area.cracks_spalls_joints_notes?`Cracks/spalls/joints: ${area.cracks_spalls_joints_notes}`:"",
+    area.moisture_notes?`Moisture: ${area.moisture_notes}`:"",
+    area.notes?`Notes: ${area.notes}`:""
+  ].filter(Boolean);
+  return lines.length?`<p class="small">${lines.map(qEsc).join("<br>")}</p>`:"";
+}
+function applyMeasurementExport(payload){
+  if(!payload)return;
+  pendingMeasurementExport=payload;
+  goTo("setup");
+  if($("customerName"))$("customerName").value=payload.customer||"";
+  if($("customerPhone"))$("customerPhone").value=payload.phone||"";
+  if($("customerAddress"))$("customerAddress").value=payload.address||"";
+  if($("floorCount"))$("floorCount").value=Math.max(1,(payload.areas||[]).length);
+  renderMeasurementImportNotice();
+  buildFloorForms();
+  (payload.areas||[]).forEach((area,idx)=>{
+    const i=idx+1;
+    if($("sqft"+i))$("sqft"+i).value=area.square_feet||"";
+  });
+  resizeParentQuoteFrame();
+}
+function consumeMeasurementExport(){
+  try{
+    const raw=sessionStorage.getItem("sefs_measurement_export");
+    if(!raw)return;
+    sessionStorage.removeItem("sefs_measurement_export");
+    applyMeasurementExport(JSON.parse(raw));
+  }catch(e){}
+}
 
 const COSTS = {
   primer3g:170,xr3g:130,poly2g:210,sand:15,overlay:20,stain32:65,wbUrethane3g:305,
@@ -406,8 +452,10 @@ function buildFloorForms(){
   if(!count){alert("Enter number of floor types.");return;}
   let html=`<div class="card"><div class="stepTitle"><span class="bubble">2</span> Floor System</div><p class="small">Enter each floor system and options.</p></div>`;
   for(let i=1;i<=count;i++){
+    const importedArea=pendingMeasurementExport?.areas?.[i-1];
     html+=`<div class="card floorCard">
-      <h2>Floor ${i}</h2>
+      <h2>${importedArea?qEsc(importedArea.area_name||`Floor ${i}`):`Floor ${i}`}</h2>
+      ${measurementAreaDetails(importedArea)}
       <div class="grid two">
         <div><label>System</label><select id="system${i}" onchange="renderOptions(${i})">
           <option value="">Select System</option>
@@ -661,6 +709,7 @@ overscroll-behavior:none;
 
 </head><body><div class="app">${lastQuoteHTML}</div></body></html>`;let a=document.createElement("a");a.href=URL.createObjectURL(new Blob([full],{type:"text/html"}));a.download=cleanName(lastData.customer.name)+"_SEFS_Estimate.html";a.click();}
 renderRecentQuotes();
+setTimeout(consumeMeasurementExport,50);
 </script>
 </body>
 </html>
