@@ -321,6 +321,28 @@ function qEsc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&
 function syncParentDashboard(){try{parent.refresh?.()}catch(e){}}
 function resizeParentQuoteFrame(){try{parent.resizeQuoteFrame?.()}catch(e){}}
 function queueQuoteResize(){requestAnimationFrame(()=>{resizeParentQuoteFrame();setTimeout(resizeParentQuoteFrame,120);});}
+function quoteBuilderContentHeight(){
+  const content=[...document.querySelectorAll(".app > section")].filter(el=>{
+    const style=getComputedStyle(el);
+    return style.display!=="none"&&!el.classList.contains("hidden");
+  });
+  const bottoms=content.map(el=>{
+    const rect=el.getBoundingClientRect();
+    return rect.bottom+window.scrollY;
+  });
+  const nav=document.querySelector(".nav");
+  return Math.ceil(Math.max(760,...bottoms)+(nav?.offsetHeight||0)+24);
+}
+function initQuoteAutoResize(){
+  if(window.__quoteAutoResizeReady)return;
+  window.__quoteAutoResizeReady=true;
+  const trigger=()=>queueQuoteResize();
+  window.addEventListener("load",trigger);
+  window.addEventListener("resize",trigger);
+  try{new MutationObserver(trigger).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:["class","style"]});}catch(e){}
+  try{new ResizeObserver(trigger).observe(document.body);}catch(e){}
+  trigger();
+}
 function renderMeasurementImportNotice(){
   const box=$("measurementImportNotice");
   if(!box)return;
@@ -601,6 +623,7 @@ async function renderHistory(){
  const search=String(val("quoteSearch")||"").toLowerCase();
  savedQuotesCache=(result.data||[]).filter(q=>!search||[q.quote_name,q.customer,q.phone,q.address,q.status,String(q.sale_price||"")].some(v=>String(v||"").toLowerCase().includes(search)));
  list.innerHTML=savedQuotesCache.length?savedQuotesCache.map(q=>`<div class="card"><div class="summaryLine"><strong>${qEsc(q.customer||q.quote_name||"Saved Quote")}</strong><span>${money(q.sale_price)}</span></div><p class="small">${qEsc(q.status||"Draft")} - ${qEsc((q.created_at||"").slice(0,10))}${q.lead_id?" - Lead created":""}${q.job_id?" - Job created":""}</p><div class="btnRow"><button class="secondary" onclick="viewSaved('${q.id}')">View</button><button class="secondary" onclick="createLeadFromQuote('${q.id}')">Create Lead</button><button class="secondary" onclick="createJobFromQuote('${q.id}')">Create Job</button></div></div>`).join(""):`<p class="small">No saved quotes yet.</p>`;
+ queueQuoteResize();
 }
 function quoteById(id){return savedQuotesCache.find(q=>q.id===id);}
 async function loadQuote(id){
@@ -616,6 +639,7 @@ async function viewSaved(id){
  lastQuoteHTML=data.html||`<div class="outputWrap"><div class="outputTitle">${qEsc(quote.quote_name||"Saved Quote")}</div><div class="card"><h3>${qEsc(quote.customer||"Customer")}</h3><p>${money(quote.sale_price)}</p></div></div>`;
  lastPlainText=data.plainText||quote.notes||"";
  $("results").innerHTML=lastQuoteHTML;
+ queueQuoteResize();
  $("results").scrollIntoView({behavior:"smooth"});
 }
 async function createLeadFromCurrentQuote(){
@@ -710,6 +734,7 @@ overscroll-behavior:none;
 </style>
 
 </head><body><div class="app">${lastQuoteHTML}</div></body></html>`;let a=document.createElement("a");a.href=URL.createObjectURL(new Blob([full],{type:"text/html"}));a.download=cleanName(lastData.customer.name)+"_SEFS_Estimate.html";a.click();}
+initQuoteAutoResize();
 renderRecentQuotes();
 setTimeout(consumeMeasurementExport,50);
 </script>
