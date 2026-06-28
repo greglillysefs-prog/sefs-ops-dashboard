@@ -539,7 +539,8 @@ function calculate(){
   if(system==="Polish"){sell=sqft*4;notes.push("Polish materials: densifier and guard/seal as needed.")}
   if(system==="Prep Only"){let prep=val("prepType"+i);sell=sqft*(prep==="Blast"?.40:1.00);notes.push(prep==="Blast"?"Blast prep estimated around 7,000 sq ft per day.":"Grind prep estimated around 2,000 sq ft per day.");notes.push("No coating materials required for prep-only scope.")}
   if(["Flake","Quartz","Mortar/Prime & Coat"].includes(system)&&val("cove"+i)==="Yes"){let size=val("coveSize"+i),lf=num("coveLF"+i),cov=size==="4"?25:20;addMaterial(materials,"Cove Base Mortar Kit",kitsNeededNoWaste(lf,cov),COSTS.coveMortar);sell+=size==="4"?Math.ceil(lf/25)*250:Math.ceil(lf/20)*300;}
-  let mat=materialTotal(materials);totalSell+=sell;totalMat+=mat;floors.push({i,system,sqft,materials,mat,sell,notes});
+  let importedArea=pendingMeasurementExport?.areas?.[i-1]||{};
+  let mat=materialTotal(materials);totalSell+=sell;totalMat+=mat;floors.push({i,area_name:importedArea.area_name||'',area_type:importedArea.area_type||'',field_measurement_id:pendingMeasurementExport?.id||'',field_measurement_area_id:importedArea.id||importedArea.field_measurement_area_id||'',system,sqft,materials,mat,sell,notes});
  }
  let laborMen=num("jobMen"),laborDays=num("jobDays"),laborRate=num("jobLaborRate")||DEFAULT_LABOR_PER_DAY;
  if(!laborMen||!laborDays){alert("Enter total job men and days.");return;}
@@ -551,7 +552,8 @@ function calculate(){
  if(val("useMargin")==="Yes"){let margin=num("targetMargin")/100;if(margin>0&&margin<1)totalSell=(companyCost/(1-margin))+totalOut;}
  if(totalSell<MIN_JOB_PRICE)totalSell=MIN_JOB_PRICE;
  let marginDollars=totalSell-companyCost,marginPercent=totalSell?marginDollars/totalSell*100:0;
- lastData={customer,floors,totalSell,totalMat,totalLabor,totalAdmin,totalOut,companyCost,marginDollars,marginPercent,laborMen,laborDays,laborRate,laborDetails};
+ const sourceMeasurement=pendingMeasurementExport?{id:pendingMeasurementExport.id||'',lead_id:pendingMeasurementExport.lead_id||'',job_id:pendingMeasurementExport.job_id||'',source_entity_type:pendingMeasurementExport.source_entity_type||'',source_entity_id:pendingMeasurementExport.source_entity_id||''}:null;
+ lastData={customer,floors,totalSell,totalMat,totalLabor,totalAdmin,totalOut,companyCost,marginDollars,marginPercent,laborMen,laborDays,laborRate,laborDetails,source_measurement_id:sourceMeasurement?.id||'',source_measurement:sourceMeasurement};
  renderResults(lastData); resizeParentQuoteFrame(); $("results").scrollIntoView({behavior:"smooth"});
 }
 
@@ -570,12 +572,20 @@ function renderResults(data){
 }
 
 function dataToText(data){let t=`SEFS ESTIMATE\nCustomer: ${data.customer.name}\nPhone: ${data.customer.phone}\nAddress: ${data.customer.address}\n\nCustomer Price: ${money(data.totalSell)}\nCompany Cost: ${money(data.companyCost)}\n`; return t;}
+const PHOTO_SELECT="entity_type,entity_id,file_name,storage_path,public_url,caption,category,field_measurement_id,field_measurement_area_id,uploaded_by";
+function photoKey(p){return [p.storage_path||'',p.public_url||'',p.field_measurement_id||'',p.field_measurement_area_id||'',p.file_name||''].join('|')}
+function clonePhotoRow(p,targetType,targetId){return {entity_type:targetType,entity_id:targetId,file_name:p.file_name||'',storage_path:p.storage_path||'',public_url:p.public_url||'',caption:p.caption||'',category:p.category||null,field_measurement_id:p.field_measurement_id||null,field_measurement_area_id:p.field_measurement_area_id||null,uploaded_by:p.uploaded_by||'quote-builder'}}
+async function copyPhotoRows(rows,targetType,targetId){if(!supa||!rows?.length||!targetId)return;let existing=await supa.from("photo_attachments").select("file_name,storage_path,public_url,field_measurement_id,field_measurement_area_id").eq("entity_type",targetType).eq("entity_id",targetId);if(existing.error){console.warn("Photo copy check failed",existing.error.message);return}let have=new Set((existing.data||[]).map(photoKey)),payload=rows.map(p=>clonePhotoRow(p,targetType,targetId)).filter(p=>!have.has(photoKey(p)));if(!payload.length)return;let saved=await supa.from("photo_attachments").insert(payload);if(saved.error)console.warn("Photo copy failed",saved.error.message)}
+async function copyPhotosByEntity(sourceType,sourceId,targetType,targetId){if(!sourceType||!sourceId||!targetId)return;let r=await supa.from("photo_attachments").select(PHOTO_SELECT).eq("entity_type",sourceType).eq("entity_id",sourceId);if(r.error){console.warn("Photo source lookup failed",r.error.message);return}await copyPhotoRows(r.data||[],targetType,targetId)}
+async function copyPhotosByMeasurement(measurementId,targetType,targetId){if(!measurementId||!targetId)return;let r=await supa.from("photo_attachments").select(PHOTO_SELECT).eq("field_measurement_id",measurementId);if(r.error){console.warn("Measurement photo lookup failed",r.error.message);return}await copyPhotoRows(r.data||[],targetType,targetId)}
+async function copyQuoteSourcePhotosToTarget(targetType,targetId,quote=null){let data=quote?.quote_json||lastData||{},src=data.source_measurement||{};await copyPhotosByMeasurement(data.source_measurement_id||src.id,targetType,targetId);if(src.source_entity_type&&src.source_entity_id)await copyPhotosByEntity(src.source_entity_type,src.source_entity_id,targetType,targetId);if(quote?.lead_id)await copyPhotosByEntity("lead",quote.lead_id,targetType,targetId)}
+async function linkMeasurementToJob(quote,jobId){let data=quote?.quote_json||{},mid=data.source_measurement_id||data.source_measurement?.id;if(!mid||!jobId)return;await supa.from("field_measurements").update({job_id:jobId}).eq("id",mid);await supa.from("field_measurement_areas").update({job_id:jobId}).eq("field_measurement_id",mid)}
 function quotePayload(){
  const floors=lastData?.floors||[],customer=lastData?.customer||{};
  const squareFeet=floors.reduce((sum,f)=>sum+(+f.sqft||0),0);
  const systemType=floors.map(f=>f.system).filter(Boolean).join(", ");
  const quoteName=`${customer.name||"SEFS Quote"} - ${customer.date||dateStamp()}`;
- return {
+ const payload={
   customer:customer.name||"",
   phone:customer.phone||"",
   email:customer.email||"",
@@ -592,6 +602,10 @@ function quotePayload(){
   quote_json:{...lastData,html:lastQuoteHTML,plainText:lastPlainText},
   notes:lastPlainText||""
  };
+ const sourceMeasurement=lastData?.source_measurement||{};
+ if(sourceMeasurement.lead_id)payload.lead_id=sourceMeasurement.lead_id;
+ if(sourceMeasurement.job_id)payload.job_id=sourceMeasurement.job_id;
+ return payload;
 }
 async function saveQuote(options={}){
  if(!lastData){alert("Generate a quote first.");return;}
@@ -601,6 +615,7 @@ async function saveQuote(options={}){
  const result=existing?await supa.from("quotes").update(payload).eq("id",existing).select().single():await supa.from("quotes").insert(payload).select().single();
  if(result.error){alert("Quote save failed: "+result.error.message);return;}
  lastData.quoteId=result.data.id;
+ await copyQuoteSourcePhotosToTarget("quote",result.data.id,result.data);
  if(!options.quiet)alert("Quote saved to Supabase.");
  renderRecentQuotes();renderHistory();syncParentDashboard();
  return result.data.id;
@@ -670,6 +685,8 @@ async function createLeadFromQuote(id){
  };
  const result=await supa.from("leads").insert(payload).select().single();
  if(result.error){alert("Lead creation failed: "+result.error.message);return;}
+ await copyPhotosByEntity("quote",quote.id,"lead",result.data.id);
+ await copyQuoteSourcePhotosToTarget("lead",result.data.id,quote);
  const update=await supa.from("quotes").update({lead_id:result.data.id,status:"Lead"}).eq("id",quote.id);
  if(update.error){alert("Lead created, but quote link update failed: "+update.error.message);return;}
  alert("Lead created from quote.");
@@ -680,10 +697,10 @@ async function createJobFromQuote(id){
  if(quote.job_id&&!confirm("This quote already has a job. Create another job anyway?"))return;
  const jobStatus=await jobStatusForQuote(quote);if(!jobStatus)return;
  const qFloors=quote.quote_json?.floors||[];
- const floorScopes=qFloors.map(f=>({floor:f.i,system:f.system,sqft:f.sqft,notes:f.notes||[]}));
+ const floorScopes=qFloors.map(f=>({floor:f.i,area_name:f.area_name||'',area_type:f.area_type||'',system:f.system,sqft:f.sqft,notes:f.notes||[],field_measurement_id:f.field_measurement_id||'',field_measurement_area_id:f.field_measurement_area_id||''}));
  const systemType=floorScopes.map(f=>f.system).filter(Boolean).join(", ")||quote.system_type||"";
  const squareFeet=floorScopes.reduce((sum,f)=>sum+(+f.sqft||0),0)||quote.square_feet||0;
- const materialList=qFloors.flatMap(f=>(f.materials||[]).map(m=>({floor:f.i,system:f.system,sqft:f.sqft,name:m.name,qty:m.qty})));
+ const materialList=qFloors.flatMap(f=>(f.materials||[]).map(m=>({floor:f.i,area_name:f.area_name||'',system:f.system,sqft:f.sqft,name:m.name,qty:m.qty})));
  const payload={
   customer:quote.customer||quote.quote_name||"Quote Job",
   phone:quote.phone||"",
@@ -707,6 +724,9 @@ async function createJobFromQuote(id){
  };
  const result=await supa.from("jobs").insert(payload).select().single();
  if(result.error){alert("Job creation failed: "+result.error.message);return;}
+ await copyPhotosByEntity("quote",quote.id,"job",result.data.id);
+ await copyQuoteSourcePhotosToTarget("job",result.data.id,quote);
+ await linkMeasurementToJob(quote,result.data.id);
  try{await parent.syncJobToCalendar?.(result.data,{interactive:false})}catch(e){}
  const update=await supa.from("quotes").update({job_id:result.data.id,status:"Job"}).eq("id",quote.id);
  if(update.error){alert("Job created, but quote link update failed: "+update.error.message);return;}
