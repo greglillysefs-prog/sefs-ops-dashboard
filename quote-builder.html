@@ -588,11 +588,12 @@ function dataToText(data){let t=`SEFS ESTIMATE\nCustomer: ${data.customer.name}\
 const PHOTO_SELECT="entity_type,entity_id,file_name,storage_path,public_url,caption,category,field_measurement_id,field_measurement_area_id,uploaded_by";
 function photoKey(p){return [p.storage_path||'',p.public_url||'',p.field_measurement_id||'',p.field_measurement_area_id||'',p.file_name||''].join('|')}
 function clonePhotoRow(p,targetType,targetId){return {entity_type:targetType,entity_id:targetId,file_name:p.file_name||'',storage_path:p.storage_path||'',public_url:p.public_url||'',caption:p.caption||'',category:p.category||null,field_measurement_id:p.field_measurement_id||null,field_measurement_area_id:p.field_measurement_area_id||null,uploaded_by:p.uploaded_by||'quote-builder'}}
-async function copyPhotoRows(rows,targetType,targetId){if(!supa||!rows?.length||!targetId)return;let existing=await supa.from("photo_attachments").select("file_name,storage_path,public_url,field_measurement_id,field_measurement_area_id").eq("entity_type",targetType).eq("entity_id",targetId);if(existing.error){console.warn("Photo copy check failed",existing.error.message);return}let have=new Set((existing.data||[]).map(photoKey)),payload=rows.map(p=>clonePhotoRow(p,targetType,targetId)).filter(p=>!have.has(photoKey(p)));if(!payload.length)return;let saved=await supa.from("photo_attachments").insert(payload);if(saved.error)console.warn("Photo copy failed",saved.error.message)}
-async function copyPhotosByEntity(sourceType,sourceId,targetType,targetId){if(!sourceType||!sourceId||!targetId)return;let r=await supa.from("photo_attachments").select(PHOTO_SELECT).eq("entity_type",sourceType).eq("entity_id",sourceId);if(r.error){console.warn("Photo source lookup failed",r.error.message);return}await copyPhotoRows(r.data||[],targetType,targetId)}
-async function copyPhotosByMeasurement(measurementId,targetType,targetId){if(!measurementId||!targetId)return;let r=await supa.from("photo_attachments").select(PHOTO_SELECT).eq("field_measurement_id",measurementId);if(r.error){console.warn("Measurement photo lookup failed",r.error.message);return}await copyPhotoRows(r.data||[],targetType,targetId)}
-async function copyQuoteSourcePhotosToTarget(targetType,targetId,quote=null){let data=quote?.quote_json||lastData||{},src=data.source_measurement||{};await copyPhotosByMeasurement(data.source_measurement_id||src.id,targetType,targetId);if(src.source_entity_type&&src.source_entity_id)await copyPhotosByEntity(src.source_entity_type,src.source_entity_id,targetType,targetId);if(quote?.lead_id)await copyPhotosByEntity("lead",quote.lead_id,targetType,targetId)}
-async function linkMeasurementToJob(quote,jobId){let data=quote?.quote_json||{},mid=data.source_measurement_id||data.source_measurement?.id;if(!mid||!jobId)return;await supa.from("field_measurements").update({job_id:jobId}).eq("id",mid);await supa.from("field_measurement_areas").update({job_id:jobId}).eq("field_measurement_id",mid)}
+async function copyPhotoRows(rows,targetType,targetId){if(!supa||!rows?.length||!targetId)return true;let existing=await supa.from("photo_attachments").select("file_name,storage_path,public_url,field_measurement_id,field_measurement_area_id").eq("entity_type",targetType).eq("entity_id",targetId);if(existing.error){console.warn("Photo copy check failed",existing.error.message);return false}let have=new Set((existing.data||[]).map(photoKey)),payload=[];for(const src of rows){let row=clonePhotoRow(src,targetType,targetId),key=photoKey(row);if(have.has(key))continue;have.add(key);payload.push(row)}if(!payload.length)return true;let saved=await supa.from("photo_attachments").insert(payload);if(saved.error){console.warn("Photo copy failed",saved.error.message);return false}return true}
+async function copyPhotosByEntity(sourceType,sourceId,targetType,targetId){if(!sourceType||!sourceId||!targetId)return true;let r=await supa.from("photo_attachments").select(PHOTO_SELECT).eq("entity_type",sourceType).eq("entity_id",sourceId);if(r.error){console.warn("Photo source lookup failed",r.error.message);return false}return copyPhotoRows(r.data||[],targetType,targetId)}
+async function copyPhotosByMeasurement(measurementId,targetType,targetId){if(!measurementId||!targetId)return true;let r=await supa.from("photo_attachments").select(PHOTO_SELECT).eq("field_measurement_id",measurementId);if(r.error){console.warn("Measurement photo lookup failed",r.error.message);return false}return copyPhotoRows(r.data||[],targetType,targetId)}
+function quoteMeasurementIds(quote){let data=quote?.quote_json||lastData||{},ids=[data.source_measurement_id,data.source_measurement?.id];(data.floors||[]).forEach(f=>ids.push(f.field_measurement_id));return [...new Set(ids.filter(Boolean))]}
+async function copyQuoteSourcePhotosToTarget(targetType,targetId,quote=null){let data=quote?.quote_json||lastData||{},src=data.source_measurement||{},ok=true;for(const mid of quoteMeasurementIds(quote))ok=await copyPhotosByMeasurement(mid,targetType,targetId)&&ok;if(src.source_entity_type&&src.source_entity_id)ok=await copyPhotosByEntity(src.source_entity_type,src.source_entity_id,targetType,targetId)&&ok;if(quote?.lead_id)ok=await copyPhotosByEntity("lead",quote.lead_id,targetType,targetId)&&ok;return ok}
+async function linkMeasurementToJob(quote,jobId){if(!jobId)return true;let ok=true;for(const mid of quoteMeasurementIds(quote)){let m=await supa.from("field_measurements").update({job_id:jobId}).eq("id",mid);if(m.error){console.warn("Measurement link failed",m.error.message);ok=false}let a=await supa.from("field_measurement_areas").update({job_id:jobId}).eq("field_measurement_id",mid);if(a.error){console.warn("Measurement area link failed",a.error.message);ok=false}}return ok}
 function quotePayload(){
  const floors=lastData?.floors||[],customer=lastData?.customer||{};
  const squareFeet=floors.reduce((sum,f)=>sum+(+f.sqft||0),0);
@@ -737,14 +738,15 @@ async function createJobFromQuote(id){
  };
  const result=await supa.from("jobs").insert(payload).select().single();
  if(result.error){alert("Job creation failed: "+result.error.message);return;}
- await copyPhotosByEntity("quote",quote.id,"job",result.data.id);
- await copyQuoteSourcePhotosToTarget("job",result.data.id,quote);
- await linkMeasurementToJob(quote,result.data.id);
+ let linkOk=true;
+ linkOk=await copyPhotosByEntity("quote",quote.id,"job",result.data.id)&&linkOk;
+ linkOk=await copyQuoteSourcePhotosToTarget("job",result.data.id,quote)&&linkOk;
+ linkOk=await linkMeasurementToJob(quote,result.data.id)&&linkOk;
  try{await parent.syncJobToCalendar?.(result.data,{interactive:false})}catch(e){}
  const update=await supa.from("quotes").update({job_id:result.data.id,status:"Job"}).eq("id",quote.id);
  if(update.error){alert("Job created, but quote link update failed: "+update.error.message);return;}
  if(quote.lead_id)await supa.from("leads").update({converted_job_id:result.data.id}).eq("id",quote.lead_id);
- alert("Job created from quote.");
+ alert(linkOk?"Job created from quote.":"Job created from quote, but measurement/photo links need review. Try refreshing; if they are missing, use the job photo upload or relink the measurement.");
  renderHistory();renderRecentQuotes();syncParentDashboard();
 }
 async function jobStatusForQuote(quote){
