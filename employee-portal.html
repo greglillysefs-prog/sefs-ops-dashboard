@@ -456,6 +456,7 @@
     let session = null;
     let profile = null;
     let jobs = [];
+    let scheduleJobs = [];
     let entries = [];
     let authRefreshTimer = null;
     let loginOptions = [];
@@ -583,6 +584,7 @@
       session = result.data.session;
       profile = null;
       jobs = [];
+      scheduleJobs = [];
       entries = [];
       resetForm();
       await refresh();
@@ -654,10 +656,23 @@
       jobs = (result.data || []).filter((job) => !['Complete', 'Lost', 'Canceled'].includes(job.status));
     }
 
+    async function loadScheduleJobs() {
+      const result = await supa
+        .from('employee_job_schedule')
+        .select('*')
+        .eq('assigned_employee_id', profile.employee_id)
+        .order('start_date', { ascending: true, nullsFirst: false })
+        .order('start_time', { ascending: true });
+      if (result.error) throw result.error;
+      scheduleJobs = (result.data || []).filter((job) => !['Complete', 'Lost', 'Canceled'].includes(job.status));
+    }
+
     async function loadEntries() {
+      requireProfile();
       const result = await supa
         .from('time_entries')
         .select('*')
+        .eq('employee_id', profile.employee_id)
         .order('work_date', { ascending: false })
         .order('created_at', { ascending: false })
         .limit(100);
@@ -670,7 +685,7 @@
       try {
         await loadProfile();
         if (profile?.active) {
-          await Promise.all([loadJobs(), loadEntries()]);
+          await Promise.all([loadJobs(), loadScheduleJobs(), loadEntries()]);
         }
         render();
       } catch (error) {
@@ -684,12 +699,12 @@
     }
 
     function renderSchedule() {
-      if (!jobs.length) {
-        $('scheduleList').innerHTML = '<div class="muted">No active jobs found. Time can still be entered as Other / No job.</div>';
+      if (!scheduleJobs.length) {
+        $('scheduleList').innerHTML = '<div class="muted">No jobs assigned to you yet. Time can still be entered below as Other / No job or against an active job.</div>';
         return;
       }
 
-      $('scheduleList').innerHTML = jobs.map((job) => `
+      $('scheduleList').innerHTML = scheduleJobs.map((job) => `
         <article class="job-card">
           <header>
             <h3>${esc(moneylessJobName(job))}</h3>
@@ -955,6 +970,7 @@
       session = nextSession;
       profile = null;
       jobs = [];
+      scheduleJobs = [];
       entries = [];
       clearTimeout(authRefreshTimer);
       if (session) {
