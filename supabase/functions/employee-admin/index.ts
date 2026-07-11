@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-type AdminAction = "list" | "upsert" | "deactivate";
+type AdminAction = "list" | "upsert" | "deactivate" | "update_time_entry";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -17,14 +17,6 @@ function json(body: unknown, status = 200) {
 
 function cleanText(value: unknown) {
   return String(value ?? "").trim();
-}
-
-function randomPassword() {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@$";
-  crypto.getRandomValues(new Uint32Array(1));
-  const bytes = new Uint8Array(18);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
 }
 
 Deno.serve(async (req) => {
@@ -63,15 +55,41 @@ Deno.serve(async (req) => {
 
   try {
     if (action === "list") {
-      const [{ data: employees, error: employeesError }, { data: profiles, error: profilesError }, usersResult] =
+      const [
+        { data: employees, error: employeesError },
+        { data: profiles, error: profilesError },
+        { data: timeEntries, error: timeEntriesError },
+        { data: jobs, error: jobsError },
+        { data: auditLogs, error: auditLogsError },
+        usersResult,
+      ] =
         await Promise.all([
           supa.from("employees").select("id, name, active, start_date, notes, created_at").order("name"),
           supa.from("profiles").select("id, employee_id, role, full_name, active, created_at, updated_at").order("full_name"),
+          supa
+            .from("time_entries")
+            .select("id, employee_id, user_id, job_id, work_date, start_time, end_time, break_minutes, total_hours, notes, status, submitted_at, approved_by, approved_at, rejected_by, rejected_at, rejection_reason, device_info, change_reason, created_at, updated_at, deleted_at")
+            .order("work_date", { ascending: false })
+            .order("created_at", { ascending: false })
+            .limit(150),
+          supa
+            .from("jobs")
+            .select("id, customer, job_name, address, system_type, status, start_date, start_time")
+            .order("created_at", { ascending: false })
+            .limit(500),
+          supa
+            .from("time_entry_audit_logs")
+            .select("id, time_entry_id, employee_id, actor_user_id, action_type, previous_values, new_values, ip_address, device_info, reason, created_at")
+            .order("created_at", { ascending: false })
+            .limit(200),
           supa.auth.admin.listUsers({ page: 1, perPage: 1000 }),
         ]);
 
       if (employeesError) throw employeesError;
       if (profilesError) throw profilesError;
+      if (timeEntriesError) throw timeEntriesError;
+      if (jobsError) throw jobsError;
+      if (auditLogsError) throw auditLogsError;
       if (usersResult.error) throw usersResult.error;
 
       const usersById = new Map((usersResult.data.users || []).map((user) => [user.id, user]));
@@ -92,7 +110,7 @@ Deno.serve(async (req) => {
         };
       });
 
-      return json({ rows });
+      return json({ rows, time_entries: timeEntries || [], jobs: jobs || [], audit_logs: auditLogs || [] });
     }
 
     if (action === "upsert") {
@@ -104,6 +122,9 @@ Deno.serve(async (req) => {
 
       if (!fullName) return json({ error: "Employee name is required." }, 400);
       if (!email) return json({ error: "Email is required." }, 400);
+      if (!passwordFromRequest || passwordFromRequest.length < 6) {
+        return json({ error: "Password is required and must be at least 6 characters." }, 400);
+      }
       if (!["employee", "crew_lead", "manager", "admin"].includes(role)) {
         return json({ error: "Invalid role." }, 400);
       }
@@ -140,22 +161,21 @@ Deno.serve(async (req) => {
       if (users.error) throw users.error;
 
       const existingUser = (users.data.users || []).find((user) => user.email?.toLowerCase() === email);
-      const generatedPassword = passwordFromRequest || randomPassword();
       let userId = existingUser?.id;
 
       if (existingUser) {
         const updateBody: Record<string, unknown> = {
           email,
+          password: passwordFromRequest,
           user_metadata: { full_name: fullName, employee_id: employeeId },
         };
-        if (passwordFromRequest) updateBody.password = passwordFromRequest;
 
         const { error: userUpdateError } = await supa.auth.admin.updateUserById(existingUser.id, updateBody);
         if (userUpdateError) throw userUpdateError;
       } else {
         const { data: created, error: createUserError } = await supa.auth.admin.createUser({
           email,
-          password: generatedPassword,
+          password: passwordFromRequest,
           email_confirm: true,
           user_metadata: { full_name: fullName, employee_id: employeeId },
         });
@@ -179,8 +199,43 @@ Deno.serve(async (req) => {
         ok: true,
         employee_id: employeeId,
         user_id: userId,
-        temporary_password: existingUser || passwordFromRequest ? null : generatedPassword,
       });
+    }
+
+    if (action === "update_time_entry") {
+      const id = cleanText(payload.id);
+      if (!id) return json({ error: "Time entry id is required." }, 400);
+
+      const status = cleanText(payload.status) || "draft";
+      if (!["draft", "submitted", "approved", "rejected"].includes(status)) {
+        return json({ error: "Invalid time entry status." }, 400);
+      }
+
+      const updateBody: Record<string, unknown> = {
+        work_date: cleanText(payload.work_date),
+        start_time: cleanText(payload.start_time),
+        end_time: cleanText(payload.end_time),
+        break_minutes: Number(payload.break_minutes || 0),
+        notes: cleanText(payload.notes) || null,
+        status,
+        rejection_reason: status === "rejected" ? cleanText(payload.rejection_reason) || null : null,
+        change_reason: cleanText(payload.change_reason) || "Manager edit from Employee Admin",
+        device_info: cleanText(payload.device_info) || null,
+      };
+
+      if (!updateBody.work_date || !updateBody.start_time || !updateBody.end_time) {
+        return json({ error: "Date, start time, and end time are required." }, 400);
+      }
+
+      const { data, error } = await supa
+        .from("time_entries")
+        .update(updateBody)
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return json({ ok: true, time_entry: data });
     }
 
     if (action === "deactivate") {
