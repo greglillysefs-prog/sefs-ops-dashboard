@@ -360,14 +360,19 @@
       const pin = $('adminPin').value.trim();
       if (!pin) throw new Error('Enter the employee admin PIN first.');
 
-      const response = await fetch(FUNCTION_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-sefs-admin-pin': pin
-        },
-        body: JSON.stringify({ action, ...extra })
-      });
+      let response;
+      try {
+        response = await fetch(FUNCTION_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-sefs-admin-pin': pin
+          },
+          body: JSON.stringify({ action, ...extra })
+        });
+      } catch (error) {
+        throw new Error('Employee Admin is not connected yet. The Supabase Edge Function named employee-admin needs to be deployed and given the SEFS_EMPLOYEE_ADMIN_PIN secret before this page can add portal users.');
+      }
 
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || payload.error) {
