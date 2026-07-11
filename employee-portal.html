@@ -180,6 +180,17 @@
       margin-top: 14px;
     }
 
+    .password-control {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .password-control button {
+      min-width: 90px;
+    }
+
     .status {
       display: inline-flex;
       align-items: center;
@@ -354,10 +365,13 @@
         </div>
         <div class="full">
           <label>Password</label>
-          <input id="password" type="password" autocomplete="current-password">
+          <div class="password-control">
+            <input id="password" type="password" autocomplete="current-password" required>
+            <button id="togglePasswordBtn" class="ghost" type="button">Show</button>
+          </div>
         </div>
         <div class="actions full">
-          <button class="primary" type="submit">Sign In</button>
+          <button id="signInBtn" class="primary" type="submit">Sign In</button>
           <button id="magicLinkBtn" class="ghost" type="button">Send Magic Link</button>
         </div>
       </form>
@@ -440,6 +454,7 @@
     let profile = null;
     let jobs = [];
     let entries = [];
+    let authRefreshTimer = null;
 
     const $ = (id) => document.getElementById(id);
     const today = () => new Date().toISOString().slice(0, 10);
@@ -450,6 +465,19 @@
       const el = $(id);
       el.textContent = text || '';
       el.className = `notice ${isError ? 'error' : ''} ${text ? '' : 'hidden'}`;
+    }
+
+    function setAuthBusy(isBusy) {
+      $('signInBtn').disabled = isBusy;
+      $('magicLinkBtn').disabled = isBusy;
+      $('signInBtn').textContent = isBusy ? 'Signing In...' : 'Sign In';
+    }
+
+    function withTimeout(promise, message) {
+      return Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error(message)), 15000))
+      ]);
     }
 
     function formatDate(value) {
@@ -522,15 +550,30 @@
     }
 
     async function signIn(email, password) {
-      const result = await supa.auth.signInWithPassword({ email, password });
+      if (!email) throw new Error('Enter your email.');
+      if (!password) throw new Error('Enter your password.');
+      const result = await withTimeout(
+        supa.auth.signInWithPassword({ email, password }),
+        'Login timed out. Check the connection and try again.'
+      );
       if (result.error) throw result.error;
+      if (!result.data?.session) throw new Error('Supabase did not return a login session.');
+      session = result.data.session;
+      profile = null;
+      jobs = [];
+      entries = [];
+      resetForm();
+      await refresh();
     }
 
     async function sendMagicLink(email) {
-      const result = await supa.auth.signInWithOtp({
-        email,
-        options: { emailRedirectTo: window.location.href.split('#')[0] }
-      });
+      const result = await withTimeout(
+        supa.auth.signInWithOtp({
+          email,
+          options: { emailRedirectTo: window.location.href.split('#')[0] }
+        }),
+        'Magic link request timed out. Check the connection and try again.'
+      );
       if (result.error) throw result.error;
     }
 
@@ -807,22 +850,37 @@
 
     $('loginForm').addEventListener('submit', async (event) => {
       event.preventDefault();
-      setMessage('authMessage', '');
+      setMessage('authMessage', 'Signing in...');
+      setAuthBusy(true);
       try {
         await signIn($('email').value.trim(), $('password').value);
+        setMessage('authMessage', '');
       } catch (error) {
         setMessage('authMessage', error.message, true);
+      } finally {
+        setAuthBusy(false);
       }
     });
 
     $('magicLinkBtn').addEventListener('click', async () => {
-      setMessage('authMessage', '');
+      setMessage('authMessage', 'Sending magic link...');
+      setAuthBusy(true);
       try {
         await sendMagicLink($('email').value.trim());
         setMessage('authMessage', 'Magic link sent. Check your email on this device.');
       } catch (error) {
         setMessage('authMessage', error.message, true);
+      } finally {
+        setAuthBusy(false);
       }
+    });
+
+    $('togglePasswordBtn').addEventListener('click', () => {
+      const input = $('password');
+      const isHidden = input.type === 'password';
+      input.type = isHidden ? 'text' : 'password';
+      $('togglePasswordBtn').textContent = isHidden ? 'Hide' : 'Show';
+      input.focus();
     });
 
     $('signOutBtn').addEventListener('click', async () => {
@@ -839,14 +897,17 @@
     ['startTime', 'endTime'].forEach((id) => $(id).addEventListener('input', calculateHours));
     document.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => setActiveTab(button.dataset.tab)));
 
-    supa.auth.onAuthStateChange(async (_event, nextSession) => {
+    supa.auth.onAuthStateChange((_event, nextSession) => {
       session = nextSession;
       profile = null;
       jobs = [];
       entries = [];
+      clearTimeout(authRefreshTimer);
       if (session) {
-        resetForm();
-        await refresh();
+        authRefreshTimer = setTimeout(async () => {
+          resetForm();
+          await refresh();
+        }, 0);
       } else {
         render();
       }
