@@ -1,0 +1,830 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SEFS Employee Portal</title>
+  <link rel="icon" href="assets/sefs-icon.jpeg">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --bg: #050505;
+      --panel: #111;
+      --panel2: #181818;
+      --line: #333;
+      --text: #f4f4f4;
+      --muted: #a8a8a8;
+      --orange: #ff7a00;
+      --orange2: #ff9b33;
+      --good: #15c77a;
+      --bad: #ff6262;
+      --warn: #ffd166;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top left, rgba(255, 122, 0, .12), transparent 30rem), var(--bg);
+      color: var(--text);
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      min-height: 100vh;
+    }
+
+    button, input, select, textarea {
+      font: inherit;
+    }
+
+    button {
+      border: 1px solid var(--orange);
+      background: linear-gradient(180deg, #222, #141414);
+      color: var(--text);
+      border-radius: 8px;
+      min-height: 44px;
+      padding: 10px 14px;
+      font-weight: 800;
+      letter-spacing: 0;
+    }
+
+    button.primary {
+      background: var(--orange);
+      color: #111;
+      border-color: var(--orange);
+    }
+
+    button.ghost {
+      border-color: var(--line);
+      color: var(--muted);
+    }
+
+    button:disabled {
+      opacity: .55;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #101010;
+      color: var(--text);
+      border-radius: 8px;
+      min-height: 44px;
+      padding: 10px 12px;
+    }
+
+    select option {
+      background: #050505;
+      color: #fff;
+    }
+
+    textarea {
+      min-height: 96px;
+      resize: vertical;
+    }
+
+    label {
+      display: block;
+      color: #d8d8d8;
+      font-size: 12px;
+      font-weight: 900;
+      margin: 0 0 6px;
+      text-transform: uppercase;
+    }
+
+    .shell {
+      width: min(1180px, 100%);
+      margin: 0 auto;
+      padding: 16px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 10px 0 18px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .brand img {
+      width: 48px;
+      height: 48px;
+      border-radius: 8px;
+      object-fit: cover;
+      border: 1px solid #292929;
+    }
+
+    .brand h1 {
+      font-size: clamp(22px, 5vw, 34px);
+      line-height: 1;
+      margin: 0;
+    }
+
+    .brand p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 390px;
+      gap: 16px;
+      align-items: start;
+    }
+
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.015));
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      box-shadow: 0 14px 40px rgba(0,0,0,.28);
+    }
+
+    .card + .card {
+      margin-top: 16px;
+    }
+
+    .card h2 {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0 0 14px;
+      font-size: 20px;
+    }
+
+    .card h2:before {
+      content: "";
+      width: 28px;
+      height: 3px;
+      background: var(--orange);
+      border-radius: 999px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .full { grid-column: 1 / -1; }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      min-height: 30px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .status.draft { color: var(--muted); }
+    .status.submitted { color: var(--warn); border-color: rgba(255,209,102,.55); }
+    .status.approved { color: var(--good); border-color: rgba(21,199,122,.55); }
+    .status.rejected { color: var(--bad); border-color: rgba(255,98,98,.55); }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .notice {
+      border: 1px solid rgba(255, 122, 0, .45);
+      background: rgba(255, 122, 0, .08);
+      color: #ffd7b0;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 16px;
+    }
+
+    .error {
+      border-color: rgba(255, 98, 98, .6);
+      background: rgba(255, 98, 98, .08);
+      color: #ffc4c4;
+    }
+
+    .job-list, .entry-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .job-card, .entry-card {
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,.28);
+      border-radius: 8px;
+      padding: 14px;
+    }
+
+    .job-card header, .entry-card header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .job-card h3, .entry-card h3 {
+      margin: 0;
+      font-size: 16px;
+    }
+
+    .facts {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .fact b {
+      display: block;
+      color: #eee;
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    .hours {
+      font-size: 38px;
+      font-weight: 900;
+      line-height: 1;
+      color: var(--orange2);
+    }
+
+    .totals {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .total {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: rgba(0,0,0,.25);
+    }
+
+    .total b {
+      display: block;
+      font-size: 24px;
+      color: var(--orange2);
+    }
+
+    .tabs {
+      display: none;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .hidden { display: none !important; }
+
+    @media (max-width: 900px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .tabs {
+        display: grid;
+      }
+
+      .mobile-panel.hidden-mobile {
+        display: none;
+      }
+    }
+
+    @media (max-width: 620px) {
+      .shell {
+        padding: 12px;
+      }
+
+      .topbar {
+        align-items: flex-start;
+      }
+
+      .brand img {
+        width: 42px;
+        height: 42px;
+      }
+
+      .form-grid, .facts, .totals {
+        grid-template-columns: 1fr;
+      }
+
+      .actions button, .topbar button {
+        flex: 1 1 auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <img src="assets/sefs-icon.jpeg" alt="SEFS">
+        <div>
+          <h1>Employee Portal</h1>
+          <p id="userLine">Sign in to view your schedule and time.</p>
+        </div>
+      </div>
+      <button id="signOutBtn" class="ghost hidden" type="button">Sign Out</button>
+    </header>
+
+    <section id="authCard" class="card">
+      <h2>Sign In</h2>
+      <div id="authMessage" class="notice hidden"></div>
+      <form id="loginForm" class="form-grid">
+        <div class="full">
+          <label>Email</label>
+          <input id="email" type="email" autocomplete="email" required>
+        </div>
+        <div class="full">
+          <label>Password</label>
+          <input id="password" type="password" autocomplete="current-password">
+        </div>
+        <div class="actions full">
+          <button class="primary" type="submit">Sign In</button>
+          <button id="magicLinkBtn" class="ghost" type="button">Send Magic Link</button>
+        </div>
+      </form>
+    </section>
+
+    <main id="app" class="hidden">
+      <div id="appMessage" class="notice hidden"></div>
+
+      <div class="tabs">
+        <button class="primary" type="button" data-tab="schedule">Schedule</button>
+        <button type="button" data-tab="time">Time</button>
+        <button type="button" data-tab="entries">Entries</button>
+      </div>
+
+      <div class="grid">
+        <section id="schedulePanel" class="mobile-panel">
+          <div class="card">
+            <h2>My Schedule</h2>
+            <div id="scheduleList" class="job-list"></div>
+          </div>
+
+          <div class="card">
+            <h2>My Time Entries</h2>
+            <div id="totals" class="totals"></div>
+            <div id="entryList" class="entry-list"></div>
+          </div>
+        </section>
+
+        <aside id="timePanel" class="mobile-panel">
+          <div class="card">
+            <h2 id="formTitle">Add Time</h2>
+            <form id="timeForm" class="form-grid">
+              <input id="entryId" type="hidden">
+              <div class="full">
+                <label>Job</label>
+                <select id="jobId" required></select>
+              </div>
+              <div>
+                <label>Date</label>
+                <input id="workDate" type="date" required>
+              </div>
+              <div>
+                <label>Break Minutes</label>
+                <input id="breakMinutes" type="number" min="0" step="1" value="0">
+              </div>
+              <div>
+                <label>Start Time</label>
+                <input id="startTime" type="time" required>
+              </div>
+              <div>
+                <label>End Time</label>
+                <input id="endTime" type="time" required>
+              </div>
+              <div class="full">
+                <label>Calculated Hours</label>
+                <div class="hours"><span id="calculatedHours">0.00</span></div>
+              </div>
+              <div class="full">
+                <label>Notes</label>
+                <textarea id="notes" placeholder="Crew notes, prep details, delays, or anything the office should know."></textarea>
+              </div>
+              <div class="actions full">
+                <button class="primary" type="submit">Save Draft</button>
+                <button id="submitNowBtn" type="button">Submit Time</button>
+                <button id="cancelEditBtn" class="ghost hidden" type="button">Cancel Edit</button>
+              </div>
+            </form>
+          </div>
+        </aside>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const SB_URL = 'https://wjfewzutxvjbbnnvbylo.supabase.co';
+    const SB_KEY = 'sb_publishable_YWRQJz8q1lDdSz_304AUyA_YskIiTBT';
+    const supa = supabase.createClient(SB_URL, SB_KEY);
+
+    let session = null;
+    let profile = null;
+    let jobs = [];
+    let entries = [];
+
+    const $ = (id) => document.getElementById(id);
+    const today = () => new Date().toISOString().slice(0, 10);
+    const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    const moneylessJobName = (job) => [job.customer, job.system_type].filter(Boolean).join(' - ') || job.job_name || 'Scheduled job';
+
+    function setMessage(id, text, isError = false) {
+      const el = $(id);
+      el.textContent = text || '';
+      el.className = `notice ${isError ? 'error' : ''} ${text ? '' : 'hidden'}`;
+    }
+
+    function formatDate(value) {
+      if (!value) return '-';
+      const date = new Date(`${value}T00:00:00`);
+      return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    function formatTime(value) {
+      if (!value) return '';
+      const [hours, minutes] = value.split(':');
+      const date = new Date();
+      date.setHours(Number(hours || 0), Number(minutes || 0), 0, 0);
+      return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    }
+
+    function formatRange(job) {
+      const start = formatDate(job.start_date);
+      const end = job.end_date && job.end_date !== job.start_date ? ` - ${formatDate(job.end_date)}` : '';
+      const times = [formatTime(job.start_time), formatTime(job.end_time)].filter(Boolean).join(' - ');
+      return `${start}${end}${times ? `, ${times}` : ''}`;
+    }
+
+    function statusClass(status) {
+      return String(status || 'draft').toLowerCase();
+    }
+
+    function calculateHours() {
+      const start = $('startTime').value;
+      const end = $('endTime').value;
+      const breakMinutes = Number($('breakMinutes').value || 0);
+      if (!start || !end) {
+        $('calculatedHours').textContent = '0.00';
+        return 0;
+      }
+
+      const [sh, sm] = start.split(':').map(Number);
+      const [eh, em] = end.split(':').map(Number);
+      let minutes = (eh * 60 + em) - (sh * 60 + sm);
+      if (minutes < 0) minutes += 24 * 60;
+      minutes = Math.max(minutes - breakMinutes, 0);
+      const hours = Math.round((minutes / 60) * 100) / 100;
+      $('calculatedHours').textContent = hours.toFixed(2);
+      return hours;
+    }
+
+    function deviceInfo() {
+      return `${navigator.userAgent || 'unknown'} | ${Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown timezone'}`;
+    }
+
+    function requireProfile() {
+      if (!profile?.employee_id) {
+        throw new Error('Your login is not linked to an employee record yet. Add a profile row in Supabase first.');
+      }
+    }
+
+    function timePayload(status = 'draft') {
+      requireProfile();
+      return {
+        employee_id: profile.employee_id,
+        user_id: session.user.id,
+        job_id: $('jobId').value || null,
+        work_date: $('workDate').value,
+        start_time: $('startTime').value,
+        end_time: $('endTime').value,
+        break_minutes: Number($('breakMinutes').value || 0),
+        notes: $('notes').value.trim() || null,
+        status,
+        device_info: deviceInfo(),
+        change_reason: status === 'submitted' ? 'Submitted from employee portal' : 'Saved from employee portal'
+      };
+    }
+
+    async function signIn(email, password) {
+      const result = await supa.auth.signInWithPassword({ email, password });
+      if (result.error) throw result.error;
+    }
+
+    async function sendMagicLink(email) {
+      const result = await supa.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: window.location.href.split('#')[0] }
+      });
+      if (result.error) throw result.error;
+    }
+
+    async function loadProfile() {
+      const result = await supa
+        .from('profiles')
+        .select('id, employee_id, role, full_name, active')
+        .eq('id', session.user.id)
+        .maybeSingle();
+      if (result.error) throw result.error;
+      profile = result.data;
+      if (!profile) {
+        setMessage('appMessage', 'Signed in, but this user does not have an employee portal profile yet. Create a row in public.profiles and link it to an employee.', true);
+      } else if (!profile.active) {
+        setMessage('appMessage', 'This employee portal profile is inactive.', true);
+      } else {
+        setMessage('appMessage', '');
+      }
+    }
+
+    async function loadJobs() {
+      const result = await supa
+        .from('employee_job_schedule')
+        .select('*')
+        .order('start_date', { ascending: true })
+        .order('start_time', { ascending: true });
+      if (result.error) throw result.error;
+      jobs = result.data || [];
+    }
+
+    async function loadEntries() {
+      const result = await supa
+        .from('time_entries')
+        .select('*')
+        .order('work_date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (result.error) throw result.error;
+      entries = result.data || [];
+    }
+
+    async function refresh() {
+      if (!session) return;
+      try {
+        await loadProfile();
+        if (profile?.active) {
+          await Promise.all([loadJobs(), loadEntries()]);
+        }
+        render();
+      } catch (error) {
+        setMessage('appMessage', error.message, true);
+      }
+    }
+
+    function renderJobOptions() {
+      if (!jobs.length) {
+        $('jobId').innerHTML = '<option value="">No assigned jobs available</option>';
+        $('jobId').disabled = true;
+        return;
+      }
+
+      $('jobId').disabled = false;
+      $('jobId').innerHTML = jobs.map((job) => `<option value="${job.id}">${esc(moneylessJobName(job))} - ${esc(formatRange(job))}</option>`).join('');
+    }
+
+    function renderSchedule() {
+      if (!jobs.length) {
+        $('scheduleList').innerHTML = '<div class="muted">No assigned jobs yet.</div>';
+        return;
+      }
+
+      $('scheduleList').innerHTML = jobs.map((job) => `
+        <article class="job-card">
+          <header>
+            <h3>${esc(moneylessJobName(job))}</h3>
+            <span class="status">${esc(job.status || 'Scheduled')}</span>
+          </header>
+          <div class="facts">
+            <div class="fact"><b>When</b>${esc(formatRange(job))}</div>
+            <div class="fact"><b>Address</b>${esc(job.address || '-')}</div>
+            <div class="fact"><b>Square Feet</b>${Number(job.square_feet || 0).toLocaleString()}</div>
+            <div class="fact"><b>Crew</b>${esc(job.crew || '-')}</div>
+          </div>
+          ${job.notes ? `<p class="muted">${esc(job.notes)}</p>` : ''}
+          ${job.material_notes ? `<p class="muted">${esc(job.material_notes)}</p>` : ''}
+        </article>
+      `).join('');
+    }
+
+    function renderTotals() {
+      const submitted = entries.filter((entry) => entry.status === 'submitted').reduce((sum, entry) => sum + Number(entry.total_hours || 0), 0);
+      const approved = entries.filter((entry) => entry.status === 'approved').reduce((sum, entry) => sum + Number(entry.total_hours || 0), 0);
+      const drafts = entries.filter((entry) => entry.status === 'draft' || entry.status === 'rejected').length;
+      $('totals').innerHTML = `
+        <div class="total"><span class="muted">Submitted</span><b>${submitted.toFixed(2)}</b></div>
+        <div class="total"><span class="muted">Approved</span><b>${approved.toFixed(2)}</b></div>
+        <div class="total"><span class="muted">Open Drafts</span><b>${drafts}</b></div>
+      `;
+    }
+
+    function renderEntries() {
+      if (!entries.length) {
+        $('entryList').innerHTML = '<div class="muted">No time entries yet.</div>';
+        return;
+      }
+
+      $('entryList').innerHTML = entries.map((entry) => {
+        const job = jobs.find((item) => item.id === entry.job_id);
+        const canEdit = entry.status === 'draft' || entry.status === 'rejected';
+        return `
+          <article class="entry-card">
+            <header>
+              <div>
+                <h3>${esc(job ? moneylessJobName(job) : 'Job')}</h3>
+                <span class="muted">${esc(formatDate(entry.work_date))} - ${esc(formatTime(entry.start_time))} to ${esc(formatTime(entry.end_time))}</span>
+              </div>
+              <span class="status ${statusClass(entry.status)}">${esc(entry.status)}</span>
+            </header>
+            <div class="facts">
+              <div class="fact"><b>Total</b>${Number(entry.total_hours || 0).toFixed(2)} hours</div>
+              <div class="fact"><b>Break</b>${Number(entry.break_minutes || 0)} minutes</div>
+            </div>
+            ${entry.notes ? `<p class="muted">${esc(entry.notes)}</p>` : ''}
+            ${entry.rejection_reason ? `<p class="muted">Rejected: ${esc(entry.rejection_reason)}</p>` : ''}
+            <div class="actions">
+              ${canEdit ? `<button type="button" onclick="editEntry('${entry.id}')">Edit</button><button type="button" onclick="submitEntry('${entry.id}')">Submit</button>` : ''}
+              ${entry.status === 'draft' ? `<button class="ghost" type="button" onclick="deleteEntry('${entry.id}')">Delete</button>` : ''}
+            </div>
+          </article>
+        `;
+      }).join('');
+    }
+
+    function render() {
+      $('authCard').classList.toggle('hidden', Boolean(session));
+      $('app').classList.toggle('hidden', !session);
+      $('signOutBtn').classList.toggle('hidden', !session);
+      $('userLine').textContent = session
+        ? `${profile?.full_name || session.user.email || 'Signed in'}${profile?.role ? ` - ${profile.role}` : ''}`
+        : 'Sign in to view your schedule and time.';
+
+      if (!session) return;
+      renderJobOptions();
+      renderSchedule();
+      renderTotals();
+      renderEntries();
+      calculateHours();
+    }
+
+    function resetForm() {
+      $('entryId').value = '';
+      $('formTitle').textContent = 'Add Time';
+      $('workDate').value = today();
+      $('startTime').value = '';
+      $('endTime').value = '';
+      $('breakMinutes').value = '0';
+      $('notes').value = '';
+      $('cancelEditBtn').classList.add('hidden');
+      if (jobs[0]) $('jobId').value = jobs[0].id;
+      calculateHours();
+    }
+
+    window.editEntry = function editEntry(id) {
+      const entry = entries.find((item) => item.id === id);
+      if (!entry) return;
+      $('entryId').value = entry.id;
+      $('formTitle').textContent = 'Edit Time';
+      $('jobId').value = entry.job_id || '';
+      $('workDate').value = entry.work_date || today();
+      $('startTime').value = String(entry.start_time || '').slice(0, 5);
+      $('endTime').value = String(entry.end_time || '').slice(0, 5);
+      $('breakMinutes').value = Number(entry.break_minutes || 0);
+      $('notes').value = entry.notes || '';
+      $('cancelEditBtn').classList.remove('hidden');
+      calculateHours();
+      setActiveTab('time');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    window.submitEntry = async function submitEntry(id) {
+      try {
+        const result = await supa
+          .from('time_entries')
+          .update({
+            status: 'submitted',
+            device_info: deviceInfo(),
+            change_reason: 'Submitted from employee portal'
+          })
+          .eq('id', id);
+        if (result.error) throw result.error;
+        await refresh();
+      } catch (error) {
+        setMessage('appMessage', error.message, true);
+      }
+    };
+
+    window.deleteEntry = async function deleteEntry(id) {
+      if (!confirm('Delete this draft time entry?')) return;
+      try {
+        const result = await supa.from('time_entries').delete().eq('id', id);
+        if (result.error) throw result.error;
+        await refresh();
+      } catch (error) {
+        setMessage('appMessage', error.message, true);
+      }
+    };
+
+    async function saveTime(status) {
+      try {
+        const id = $('entryId').value;
+        const payload = timePayload(status);
+        const result = id
+          ? await supa.from('time_entries').update(payload).eq('id', id)
+          : await supa.from('time_entries').insert(payload);
+        if (result.error) throw result.error;
+        resetForm();
+        await refresh();
+        setActiveTab('entries');
+      } catch (error) {
+        setMessage('appMessage', error.message, true);
+      }
+    }
+
+    function setActiveTab(tab) {
+      document.querySelectorAll('[data-tab]').forEach((button) => {
+        button.classList.toggle('primary', button.dataset.tab === tab);
+      });
+      $('schedulePanel').classList.toggle('hidden-mobile', tab === 'time');
+      $('timePanel').classList.toggle('hidden-mobile', tab !== 'time');
+      if (tab === 'entries') {
+        $('schedulePanel').classList.remove('hidden-mobile');
+        $('timePanel').classList.add('hidden-mobile');
+      }
+    }
+
+    $('loginForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      setMessage('authMessage', '');
+      try {
+        await signIn($('email').value.trim(), $('password').value);
+      } catch (error) {
+        setMessage('authMessage', error.message, true);
+      }
+    });
+
+    $('magicLinkBtn').addEventListener('click', async () => {
+      setMessage('authMessage', '');
+      try {
+        await sendMagicLink($('email').value.trim());
+        setMessage('authMessage', 'Magic link sent. Check your email on this device.');
+      } catch (error) {
+        setMessage('authMessage', error.message, true);
+      }
+    });
+
+    $('signOutBtn').addEventListener('click', async () => {
+      await supa.auth.signOut();
+    });
+
+    $('timeForm').addEventListener('submit', (event) => {
+      event.preventDefault();
+      saveTime('draft');
+    });
+
+    $('submitNowBtn').addEventListener('click', () => saveTime('submitted'));
+    $('cancelEditBtn').addEventListener('click', resetForm);
+    ['startTime', 'endTime', 'breakMinutes'].forEach((id) => $(id).addEventListener('input', calculateHours));
+    document.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => setActiveTab(button.dataset.tab)));
+
+    supa.auth.onAuthStateChange(async (_event, nextSession) => {
+      session = nextSession;
+      profile = null;
+      jobs = [];
+      entries = [];
+      if (session) {
+        resetForm();
+        await refresh();
+      } else {
+        render();
+      }
+    });
+
+    (async function init() {
+      $('workDate').value = today();
+      const result = await supa.auth.getSession();
+      session = result.data.session;
+      if (session) {
+        await refresh();
+      } else {
+        render();
+      }
+    })();
+  </script>
+</body>
+</html>
