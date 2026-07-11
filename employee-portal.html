@@ -191,6 +191,41 @@
       min-width: 90px;
     }
 
+    .crew-picker {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .crew-selected {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .crew-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid rgba(255, 122, 0, .5);
+      background: rgba(255, 122, 0, .1);
+      border-radius: 999px;
+      padding: 6px 8px 6px 12px;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .crew-chip button {
+      border-color: rgba(255,255,255,.2);
+      border-radius: 999px;
+      min-height: 28px;
+      min-width: 28px;
+      padding: 0;
+      line-height: 1;
+    }
+
     .status {
       display: inline-flex;
       align-items: center;
@@ -468,6 +503,7 @@
     let entries = [];
     let entryAuditLogs = [];
     let crewOptions = [];
+    let selectedCrewIds = new Set();
     let authRefreshTimer = null;
     let loginOptions = [];
 
@@ -619,6 +655,7 @@
       entries = [];
       entryAuditLogs = [];
       crewOptions = [];
+      selectedCrewIds = new Set();
       resetForm();
       await refresh();
     }
@@ -731,6 +768,7 @@
 
     async function loadCrewOptionsForJob(jobId) {
       crewOptions = [];
+      selectedCrewIds = new Set();
       renderCrewTimePanel();
       if (!jobId || !canEnterCrewTime()) return;
 
@@ -781,17 +819,34 @@
 
       $('crewTimePanel').classList.remove('hidden');
       if (!crewOptions.length) {
-        $('crewTimeList').innerHTML = '<div class="muted">No assigned crew found for this job.</div>';
+        $('crewTimeList').innerHTML = '<div class="muted">No employees available for crew time.</div>';
         return;
       }
 
-      $('crewTimeList').innerHTML = crewOptions.map((employee) => `
-        <label class="job-card">
-          <input class="crew-time-check" type="checkbox" value="${esc(employee.id)}" ${employee.is_self ? 'checked' : ''}>
-          <b>${esc(employee.name)}</b>
-          <span class="muted">${esc(employee.role || 'employee')}${employee.is_self ? ' - you' : ''}</span>
-        </label>
-      `).join('');
+      const availableOptions = crewOptions
+        .filter((employee) => employee.id !== profile?.employee_id && !selectedCrewIds.has(employee.id))
+        .map((employee) => `<option value="${esc(employee.id)}">${esc(employee.name)}${employee.role ? ` - ${esc(employee.role)}` : ''}${employee.assignment_status === 'available' ? ' - available' : ''}</option>`)
+        .join('');
+      const selectedEmployees = crewOptions.filter((employee) => selectedCrewIds.has(employee.id));
+      const selectedMarkup = selectedEmployees.length
+        ? `<div class="crew-selected">${selectedEmployees.map((employee) => `
+            <span class="crew-chip">
+              ${esc(employee.name)}
+              <button class="ghost" type="button" aria-label="Remove ${esc(employee.name)}" onclick="removeCrewEmployee('${esc(employee.id)}')">&times;</button>
+            </span>
+          `).join('')}</div>`
+        : '<div class="muted">This saves your own time. Add employees here to submit the same hours for them too.</div>';
+
+      $('crewTimeList').innerHTML = `
+        <div class="crew-picker">
+          <select id="crewEmployeeSelect">
+            <option value="">Choose employee to add...</option>
+            ${availableOptions || '<option value="">No more employees available</option>'}
+          </select>
+          <button type="button" onclick="addCrewEmployeeFromSelect()">Add</button>
+        </div>
+        ${selectedMarkup}
+      `;
     }
 
     function renderSchedule() {
@@ -934,6 +989,7 @@
       $('cancelEditBtn').classList.add('hidden');
       $('jobId').value = '';
       crewOptions = [];
+      selectedCrewIds = new Set();
       renderCrewTimePanel();
       calculateHours();
     }
@@ -951,6 +1007,7 @@
       $('timePhotos').value = '';
       $('cancelEditBtn').classList.remove('hidden');
       crewOptions = [];
+      selectedCrewIds = new Set();
       renderCrewTimePanel();
       calculateHours();
       setActiveTab('time');
@@ -1021,9 +1078,23 @@
     }
 
     function selectedCrewEmployeeIds() {
-      if (!canEnterCrewTime() || !$('jobId').value) return [];
-      return Array.from(document.querySelectorAll('.crew-time-check:checked')).map((input) => input.value);
+      if (!canEnterCrewTime() || !$('jobId').value || !selectedCrewIds.size) return [];
+      const ids = [profile?.employee_id, ...Array.from(selectedCrewIds)].filter(Boolean);
+      return [...new Set(ids)];
     }
+
+    window.addCrewEmployeeFromSelect = function addCrewEmployeeFromSelect() {
+      const select = $('crewEmployeeSelect');
+      const employeeId = select?.value;
+      if (!employeeId) return;
+      selectedCrewIds.add(employeeId);
+      renderCrewTimePanel();
+    };
+
+    window.removeCrewEmployee = function removeCrewEmployee(employeeId) {
+      selectedCrewIds.delete(employeeId);
+      renderCrewTimePanel();
+    };
 
     async function saveCrewTimeEntries(payload) {
       const employeeIds = selectedCrewEmployeeIds();

@@ -121,15 +121,18 @@ Deno.serve(async (req) => {
       if (assignmentsError) throw assignmentsError;
 
       const assignedIds = [...new Set((assignments || []).map((row) => row.employee_id).filter(Boolean))];
-      if (!["manager", "admin"].includes(String(actor.profile.role)) && !assignedIds.includes(actor.profile.employee_id)) {
+      const hasAssignments = assignedIds.length > 0;
+      if (hasAssignments && !["manager", "admin"].includes(String(actor.profile.role)) && !assignedIds.includes(actor.profile.employee_id)) {
         return json({ error: "Crew leads can only enter crew time for jobs they are assigned to." }, 403);
       }
 
-      if (!assignedIds.length) return json({ employees: [] });
+      let employeeQuery = supa.from("employees").select("id, name, active").eq("active", true);
+      if (hasAssignments) employeeQuery = employeeQuery.in("id", assignedIds);
+      employeeQuery = employeeQuery.order("name");
 
       const [{ data: employees, error: employeesError }, { data: profiles, error: profilesError }] = await Promise.all([
-        supa.from("employees").select("id, name, active").in("id", assignedIds).eq("active", true).order("name"),
-        supa.from("profiles").select("id, employee_id, role, full_name, active").in("employee_id", assignedIds).eq("active", true),
+        employeeQuery,
+        supa.from("profiles").select("id, employee_id, role, full_name, active").eq("active", true),
       ]);
       if (employeesError) throw employeesError;
       if (profilesError) throw profilesError;
@@ -142,6 +145,7 @@ Deno.serve(async (req) => {
           name: profile?.full_name || employee.name,
           role: profile?.role || "employee",
           is_self: employee.id === actor.profile.employee_id,
+          assignment_status: hasAssignments ? "assigned" : "available",
         };
       });
 
@@ -169,13 +173,22 @@ Deno.serve(async (req) => {
       if (assignmentsError) throw assignmentsError;
 
       const assignedIds = new Set((assignments || []).map((row) => row.employee_id));
-      if (!["manager", "admin"].includes(String(actor.profile.role)) && !assignedIds.has(actor.profile.employee_id)) {
+      const hasAssignments = assignedIds.size > 0;
+      if (hasAssignments && !["manager", "admin"].includes(String(actor.profile.role)) && !assignedIds.has(actor.profile.employee_id)) {
         return json({ error: "Crew leads can only enter crew time for jobs they are assigned to." }, 403);
       }
 
-      const invalidIds = employeeIds.filter((id) => !assignedIds.has(id));
+      const { data: activeEmployees, error: activeEmployeesError } = await supa
+        .from("employees")
+        .select("id")
+        .in("id", employeeIds)
+        .eq("active", true);
+      if (activeEmployeesError) throw activeEmployeesError;
+      const activeIds = new Set((activeEmployees || []).map((employee) => employee.id));
+
+      const invalidIds = employeeIds.filter((id) => (hasAssignments ? !assignedIds.has(id) : !activeIds.has(id)));
       if (invalidIds.length) {
-        return json({ error: "Crew time can only be entered for employees assigned to the selected job." }, 400);
+        return json({ error: hasAssignments ? "Crew time can only be entered for employees assigned to the selected job." : "Crew time can only be entered for active employees." }, 400);
       }
 
       const { data: profiles, error: profilesError } = await supa
