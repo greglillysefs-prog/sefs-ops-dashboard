@@ -417,11 +417,11 @@
               </div>
               <div>
                 <label>Start Time</label>
-                <input id="startTime" type="time" required>
+                <select id="startTime" required></select>
               </div>
               <div>
                 <label>End Time</label>
-                <input id="endTime" type="time" required>
+                <select id="endTime" required></select>
               </div>
               <div class="full">
                 <label>Calculated Hours</label>
@@ -496,6 +496,35 @@
       const date = new Date();
       date.setHours(Number(hours || 0), Number(minutes || 0), 0, 0);
       return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    }
+
+    function quarterHourOptions() {
+      const rows = ['<option value="">Choose time...</option>'];
+      for (let minutes = 0; minutes < 24 * 60; minutes += 15) {
+        const hh = String(Math.floor(minutes / 60)).padStart(2, '0');
+        const mm = String(minutes % 60).padStart(2, '0');
+        const value = `${hh}:${mm}`;
+        rows.push(`<option value="${value}">${formatTime(value)}</option>`);
+      }
+      return rows.join('');
+    }
+
+    function normalizeQuarterTime(value) {
+      if (!value) return '';
+      const [hours, minutes] = String(value).split(':').map(Number);
+      if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return '';
+      let total = hours * 60 + minutes;
+      total = Math.round(total / 15) * 15;
+      if (total >= 24 * 60) total = 0;
+      const hh = String(Math.floor(total / 60)).padStart(2, '0');
+      const mm = String(total % 60).padStart(2, '0');
+      return `${hh}:${mm}`;
+    }
+
+    function setupTimeSelects() {
+      const options = quarterHourOptions();
+      $('startTime').innerHTML = options;
+      $('endTime').innerHTML = options;
     }
 
     function formatRange(job) {
@@ -769,8 +798,8 @@
       $('formTitle').textContent = 'Edit Time';
       $('jobId').value = entry.job_id || '';
       $('workDate').value = entry.work_date || today();
-      $('startTime').value = String(entry.start_time || '').slice(0, 5);
-      $('endTime').value = String(entry.end_time || '').slice(0, 5);
+      $('startTime').value = normalizeQuarterTime(entry.start_time);
+      $('endTime').value = normalizeQuarterTime(entry.end_time);
       $('notes').value = entry.notes || '';
       $('timePhotos').value = '';
       $('cancelEditBtn').classList.remove('hidden');
@@ -946,6 +975,7 @@
     });
 
     (async function init() {
+      setupTimeSelects();
       $('workDate').value = today();
       await loadLoginOptions();
       const result = await supa.auth.getSession();
