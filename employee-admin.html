@@ -579,7 +579,7 @@
                 ${user.last_sign_in_at ? `<span>Last sign in: ${esc(new Date(user.last_sign_in_at).toLocaleDateString())}</span>` : ''}
               </div>
             </div>
-            <button class="danger" type="button" onclick="deactivatePerson('${esc(employee.id)}','${esc(profile.id)}')">Remove Access</button>
+            <button class="danger" type="button" onclick="removeEmployee('${esc(employee.id)}','${esc(profile.id)}','${esc(profile.full_name || employee.name || user.email || 'Employee')}')">Remove Employee</button>
           </article>
         `;
       }).join('');
@@ -616,7 +616,7 @@
 
     function renderAuditLogs() {
       if (!auditLogs.length) {
-        $('auditLogs').innerHTML = '<div class="muted">No time-entry audit records yet.</div>';
+        $('auditLogs').innerHTML = '<div class="muted">No audit records yet.</div>';
         return;
       }
 
@@ -669,6 +669,23 @@
       try {
         await callAdmin('deactivate', { employee_id: employeeId, user_id: userId });
         setMessage('Employee portal access removed.', 'good');
+        await refreshPeople();
+      } catch (error) {
+        setMessage(error.message, 'error');
+      }
+    };
+
+    window.removeEmployee = async function removeEmployee(employeeId, userId, name) {
+      const confirmed = prompt(`Remove ${name} from Employee Admin?\n\nThis removes their login/profile and scrubs their employee name/email. It keeps time entries, photos, and rolling change log history.\n\nType REMOVE to continue.`);
+      if (confirmed !== 'REMOVE') return;
+      try {
+        await callAdmin('remove_employee', {
+          employee_id: employeeId,
+          user_id: userId,
+          reason: `Employee ${name} removed from Employee Admin`,
+          device_info: navigator.userAgent || 'Employee Admin'
+        });
+        setMessage('Employee removed. Their login/profile was deleted, employee info was scrubbed, and the change was logged.', 'good');
         await refreshPeople();
       } catch (error) {
         setMessage(error.message, 'error');

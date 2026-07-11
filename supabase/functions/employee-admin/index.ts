@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-type AdminAction = "list" | "upsert" | "deactivate" | "update_time_entry";
+type AdminAction = "list" | "upsert" | "deactivate" | "remove_employee" | "update_time_entry";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -261,6 +261,83 @@ Deno.serve(async (req) => {
           .eq("employee_id", employeeId);
         if (profileError) throw profileError;
       }
+
+      return json({ ok: true });
+    }
+
+    if (action === "remove_employee") {
+      const employeeId = cleanText(payload.employee_id);
+      const userId = cleanText(payload.user_id);
+      const reason = cleanText(payload.reason) || "Employee removed from Employee Admin";
+      if (!employeeId) return json({ error: "Employee id is required." }, 400);
+
+      const [{ data: employeeBefore, error: employeeFetchError }, { data: profileBefore, error: profileFetchError }] =
+        await Promise.all([
+          supa.from("employees").select("*").eq("id", employeeId).maybeSingle(),
+          userId
+            ? supa.from("profiles").select("*").eq("id", userId).maybeSingle()
+            : supa.from("profiles").select("*").eq("employee_id", employeeId).maybeSingle(),
+        ]);
+
+      if (employeeFetchError) throw employeeFetchError;
+      if (profileFetchError) throw profileFetchError;
+      if (!employeeBefore) return json({ error: "Employee was not found." }, 404);
+
+      let authUserBefore: Record<string, unknown> | null = null;
+      if (userId) {
+        const userResult = await supa.auth.admin.getUserById(userId);
+        if (!userResult.error && userResult.data.user) {
+          authUserBefore = {
+            id: userResult.data.user.id,
+            email: userResult.data.user.email,
+            created_at: userResult.data.user.created_at,
+            last_sign_in_at: userResult.data.user.last_sign_in_at,
+          };
+        }
+      }
+
+      if (userId) {
+        const deleteUserResult = await supa.auth.admin.deleteUser(userId);
+        if (deleteUserResult.error) throw deleteUserResult.error;
+      }
+
+      const { error: deleteProfileError } = userId
+        ? await supa.from("profiles").delete().eq("id", userId)
+        : await supa.from("profiles").delete().eq("employee_id", employeeId);
+      if (deleteProfileError) throw deleteProfileError;
+
+      const removedName = `Removed employee ${employeeId.slice(0, 8)}`;
+      const { error: employeeUpdateError } = await supa
+        .from("employees")
+        .update({
+          name: removedName,
+          active: false,
+          notes: `Removed from Employee Admin on ${new Date().toISOString()}. Historical records retained.`,
+        })
+        .eq("id", employeeId);
+      if (employeeUpdateError) throw employeeUpdateError;
+
+      const { error: auditError } = await supa.from("time_entry_audit_logs").insert({
+        time_entry_id: null,
+        employee_id: employeeId,
+        actor_user_id: null,
+        action_type: "employee_removed",
+        previous_values: {
+          employee: employeeBefore,
+          profile: profileBefore,
+          auth_user: authUserBefore,
+        },
+        new_values: {
+          employee_id: employeeId,
+          employee_name: removedName,
+          profile_deleted: true,
+          auth_user_deleted: Boolean(userId),
+          historical_records_retained: true,
+        },
+        device_info: cleanText(payload.device_info) || null,
+        reason,
+      });
+      if (auditError) throw auditError;
 
       return json({ ok: true });
     }
