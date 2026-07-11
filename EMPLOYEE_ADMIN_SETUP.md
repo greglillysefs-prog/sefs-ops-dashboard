@@ -14,7 +14,7 @@ The Employee Admin page uses a Supabase Edge Function so the Supabase service-ro
 npm install -g supabase
 supabase login
 supabase secrets set SEFS_EMPLOYEE_ADMIN_PIN="choose-a-private-pin" --project-ref wjfewzutxvjbbnnvbylo
-supabase functions deploy employee-admin --project-ref wjfewzutxvjbbnnvbylo
+supabase functions deploy employee-admin --project-ref wjfewzutxvjbbnnvbylo --no-verify-jwt
 ```
 
 Supabase automatically provides `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to Edge Functions.
