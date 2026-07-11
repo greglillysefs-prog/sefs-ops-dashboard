@@ -417,11 +417,11 @@
               </div>
               <div>
                 <label>Start Time</label>
-                <select id="startTime" required></select>
+                <input id="startTime" type="time" step="900" required>
               </div>
               <div>
                 <label>End Time</label>
-                <select id="endTime" required></select>
+                <input id="endTime" type="time" step="900" required>
               </div>
               <div class="full">
                 <label>Calculated Hours</label>
@@ -498,17 +498,6 @@
       return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
     }
 
-    function quarterHourOptions() {
-      const rows = ['<option value="">Choose time...</option>'];
-      for (let minutes = 0; minutes < 24 * 60; minutes += 15) {
-        const hh = String(Math.floor(minutes / 60)).padStart(2, '0');
-        const mm = String(minutes % 60).padStart(2, '0');
-        const value = `${hh}:${mm}`;
-        rows.push(`<option value="${value}">${formatTime(value)}</option>`);
-      }
-      return rows.join('');
-    }
-
     function normalizeQuarterTime(value) {
       if (!value) return '';
       const [hours, minutes] = String(value).split(':').map(Number);
@@ -521,10 +510,10 @@
       return `${hh}:${mm}`;
     }
 
-    function setupTimeSelects() {
-      const options = quarterHourOptions();
-      $('startTime').innerHTML = options;
-      $('endTime').innerHTML = options;
+    function snapTimeInput(id) {
+      const input = $(id);
+      input.value = normalizeQuarterTime(input.value);
+      calculateHours();
     }
 
     function formatRange(job) {
@@ -955,7 +944,11 @@
 
     $('submitNowBtn').addEventListener('click', () => saveTime('submitted'));
     $('cancelEditBtn').addEventListener('click', resetForm);
-    ['startTime', 'endTime'].forEach((id) => $(id).addEventListener('input', calculateHours));
+    ['startTime', 'endTime'].forEach((id) => {
+      $(id).addEventListener('input', calculateHours);
+      $(id).addEventListener('change', () => snapTimeInput(id));
+      $(id).addEventListener('blur', () => snapTimeInput(id));
+    });
     document.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => setActiveTab(button.dataset.tab)));
 
     supa.auth.onAuthStateChange((_event, nextSession) => {
@@ -975,7 +968,6 @@
     });
 
     (async function init() {
-      setupTimeSelects();
       $('workDate').value = today();
       await loadLoginOptions();
       const result = await supa.auth.getSession();
