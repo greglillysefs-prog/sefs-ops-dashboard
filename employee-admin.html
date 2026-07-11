@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SEFS Employee Admin</title>
   <link rel="icon" href="assets/sefs-icon.jpeg">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root {
       --bg: #050505;
@@ -147,6 +148,17 @@
     .form-grid {
       display: grid;
       gap: 12px;
+    }
+
+    .password-control {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .password-control button {
+      min-width: 90px;
     }
 
     .actions {
@@ -349,12 +361,33 @@
       <div class="quick-links">
         <a href="index.html">Dashboard</a>
         <a href="employee-portal.html">Employee Portal</a>
+        <button id="adminSignOutBtn" class="danger hidden" type="button">Sign Out</button>
       </div>
     </header>
 
     <div id="message" class="notice hidden"></div>
 
-    <div class="grid">
+    <section id="adminAuth" class="card">
+      <h2>Admin Login</h2>
+      <form id="adminLoginForm" class="form-grid">
+        <div>
+          <label>Email</label>
+          <input id="adminEmail" type="email" autocomplete="email" required>
+        </div>
+        <div>
+          <label>Password</label>
+          <div class="password-control">
+            <input id="adminPassword" type="password" autocomplete="current-password" required>
+            <button id="toggleAdminPasswordBtn" class="danger" type="button">Show</button>
+          </div>
+        </div>
+        <div class="actions">
+          <button id="adminLoginBtn" class="primary" type="submit">Sign In</button>
+        </div>
+      </form>
+    </section>
+
+    <div id="adminApp" class="grid hidden">
       <section class="card">
         <h2>Add Employee Access</h2>
         <form id="employeeForm" class="form-grid">
@@ -381,11 +414,17 @@
           </div>
           <div>
             <label>Password</label>
-            <input id="password" type="password" autocomplete="new-password" required minlength="6">
+            <div class="password-control">
+              <input id="password" type="password" autocomplete="new-password" required minlength="6">
+              <button class="danger" type="button" data-toggle-password="password">Show</button>
+            </div>
           </div>
           <div>
             <label>Confirm Password</label>
-            <input id="confirmPassword" type="password" autocomplete="new-password" required minlength="6">
+            <div class="password-control">
+              <input id="confirmPassword" type="password" autocomplete="new-password" required minlength="6">
+              <button class="danger" type="button" data-toggle-password="confirmPassword">Show</button>
+            </div>
           </div>
           <div class="actions">
             <button class="primary" type="submit">Save Access</button>
@@ -398,6 +437,21 @@
         <h2>People With Portal Access</h2>
         <div id="people" class="people">
           <div class="muted">Enter the admin PIN and refresh the list.</div>
+        </div>
+      </section>
+
+      <section id="removePanel" class="card wide hidden">
+        <h2>Remove Employee</h2>
+        <p id="removeSummary"></p>
+        <div class="form-grid">
+          <div>
+            <label>Type REMOVE to Confirm</label>
+            <input id="removeConfirmText" autocomplete="off">
+          </div>
+          <div class="actions">
+            <button id="confirmRemoveBtn" class="danger" type="button">Remove Employee</button>
+            <button id="cancelRemoveBtn" type="button">Cancel</button>
+          </div>
         </div>
       </section>
 
@@ -473,14 +527,19 @@
 
   <script>
     const SB_URL = 'https://wjfewzutxvjbbnnvbylo.supabase.co';
+    const SB_KEY = 'sb_publishable_YWRQJz8q1lDdSz_304AUyA_YskIiTBT';
     const FUNCTION_URL = `${SB_URL}/functions/v1/employee-admin`;
+    const supa = supabase.createClient(SB_URL, SB_KEY);
     const $ = (id) => document.getElementById(id);
     const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 
+    let adminSession = null;
+    let adminProfile = null;
     let rows = [];
     let timeEntries = [];
     let jobs = [];
     let auditLogs = [];
+    let pendingRemoval = null;
 
     function setMessage(text, type = '') {
       const message = $('message');
@@ -488,9 +547,45 @@
       message.className = `notice ${type} ${text ? '' : 'hidden'}`;
     }
 
+    function setLoginBusy(isBusy) {
+      $('adminLoginBtn').disabled = isBusy;
+      $('adminLoginBtn').textContent = isBusy ? 'Signing In...' : 'Sign In';
+    }
+
+    function togglePassword(inputId, button) {
+      const input = $(inputId);
+      const hidden = input.type === 'password';
+      input.type = hidden ? 'text' : 'password';
+      button.textContent = hidden ? 'Hide' : 'Show';
+      input.focus();
+    }
+
+    async function loadAdminProfile() {
+      adminProfile = null;
+      if (!adminSession?.user?.id) return;
+      const result = await supa
+        .from('profiles')
+        .select('id, employee_id, role, full_name, active')
+        .eq('id', adminSession.user.id)
+        .maybeSingle();
+      if (result.error) throw result.error;
+      adminProfile = result.data;
+    }
+
+    function renderAdminShell() {
+      const isAdmin = Boolean(adminSession && adminProfile?.active && adminProfile?.role === 'admin');
+      $('adminAuth').classList.toggle('hidden', isAdmin);
+      $('adminApp').classList.toggle('hidden', !isAdmin);
+      $('adminSignOutBtn').classList.toggle('hidden', !adminSession);
+      if (adminSession && !isAdmin) {
+        setMessage('This login is not an active admin profile.', 'error');
+      }
+    }
+
     async function callAdmin(action, extra = {}) {
       const pin = $('adminPin').value.trim();
       if (!pin) throw new Error('Enter the employee admin PIN first.');
+      if (!adminSession?.access_token) throw new Error('Sign in as admin first.');
 
       let response;
       try {
@@ -498,6 +593,7 @@
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Authorization': `Bearer ${adminSession.access_token}`,
             'x-sefs-admin-pin': pin
           },
           body: JSON.stringify({ action, ...extra })
@@ -579,7 +675,7 @@
                 ${user.last_sign_in_at ? `<span>Last sign in: ${esc(new Date(user.last_sign_in_at).toLocaleDateString())}</span>` : ''}
               </div>
             </div>
-            <button class="danger" type="button" onclick="removeEmployee('${esc(employee.id)}','${esc(profile.id)}','${esc(profile.full_name || employee.name || user.email || 'Employee')}')">Remove Employee</button>
+            ${adminProfile?.role === 'admin' ? `<button class="danger" type="button" onclick="startRemoveEmployee('${esc(employee.id)}','${esc(profile.id)}','${esc(profile.full_name || employee.name || user.email || 'Employee')}')">Remove Employee</button>` : ''}
           </article>
         `;
       }).join('');
@@ -675,22 +771,35 @@
       }
     };
 
-    window.removeEmployee = async function removeEmployee(employeeId, userId, name) {
-      const confirmed = prompt(`Remove ${name} from Employee Admin?\n\nThis removes their login/profile and scrubs their employee name/email. It keeps time entries, photos, and rolling change log history.\n\nType REMOVE to continue.`);
-      if (confirmed !== 'REMOVE') return;
+    window.startRemoveEmployee = function startRemoveEmployee(employeeId, userId, name) {
+      pendingRemoval = { employeeId, userId, name };
+      $('removeSummary').textContent = `Remove ${name}? This removes their login/profile and scrubs their employee name/email. Time entries, photos, and rolling change log history stay saved.`;
+      $('removeConfirmText').value = '';
+      $('removePanel').classList.remove('hidden');
+      $('removePanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+
+    async function removePendingEmployee() {
+      if (!pendingRemoval) return;
+      if ($('removeConfirmText').value.trim() !== 'REMOVE') {
+        setMessage('Type REMOVE to confirm employee removal.', 'error');
+        return;
+      }
       try {
         await callAdmin('remove_employee', {
-          employee_id: employeeId,
-          user_id: userId,
-          reason: `Employee ${name} removed from Employee Admin`,
+          employee_id: pendingRemoval.employeeId,
+          user_id: pendingRemoval.userId,
+          reason: `Employee ${pendingRemoval.name} removed from Employee Admin by ${adminProfile?.full_name || adminSession?.user?.email || 'admin'}`,
           device_info: navigator.userAgent || 'Employee Admin'
         });
+        pendingRemoval = null;
+        $('removePanel').classList.add('hidden');
         setMessage('Employee removed. Their login/profile was deleted, employee info was scrubbed, and the change was logged.', 'good');
         await refreshPeople();
       } catch (error) {
         setMessage(error.message, 'error');
       }
-    };
+    }
 
     $('employeeForm').addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -747,6 +856,13 @@
       $('timeEntryForm').classList.add('hidden');
     });
 
+    $('confirmRemoveBtn').addEventListener('click', removePendingEmployee);
+    $('cancelRemoveBtn').addEventListener('click', () => {
+      pendingRemoval = null;
+      $('removePanel').classList.add('hidden');
+      $('removeConfirmText').value = '';
+    });
+
     $('refreshBtn').addEventListener('click', async () => {
       try {
         await refreshPeople();
@@ -754,6 +870,70 @@
         setMessage(error.message, 'error');
       }
     });
+
+    $('adminLoginForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      setMessage('Signing in...');
+      setLoginBusy(true);
+      try {
+        const result = await supa.auth.signInWithPassword({
+          email: $('adminEmail').value.trim(),
+          password: $('adminPassword').value
+        });
+        if (result.error) throw result.error;
+        adminSession = result.data.session;
+        await loadAdminProfile();
+        renderAdminShell();
+        if (adminProfile?.role === 'admin') setMessage('Admin signed in.', 'good');
+      } catch (error) {
+        setMessage(error.message, 'error');
+      } finally {
+        setLoginBusy(false);
+      }
+    });
+
+    $('adminSignOutBtn').addEventListener('click', async () => {
+      await supa.auth.signOut();
+      adminSession = null;
+      adminProfile = null;
+      rows = [];
+      timeEntries = [];
+      jobs = [];
+      auditLogs = [];
+      renderAdminShell();
+      setMessage('');
+    });
+
+    $('toggleAdminPasswordBtn').addEventListener('click', (event) => {
+      togglePassword('adminPassword', event.currentTarget);
+    });
+
+    document.querySelectorAll('[data-toggle-password]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        togglePassword(event.currentTarget.dataset.togglePassword, event.currentTarget);
+      });
+    });
+
+    supa.auth.onAuthStateChange((_event, nextSession) => {
+      adminSession = nextSession;
+      if (!adminSession) {
+        adminProfile = null;
+        renderAdminShell();
+      }
+    });
+
+    (async function initAdmin() {
+      const result = await supa.auth.getSession();
+      adminSession = result.data.session;
+      if (adminSession) {
+        try {
+          await loadAdminProfile();
+        } catch (error) {
+          setMessage(error.message, 'error');
+        }
+      }
+      renderAdminShell();
+    })();
   </script>
 </body>
 </html>

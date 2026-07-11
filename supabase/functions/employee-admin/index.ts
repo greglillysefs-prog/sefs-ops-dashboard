@@ -54,6 +54,29 @@ Deno.serve(async (req) => {
   const action = cleanText(payload.action) as AdminAction;
 
   try {
+    let adminActorUserId: string | null = null;
+    if (action === "remove_employee") {
+      const token = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+      if (!token) return json({ error: "Admin login is required to remove an employee." }, 401);
+
+      const { data: authData, error: authError } = await supa.auth.getUser(token);
+      if (authError || !authData.user) {
+        return json({ error: "Admin login could not be verified." }, 401);
+      }
+
+      const { data: actorProfile, error: actorProfileError } = await supa
+        .from("profiles")
+        .select("id, role, active")
+        .eq("id", authData.user.id)
+        .maybeSingle();
+      if (actorProfileError) throw actorProfileError;
+      if (!actorProfile?.active || actorProfile.role !== "admin") {
+        return json({ error: "Only an active admin can remove an employee." }, 403);
+      }
+
+      adminActorUserId = authData.user.id;
+    }
+
     if (action === "list") {
       const [
         { data: employees, error: employeesError },
@@ -320,7 +343,7 @@ Deno.serve(async (req) => {
       const { error: auditError } = await supa.from("time_entry_audit_logs").insert({
         time_entry_id: null,
         employee_id: employeeId,
-        actor_user_id: null,
+        actor_user_id: adminActorUserId,
         action_type: "employee_removed",
         previous_values: {
           employee: employeeBefore,
