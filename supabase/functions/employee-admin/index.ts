@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-type AdminAction = "login_options" | "list" | "upsert" | "deactivate" | "remove_employee" | "update_time_entry";
+type AdminAction = "login_options" | "job_crew_options" | "save_group_time_entries" | "list" | "upsert" | "deactivate" | "remove_employee" | "update_time_entry";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -18,6 +18,8 @@ function json(body: unknown, status = 200) {
 function cleanText(value: unknown) {
   return String(value ?? "").trim();
 }
+
+const elevatedRoles = ["crew_lead", "manager", "admin"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -78,6 +80,137 @@ Deno.serve(async (req) => {
         .sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || "")));
 
       return json({ options });
+    }
+
+    async function getPortalActor() {
+      const token = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+      if (!token) return { error: json({ error: "Login is required." }, 401) };
+
+      const { data: authData, error: authError } = await supa.auth.getUser(token);
+      if (authError || !authData.user) {
+        return { error: json({ error: "Login could not be verified." }, 401) };
+      }
+
+      const { data: actorProfile, error: actorProfileError } = await supa
+        .from("profiles")
+        .select("id, employee_id, role, full_name, active")
+        .eq("id", authData.user.id)
+        .maybeSingle();
+      if (actorProfileError) throw actorProfileError;
+      if (!actorProfile?.active) {
+        return { error: json({ error: "This profile is not active." }, 403) };
+      }
+
+      return { user: authData.user, profile: actorProfile };
+    }
+
+    if (action === "job_crew_options") {
+      const actor = await getPortalActor();
+      if (actor.error) return actor.error;
+      if (!elevatedRoles.includes(String(actor.profile.role))) {
+        return json({ error: "Crew lead access is required." }, 403);
+      }
+
+      const jobId = cleanText(payload.job_id);
+      if (!jobId) return json({ employees: [] });
+
+      const { data: assignments, error: assignmentsError } = await supa
+        .from("employee_job_assignments")
+        .select("employee_id, assigned_role")
+        .eq("job_id", jobId);
+      if (assignmentsError) throw assignmentsError;
+
+      const assignedIds = [...new Set((assignments || []).map((row) => row.employee_id).filter(Boolean))];
+      if (!["manager", "admin"].includes(String(actor.profile.role)) && !assignedIds.includes(actor.profile.employee_id)) {
+        return json({ error: "Crew leads can only enter crew time for jobs they are assigned to." }, 403);
+      }
+
+      if (!assignedIds.length) return json({ employees: [] });
+
+      const [{ data: employees, error: employeesError }, { data: profiles, error: profilesError }] = await Promise.all([
+        supa.from("employees").select("id, name, active").in("id", assignedIds).eq("active", true).order("name"),
+        supa.from("profiles").select("id, employee_id, role, full_name, active").in("employee_id", assignedIds).eq("active", true),
+      ]);
+      if (employeesError) throw employeesError;
+      if (profilesError) throw profilesError;
+
+      const profileByEmployee = new Map((profiles || []).map((profile) => [profile.employee_id, profile]));
+      const crew = (employees || []).map((employee) => {
+        const profile = profileByEmployee.get(employee.id);
+        return {
+          id: employee.id,
+          name: profile?.full_name || employee.name,
+          role: profile?.role || "employee",
+          is_self: employee.id === actor.profile.employee_id,
+        };
+      });
+
+      return json({ employees: crew });
+    }
+
+    if (action === "save_group_time_entries") {
+      const actor = await getPortalActor();
+      if (actor.error) return actor.error;
+      if (!elevatedRoles.includes(String(actor.profile.role))) {
+        return json({ error: "Crew lead access is required." }, 403);
+      }
+
+      const jobId = cleanText(payload.job_id);
+      const employeeIds = Array.isArray(payload.employee_ids)
+        ? [...new Set(payload.employee_ids.map((id) => cleanText(id)).filter(Boolean))]
+        : [];
+      if (!jobId) return json({ error: "Choose a job before entering crew time." }, 400);
+      if (!employeeIds.length) return json({ error: "Choose at least one employee." }, 400);
+
+      const { data: assignments, error: assignmentsError } = await supa
+        .from("employee_job_assignments")
+        .select("employee_id")
+        .eq("job_id", jobId);
+      if (assignmentsError) throw assignmentsError;
+
+      const assignedIds = new Set((assignments || []).map((row) => row.employee_id));
+      if (!["manager", "admin"].includes(String(actor.profile.role)) && !assignedIds.has(actor.profile.employee_id)) {
+        return json({ error: "Crew leads can only enter crew time for jobs they are assigned to." }, 403);
+      }
+
+      const invalidIds = employeeIds.filter((id) => !assignedIds.has(id));
+      if (invalidIds.length) {
+        return json({ error: "Crew time can only be entered for employees assigned to the selected job." }, 400);
+      }
+
+      const { data: profiles, error: profilesError } = await supa
+        .from("profiles")
+        .select("id, employee_id, active")
+        .in("employee_id", employeeIds)
+        .eq("active", true);
+      if (profilesError) throw profilesError;
+      const profileByEmployee = new Map((profiles || []).map((profile) => [profile.employee_id, profile]));
+
+      const basePayload = {
+        job_id: jobId,
+        work_date: cleanText(payload.work_date),
+        start_time: cleanText(payload.start_time),
+        end_time: cleanText(payload.end_time),
+        break_minutes: 0,
+        notes: cleanText(payload.notes) || null,
+        status: cleanText(payload.status) || "draft",
+        device_info: cleanText(payload.device_info) || null,
+        change_reason: `Crew time entered by ${actor.profile.full_name || actor.user.email || "crew lead"}`,
+      };
+
+      if (!basePayload.work_date || !basePayload.start_time || !basePayload.end_time) {
+        return json({ error: "Date, start time, and end time are required." }, 400);
+      }
+
+      const rows = employeeIds.map((employeeId) => ({
+        ...basePayload,
+        employee_id: employeeId,
+        user_id: profileByEmployee.get(employeeId)?.id || null,
+      }));
+
+      const { data, error } = await supa.from("time_entries").insert(rows).select();
+      if (error) throw error;
+      return json({ ok: true, time_entries: data || [] });
     }
 
     if (req.headers.get("x-sefs-admin-pin") !== adminPin) {

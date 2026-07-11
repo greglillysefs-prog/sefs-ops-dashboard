@@ -411,6 +411,10 @@
                 <label>Job</label>
                 <select id="jobId"></select>
               </div>
+              <div id="crewTimePanel" class="full hidden">
+                <label>Crew Time</label>
+                <div id="crewTimeList" class="job-list"></div>
+              </div>
               <div>
                 <label>Date</label>
                 <input id="workDate" type="date" required>
@@ -442,6 +446,10 @@
               </div>
             </form>
           </div>
+          <div class="card">
+            <h2>Pay Periods</h2>
+            <div id="weeklySummaries" class="entry-list"></div>
+          </div>
         </aside>
       </div>
     </main>
@@ -458,6 +466,8 @@
     let jobs = [];
     let scheduleJobs = [];
     let entries = [];
+    let entryAuditLogs = [];
+    let crewOptions = [];
     let authRefreshTimer = null;
     let loginOptions = [];
 
@@ -465,6 +475,7 @@
     const today = () => new Date().toISOString().slice(0, 10);
     const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
     const moneylessJobName = (job) => [job.customer, job.system_type].filter(Boolean).join(' - ') || job.job_name || 'Scheduled job';
+    const canEnterCrewTime = () => ['crew_lead', 'manager', 'admin'].includes(profile?.role);
 
     function setMessage(id, text, isError = false) {
       const el = $(id);
@@ -489,6 +500,26 @@
       if (!value) return '-';
       const date = new Date(`${value}T00:00:00`);
       return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    function dateOnly(value) {
+      return new Date(`${value}T00:00:00`);
+    }
+
+    function isoDate(date) {
+      return date.toISOString().slice(0, 10);
+    }
+
+    function addDays(date, days) {
+      const next = new Date(date);
+      next.setDate(next.getDate() + days);
+      return next;
+    }
+
+    function payPeriodStart(value = today()) {
+      const date = dateOnly(value);
+      const offset = (date.getDay() - 3 + 7) % 7;
+      return addDays(date, -offset);
     }
 
     function formatTime(value) {
@@ -586,6 +617,8 @@
       jobs = [];
       scheduleJobs = [];
       entries = [];
+      entryAuditLogs = [];
+      crewOptions = [];
       resetForm();
       await refresh();
     }
@@ -680,12 +713,53 @@
       entries = result.data || [];
     }
 
+    async function loadEntryAuditLogs() {
+      if (!entries.length) {
+        entryAuditLogs = [];
+        return;
+      }
+      const ids = entries.map((entry) => entry.id);
+      const result = await supa
+        .from('time_entry_audit_logs')
+        .select('id, time_entry_id, action_type, previous_values, new_values, reason, created_at')
+        .in('time_entry_id', ids)
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (result.error) throw result.error;
+      entryAuditLogs = result.data || [];
+    }
+
+    async function loadCrewOptionsForJob(jobId) {
+      crewOptions = [];
+      renderCrewTimePanel();
+      if (!jobId || !canEnterCrewTime()) return;
+
+      try {
+        const response = await fetch(ADMIN_FUNCTION_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({ action: 'job_crew_options', job_id: jobId })
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload.error) throw new Error(payload.error || `Could not load crew (${response.status})`);
+        crewOptions = payload.employees || [];
+        renderCrewTimePanel();
+      } catch (error) {
+        $('crewTimePanel').classList.remove('hidden');
+        $('crewTimeList').innerHTML = `<div class="muted">${esc(error.message)}</div>`;
+      }
+    }
+
     async function refresh() {
       if (!session) return;
       try {
         await loadProfile();
         if (profile?.active) {
           await Promise.all([loadJobs(), loadScheduleJobs(), loadEntries()]);
+          await loadEntryAuditLogs();
         }
         render();
       } catch (error) {
@@ -696,6 +770,28 @@
     function renderJobOptions() {
       $('jobId').disabled = false;
       $('jobId').innerHTML = `<option value="">Other / No job</option>` + jobs.map((job) => `<option value="${job.id}">${esc(moneylessJobName(job))} - ${esc(formatRange(job))}</option>`).join('');
+    }
+
+    function renderCrewTimePanel() {
+      if (!canEnterCrewTime() || !$('jobId').value) {
+        $('crewTimePanel').classList.add('hidden');
+        $('crewTimeList').innerHTML = '';
+        return;
+      }
+
+      $('crewTimePanel').classList.remove('hidden');
+      if (!crewOptions.length) {
+        $('crewTimeList').innerHTML = '<div class="muted">No assigned crew found for this job.</div>';
+        return;
+      }
+
+      $('crewTimeList').innerHTML = crewOptions.map((employee) => `
+        <label class="job-card">
+          <input class="crew-time-check" type="checkbox" value="${esc(employee.id)}" ${employee.is_self ? 'checked' : ''}>
+          <b>${esc(employee.name)}</b>
+          <span class="muted">${esc(employee.role || 'employee')}${employee.is_self ? ' - you' : ''}</span>
+        </label>
+      `).join('');
     }
 
     function renderSchedule() {
@@ -766,6 +862,50 @@
       }).join('');
     }
 
+    function entriesForPeriod(startDate) {
+      const start = isoDate(startDate);
+      const end = isoDate(addDays(startDate, 6));
+      return entries.filter((entry) => entry.work_date >= start && entry.work_date <= end && !entry.deleted_at);
+    }
+
+    function periodSummary(label, startDate) {
+      const periodEntries = entriesForPeriod(startDate);
+      const entryIds = new Set(periodEntries.map((entry) => entry.id));
+      const changes = entryAuditLogs.filter((log) => entryIds.has(log.time_entry_id) && !['created'].includes(log.action_type));
+      const total = periodEntries
+        .filter((entry) => entry.status !== 'rejected')
+        .reduce((sum, entry) => sum + Number(entry.total_hours || 0), 0);
+      const byJob = new Map();
+      for (const entry of periodEntries) {
+        const job = jobs.find((item) => item.id === entry.job_id);
+        const name = job ? moneylessJobName(job) : 'Other / No job';
+        byJob.set(name, (byJob.get(name) || 0) + Number(entry.total_hours || 0));
+      }
+
+      return `
+        <article class="entry-card">
+          <header>
+            <div>
+              <h3>${label}</h3>
+              <span class="muted">${esc(formatDate(isoDate(startDate)))} - ${esc(formatDate(isoDate(addDays(startDate, 6))))}</span>
+            </div>
+            <span class="status approved">${total.toFixed(2)} hrs</span>
+          </header>
+          <details>
+            <summary>Job Summary</summary>
+            ${byJob.size ? Array.from(byJob.entries()).map(([name, hours]) => `<p class="muted"><b>${esc(name)}</b>: ${hours.toFixed(2)} hrs</p>`).join('') : '<p class="muted">No time logged.</p>'}
+          </details>
+          ${changes.length ? `<details><summary>Changes</summary>${changes.map((log) => `<p class="muted">${esc(new Date(log.created_at).toLocaleString())} - ${esc(log.action_type)}${log.reason ? `: ${esc(log.reason)}` : ''}</p>`).join('')}</details>` : ''}
+        </article>
+      `;
+    }
+
+    function renderWeeklySummaries() {
+      const thisStart = payPeriodStart(today());
+      const lastStart = addDays(thisStart, -7);
+      $('weeklySummaries').innerHTML = periodSummary('This Week', thisStart) + periodSummary('Last Week', lastStart);
+    }
+
     function render() {
       $('authCard').classList.toggle('hidden', Boolean(session));
       $('app').classList.toggle('hidden', !session);
@@ -779,6 +919,7 @@
       renderSchedule();
       renderTotals();
       renderEntries();
+      renderWeeklySummaries();
       calculateHours();
     }
 
@@ -792,6 +933,8 @@
       $('timePhotos').value = '';
       $('cancelEditBtn').classList.add('hidden');
       $('jobId').value = '';
+      crewOptions = [];
+      renderCrewTimePanel();
       calculateHours();
     }
 
@@ -807,6 +950,8 @@
       $('notes').value = entry.notes || '';
       $('timePhotos').value = '';
       $('cancelEditBtn').classList.remove('hidden');
+      crewOptions = [];
+      renderCrewTimePanel();
       calculateHours();
       setActiveTab('time');
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -875,6 +1020,37 @@
       return `${files.length} photo${files.length === 1 ? '' : 's'} uploaded${jobId ? ' and attached to the job' : ' to the time entry'}.`;
     }
 
+    function selectedCrewEmployeeIds() {
+      if (!canEnterCrewTime() || !$('jobId').value) return [];
+      return Array.from(document.querySelectorAll('.crew-time-check:checked')).map((input) => input.value);
+    }
+
+    async function saveCrewTimeEntries(payload) {
+      const employeeIds = selectedCrewEmployeeIds();
+      if (!employeeIds.length) return null;
+      const response = await fetch(ADMIN_FUNCTION_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          action: 'save_group_time_entries',
+          employee_ids: employeeIds,
+          job_id: payload.job_id,
+          work_date: payload.work_date,
+          start_time: payload.start_time,
+          end_time: payload.end_time,
+          notes: payload.notes,
+          status: payload.status,
+          device_info: payload.device_info
+        })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.error) throw new Error(result.error || `Crew time save failed (${response.status})`);
+      return result.time_entries || [];
+    }
+
     async function saveTime(status) {
       try {
         const id = $('entryId').value;
@@ -883,15 +1059,23 @@
         let savedEntry;
         let photoStatus = '';
         
-        if (id) {
+        const crewEmployeeIds = selectedCrewEmployeeIds();
+        if (!id && crewEmployeeIds.length) {
+          const savedEntries = await saveCrewTimeEntries(payload);
+          savedEntry = savedEntries[0];
+          if (!savedEntry) throw new Error('No crew time entries were saved.');
+          photoStatus = await uploadTimePhotos(savedEntry, savedEntry.job_id);
+        } else if (id) {
           result = await supa.from('time_entries').update(payload).eq('id', id).select().single();
+          if (result.error) throw result.error;
+          savedEntry = result.data;
+          photoStatus = await uploadTimePhotos(savedEntry, savedEntry.job_id);
         } else {
           result = await supa.from('time_entries').insert(payload).select().single();
+          if (result.error) throw result.error;
+          savedEntry = result.data;
+          photoStatus = await uploadTimePhotos(savedEntry, savedEntry.job_id);
         }
-        if (result.error) throw result.error;
-
-        savedEntry = result.data;
-        photoStatus = await uploadTimePhotos(savedEntry, savedEntry.job_id);
         resetForm();
         await refresh();
         if (photoStatus) setMessage('appMessage', photoStatus);
@@ -959,6 +1143,7 @@
 
     $('submitNowBtn').addEventListener('click', () => saveTime('submitted'));
     $('cancelEditBtn').addEventListener('click', resetForm);
+    $('jobId').addEventListener('change', () => loadCrewOptionsForJob($('jobId').value));
     ['startTime', 'endTime'].forEach((id) => {
       $(id).addEventListener('input', calculateHours);
       $(id).addEventListener('change', () => snapTimeInput(id));
