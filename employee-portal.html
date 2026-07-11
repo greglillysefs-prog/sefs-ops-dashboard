@@ -393,15 +393,11 @@
               <input id="entryId" type="hidden">
               <div class="full">
                 <label>Job</label>
-                <select id="jobId" required></select>
+                <select id="jobId"></select>
               </div>
               <div>
                 <label>Date</label>
                 <input id="workDate" type="date" required>
-              </div>
-              <div>
-                <label>Break Minutes</label>
-                <input id="breakMinutes" type="number" min="0" step="1" value="0">
               </div>
               <div>
                 <label>Start Time</label>
@@ -418,6 +414,10 @@
               <div class="full">
                 <label>Notes</label>
                 <textarea id="notes" placeholder="Crew notes, prep details, delays, or anything the office should know."></textarea>
+              </div>
+              <div class="full">
+                <label>Photos</label>
+                <input id="timePhotos" type="file" accept="image/*" multiple>
               </div>
               <div class="actions full">
                 <button class="primary" type="submit">Save Draft</button>
@@ -480,7 +480,6 @@
     function calculateHours() {
       const start = $('startTime').value;
       const end = $('endTime').value;
-      const breakMinutes = Number($('breakMinutes').value || 0);
       if (!start || !end) {
         $('calculatedHours').textContent = '0.00';
         return 0;
@@ -490,7 +489,6 @@
       const [eh, em] = end.split(':').map(Number);
       let minutes = (eh * 60 + em) - (sh * 60 + sm);
       if (minutes < 0) minutes += 24 * 60;
-      minutes = Math.max(minutes - breakMinutes, 0);
       const hours = Math.round((minutes / 60) * 100) / 100;
       $('calculatedHours').textContent = hours.toFixed(2);
       return hours;
@@ -515,7 +513,7 @@
         work_date: $('workDate').value,
         start_time: $('startTime').value,
         end_time: $('endTime').value,
-        break_minutes: Number($('breakMinutes').value || 0),
+        break_minutes: 0,
         notes: $('notes').value.trim() || null,
         status,
         device_info: deviceInfo(),
@@ -555,12 +553,12 @@
 
     async function loadJobs() {
       const result = await supa
-        .from('employee_job_schedule')
-        .select('*')
-        .order('start_date', { ascending: true })
+        .from('jobs')
+        .select('id, customer, phone, job_name, address, system_type, square_feet, status, start_date, end_date, start_time, end_time, crew, notes, material_notes, floor_scopes')
+        .order('start_date', { ascending: true, nullsFirst: false })
         .order('start_time', { ascending: true });
       if (result.error) throw result.error;
-      jobs = result.data || [];
+      jobs = (result.data || []).filter((job) => !['Complete', 'Lost', 'Canceled'].includes(job.status));
     }
 
     async function loadEntries() {
@@ -588,19 +586,13 @@
     }
 
     function renderJobOptions() {
-      if (!jobs.length) {
-        $('jobId').innerHTML = '<option value="">No assigned jobs available</option>';
-        $('jobId').disabled = true;
-        return;
-      }
-
       $('jobId').disabled = false;
-      $('jobId').innerHTML = jobs.map((job) => `<option value="${job.id}">${esc(moneylessJobName(job))} - ${esc(formatRange(job))}</option>`).join('');
+      $('jobId').innerHTML = `<option value="">Other / No job</option>` + jobs.map((job) => `<option value="${job.id}">${esc(moneylessJobName(job))} - ${esc(formatRange(job))}</option>`).join('');
     }
 
     function renderSchedule() {
       if (!jobs.length) {
-        $('scheduleList').innerHTML = '<div class="muted">No assigned jobs yet.</div>';
+        $('scheduleList').innerHTML = '<div class="muted">No active jobs found. Time can still be entered as Other / No job.</div>';
         return;
       }
 
@@ -653,7 +645,7 @@
             </header>
             <div class="facts">
               <div class="fact"><b>Total</b>${Number(entry.total_hours || 0).toFixed(2)} hours</div>
-              <div class="fact"><b>Break</b>${Number(entry.break_minutes || 0)} minutes</div>
+              <div class="fact"><b>Job</b>${esc(job ? moneylessJobName(job) : 'Other / No job')}</div>
             </div>
             ${entry.notes ? `<p class="muted">${esc(entry.notes)}</p>` : ''}
             ${entry.rejection_reason ? `<p class="muted">Rejected: ${esc(entry.rejection_reason)}</p>` : ''}
@@ -688,10 +680,10 @@
       $('workDate').value = today();
       $('startTime').value = '';
       $('endTime').value = '';
-      $('breakMinutes').value = '0';
       $('notes').value = '';
+      $('timePhotos').value = '';
       $('cancelEditBtn').classList.add('hidden');
-      if (jobs[0]) $('jobId').value = jobs[0].id;
+      $('jobId').value = '';
       calculateHours();
     }
 
@@ -704,8 +696,8 @@
       $('workDate').value = entry.work_date || today();
       $('startTime').value = String(entry.start_time || '').slice(0, 5);
       $('endTime').value = String(entry.end_time || '').slice(0, 5);
-      $('breakMinutes').value = Number(entry.break_minutes || 0);
       $('notes').value = entry.notes || '';
+      $('timePhotos').value = '';
       $('cancelEditBtn').classList.remove('hidden');
       calculateHours();
       setActiveTab('time');
@@ -740,16 +732,61 @@
       }
     };
 
+    async function uploadTimePhotos(entry, jobId) {
+      const input = $('timePhotos');
+      if (!input?.files?.length) return '';
+
+      const files = Array.from(input.files);
+      const targetType = jobId ? 'job' : 'time_entry';
+      const targetId = jobId || entry.id;
+      const safeName = (name) => name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const uploadedBy = profile?.full_name || session?.user?.email || 'employee-portal';
+
+      for (const file of files) {
+        const path = `${targetType}/${targetId}/time-entry/${entry.id}/${Date.now()}_${safeName(file.name)}`;
+        const upload = await supa.storage.from('sefs-photos').upload(path, file, { upsert: false });
+        if (upload.error) throw new Error(upload.error.message);
+
+        const publicUrl = supa.storage.from('sefs-photos').getPublicUrl(path).data.publicUrl;
+        const caption = jobId
+          ? `Time entry photo - ${formatDate(entry.work_date)}`
+          : `Other time entry photo - ${formatDate(entry.work_date)}`;
+        const saved = await supa.from('photo_attachments').insert({
+          entity_type: targetType,
+          entity_id: targetId,
+          file_name: file.name,
+          storage_path: path,
+          public_url: publicUrl,
+          caption,
+          category: 'time-entry',
+          uploaded_by: uploadedBy
+        });
+        if (saved.error) throw new Error(saved.error.message);
+      }
+
+      return `${files.length} photo${files.length === 1 ? '' : 's'} uploaded${jobId ? ' and attached to the job' : ' to the time entry'}.`;
+    }
+
     async function saveTime(status) {
       try {
         const id = $('entryId').value;
         const payload = timePayload(status);
-        const result = id
-          ? await supa.from('time_entries').update(payload).eq('id', id)
-          : await supa.from('time_entries').insert(payload);
+        let result;
+        let savedEntry;
+        let photoStatus = '';
+        
+        if (id) {
+          result = await supa.from('time_entries').update(payload).eq('id', id).select().single();
+        } else {
+          result = await supa.from('time_entries').insert(payload).select().single();
+        }
         if (result.error) throw result.error;
+
+        savedEntry = result.data;
+        photoStatus = await uploadTimePhotos(savedEntry, savedEntry.job_id);
         resetForm();
         await refresh();
+        if (photoStatus) setMessage('appMessage', photoStatus);
         setActiveTab('entries');
       } catch (error) {
         setMessage('appMessage', error.message, true);
@@ -799,7 +836,7 @@
 
     $('submitNowBtn').addEventListener('click', () => saveTime('submitted'));
     $('cancelEditBtn').addEventListener('click', resetForm);
-    ['startTime', 'endTime', 'breakMinutes'].forEach((id) => $(id).addEventListener('input', calculateHours));
+    ['startTime', 'endTime'].forEach((id) => $(id).addEventListener('input', calculateHours));
     document.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => setActiveTab(button.dataset.tab)));
 
     supa.auth.onAuthStateChange(async (_event, nextSession) => {
