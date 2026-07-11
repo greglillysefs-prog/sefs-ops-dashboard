@@ -360,8 +360,10 @@
       <div id="authMessage" class="notice hidden"></div>
       <form id="loginForm" class="form-grid">
         <div class="full">
-          <label>Email</label>
-          <input id="email" type="email" autocomplete="email" required>
+          <label>Login Name</label>
+          <select id="loginEmail" required>
+            <option value="">Loading logins...</option>
+          </select>
         </div>
         <div class="full">
           <label>Password</label>
@@ -448,6 +450,7 @@
   <script>
     const SB_URL = 'https://wjfewzutxvjbbnnvbylo.supabase.co';
     const SB_KEY = 'sb_publishable_YWRQJz8q1lDdSz_304AUyA_YskIiTBT';
+    const ADMIN_FUNCTION_URL = `${SB_URL}/functions/v1/employee-admin`;
     const supa = supabase.createClient(SB_URL, SB_KEY);
 
     let session = null;
@@ -455,6 +458,7 @@
     let jobs = [];
     let entries = [];
     let authRefreshTimer = null;
+    let loginOptions = [];
 
     const $ = (id) => document.getElementById(id);
     const today = () => new Date().toISOString().slice(0, 10);
@@ -550,7 +554,7 @@
     }
 
     async function signIn(email, password) {
-      if (!email) throw new Error('Enter your email.');
+      if (!email) throw new Error('Choose a login name.');
       if (!password) throw new Error('Enter your password.');
       const result = await withTimeout(
         supa.auth.signInWithPassword({ email, password }),
@@ -567,6 +571,7 @@
     }
 
     async function sendMagicLink(email) {
+      if (!email) throw new Error('Choose a login name.');
       const result = await withTimeout(
         supa.auth.signInWithOtp({
           email,
@@ -575,6 +580,33 @@
         'Magic link request timed out. Check the connection and try again.'
       );
       if (result.error) throw result.error;
+    }
+
+    async function loadLoginOptions() {
+      try {
+        const response = await fetch(ADMIN_FUNCTION_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'login_options' })
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload.error) throw new Error(payload.error || `Could not load logins (${response.status})`);
+        loginOptions = payload.options || [];
+        renderLoginOptions();
+      } catch (error) {
+        $('loginEmail').innerHTML = '<option value="">Logins unavailable</option>';
+        setMessage('authMessage', `Could not load login names: ${error.message}`, true);
+      }
+    }
+
+    function renderLoginOptions() {
+      if (!loginOptions.length) {
+        $('loginEmail').innerHTML = '<option value="">No active logins available</option>';
+        return;
+      }
+      $('loginEmail').innerHTML = '<option value="">Choose login...</option>' + loginOptions
+        .map((option) => `<option value="${esc(option.email)}">${esc(option.name)}${option.role ? ` - ${esc(option.role)}` : ''}</option>`)
+        .join('');
     }
 
     async function loadProfile() {
@@ -853,7 +885,7 @@
       setMessage('authMessage', 'Signing in...');
       setAuthBusy(true);
       try {
-        await signIn($('email').value.trim(), $('password').value);
+        await signIn($('loginEmail').value, $('password').value);
         setMessage('authMessage', '');
       } catch (error) {
         setMessage('authMessage', error.message, true);
@@ -866,7 +898,7 @@
       setMessage('authMessage', 'Sending magic link...');
       setAuthBusy(true);
       try {
-        await sendMagicLink($('email').value.trim());
+        await sendMagicLink($('loginEmail').value);
         setMessage('authMessage', 'Magic link sent. Check your email on this device.');
       } catch (error) {
         setMessage('authMessage', error.message, true);
@@ -915,6 +947,7 @@
 
     (async function init() {
       $('workDate').value = today();
+      await loadLoginOptions();
       const result = await supa.auth.getSession();
       session = result.data.session;
       if (session) {

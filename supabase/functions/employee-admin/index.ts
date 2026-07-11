@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-type AdminAction = "list" | "upsert" | "deactivate" | "remove_employee" | "update_time_entry";
+type AdminAction = "login_options" | "list" | "upsert" | "deactivate" | "remove_employee" | "update_time_entry";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -36,10 +36,6 @@ Deno.serve(async (req) => {
     return json({ error: "Employee admin function is missing required environment variables." }, 500);
   }
 
-  if (req.headers.get("x-sefs-admin-pin") !== adminPin) {
-    return json({ error: "Invalid employee admin PIN." }, 401);
-  }
-
   const supa = createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
@@ -54,6 +50,40 @@ Deno.serve(async (req) => {
   const action = cleanText(payload.action) as AdminAction;
 
   try {
+    if (action === "login_options") {
+      const [{ data: profiles, error: profilesError }, usersResult] = await Promise.all([
+        supa
+          .from("profiles")
+          .select("id, full_name, role, active")
+          .eq("active", true)
+          .order("full_name"),
+        supa.auth.admin.listUsers({ page: 1, perPage: 1000 }),
+      ]);
+
+      if (profilesError) throw profilesError;
+      if (usersResult.error) throw usersResult.error;
+
+      const usersById = new Map((usersResult.data.users || []).map((user) => [user.id, user]));
+      const options = (profiles || [])
+        .map((profile) => {
+          const user = usersById.get(profile.id);
+          if (!user?.email) return null;
+          return {
+            name: profile.full_name || user.email,
+            email: user.email,
+            role: profile.role,
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || "")));
+
+      return json({ options });
+    }
+
+    if (req.headers.get("x-sefs-admin-pin") !== adminPin) {
+      return json({ error: "Invalid employee admin PIN." }, 401);
+    }
+
     let adminActorUserId: string | null = null;
     if (action === "remove_employee") {
       const token = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
