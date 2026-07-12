@@ -1408,9 +1408,21 @@
       const noteEntries = payableEntries
         .filter((entry) => entry.notes)
         .sort((a, b) => String(a.work_date || '').localeCompare(String(b.work_date || '')) || employeeName(a.employee_id).localeCompare(employeeName(b.employee_id)));
-      const notesByDay = Object.fromEntries(days.map((day) => [day.iso, []]));
+      const noteGroups = new Map();
       for (const entry of noteEntries) {
-        if (notesByDay[entry.work_date]) notesByDay[entry.work_date].push(entry);
+        const key = reviewGroupKey(entry);
+        if (!noteGroups.has(key)) noteGroups.set(key, []);
+        noteGroups.get(key).push(entry);
+      }
+      const notesByDay = Object.fromEntries(days.map((day) => [day.iso, []]));
+      const groupedNotes = Array.from(noteGroups.values())
+        .map((items) => ({
+          entry: items[0],
+          employees: items.map((entry) => employeeName(entry.employee_id)).sort((a, b) => a.localeCompare(b))
+        }))
+        .sort((a, b) => String(a.entry.work_date || '').localeCompare(String(b.entry.work_date || '')) || String(a.entry.start_time || '').localeCompare(String(b.entry.start_time || '')));
+      for (const group of groupedNotes) {
+        if (notesByDay[group.entry.work_date]) notesByDay[group.entry.work_date].push(group);
       }
 
       return `
@@ -1456,11 +1468,11 @@
                   <td class="employee-col">Notes</td>
                   ${days.map((day) => `
                     <td>
-                      ${notesByDay[day.iso].length ? notesByDay[day.iso].map((entry) => `
+                      ${notesByDay[day.iso].length ? notesByDay[day.iso].map((group) => `
                         <div class="timesheet-note">
-                          <b>${esc(employeeName(entry.employee_id))}</b><br>
-                          <span class="muted">${esc(jobName(entry.job_id))} - ${esc(formatTime(entry.start_time))} to ${esc(formatTime(entry.end_time))}</span><br>
-                          ${esc(entry.notes)}
+                          <b>${esc(groupLabel(group))}</b><br>
+                          <span class="muted">${esc(jobName(group.entry.job_id))} - ${esc(formatTime(group.entry.start_time))} to ${esc(formatTime(group.entry.end_time))}</span><br>
+                          ${esc(group.entry.notes)}
                         </div>
                       `).join('') : '<span class="muted">No notes.</span>'}
                     </td>
