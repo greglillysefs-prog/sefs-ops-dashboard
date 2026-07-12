@@ -1136,7 +1136,7 @@
     function ensureCrewOptionsForSelectedJob() {
       if (!canEnterCrewTime()) return;
       const jobId = $('jobId').value || '';
-      if (lastCrewOptionJobId === jobId) return;
+      if (lastCrewOptionJobId === jobId && !$('crewTimePanel').classList.contains('hidden')) return;
       lastCrewOptionJobId = jobId;
       loadCrewOptionsForJob(jobId);
     }
@@ -1658,6 +1658,7 @@
       $('jobId').value = '';
       crewOptions = [];
       selectedCrewIds = new Set();
+      lastCrewOptionJobId = null;
       renderCrewTimePanel();
       calculateHours();
     }
@@ -1676,6 +1677,7 @@
       $('cancelEditBtn').classList.remove('hidden');
       crewOptions = [];
       selectedCrewIds = new Set();
+      lastCrewOptionJobId = null;
       renderCrewTimePanel();
       calculateHours();
       setActiveTab('time');
