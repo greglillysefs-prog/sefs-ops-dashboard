@@ -456,6 +456,59 @@
             <div id="totals" class="totals"></div>
             <div id="entryList" class="entry-list"></div>
           </div>
+
+          <div id="managerReviewCard" class="card hidden">
+            <h2>Time Review</h2>
+            <form id="managerTimeForm" class="form-grid hidden">
+              <input id="managerEntryId" type="hidden">
+              <div>
+                <label>Employee</label>
+                <input id="managerEntryEmployee" disabled>
+              </div>
+              <div>
+                <label>Job</label>
+                <input id="managerEntryJob" disabled>
+              </div>
+              <div>
+                <label>Date</label>
+                <input id="managerEntryDate" type="date" required>
+              </div>
+              <div>
+                <label>Status</label>
+                <select id="managerEntryStatus">
+                  <option value="draft">Draft</option>
+                  <option value="submitted">Submitted</option>
+                  <option value="approved">Approved</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </div>
+              <div>
+                <label>Start Time</label>
+                <input id="managerEntryStart" type="time" step="900" required>
+              </div>
+              <div>
+                <label>End Time</label>
+                <input id="managerEntryEnd" type="time" step="900" required>
+              </div>
+              <div class="full">
+                <label>Notes</label>
+                <textarea id="managerEntryNotes"></textarea>
+              </div>
+              <div class="full">
+                <label>Rejection Reason</label>
+                <input id="managerEntryRejectReason">
+              </div>
+              <div class="full">
+                <label>Change Reason</label>
+                <input id="managerEntryChangeReason" placeholder="Example: corrected time after review">
+              </div>
+              <div class="actions full">
+                <button class="primary" type="submit">Save Time Entry</button>
+                <button id="cancelManagerEditBtn" class="ghost" type="button">Cancel</button>
+              </div>
+            </form>
+            <div id="managerTimeList" class="entry-list"></div>
+          </div>
         </section>
 
         <aside id="timePanel" class="mobile-panel">
@@ -523,6 +576,8 @@
     let scheduleJobs = [];
     let entries = [];
     let entryAuditLogs = [];
+    let managerEntries = [];
+    let managerProfiles = [];
     let crewOptions = [];
     let selectedCrewIds = new Set();
     let authRefreshTimer = null;
@@ -533,6 +588,7 @@
     const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
     const moneylessJobName = (job) => [job.customer, job.system_type].filter(Boolean).join(' - ') || job.job_name || 'Scheduled job';
     const canEnterCrewTime = () => ['crew_lead', 'manager', 'admin'].includes(profile?.role);
+    const canReviewTime = () => ['manager', 'admin'].includes(profile?.role);
 
     function setMessage(id, text, isError = false) {
       const el = $(id);
@@ -675,6 +731,8 @@
       scheduleJobs = [];
       entries = [];
       entryAuditLogs = [];
+      managerEntries = [];
+      managerProfiles = [];
       crewOptions = [];
       selectedCrewIds = new Set();
       resetForm();
@@ -787,6 +845,32 @@
       entryAuditLogs = result.data || [];
     }
 
+    async function loadManagerReviewData() {
+      if (!canReviewTime()) {
+        managerEntries = [];
+        managerProfiles = [];
+        return;
+      }
+
+      const [{ data: timeData, error: timeError }, { data: profileData, error: profileError }] = await Promise.all([
+        supa
+          .from('time_entries')
+          .select('*')
+          .is('deleted_at', null)
+          .order('work_date', { ascending: false })
+          .order('created_at', { ascending: false })
+          .limit(150),
+        supa
+          .from('profiles')
+          .select('id, employee_id, role, full_name, active')
+          .order('full_name')
+      ]);
+      if (timeError) throw timeError;
+      if (profileError) throw profileError;
+      managerEntries = timeData || [];
+      managerProfiles = profileData || [];
+    }
+
     async function loadCrewOptionsForJob(jobId) {
       crewOptions = [];
       selectedCrewIds = new Set();
@@ -819,6 +903,7 @@
         if (profile?.active) {
           await Promise.all([loadJobs(), loadScheduleJobs(), loadEntries()]);
           await loadEntryAuditLogs();
+          await loadManagerReviewData();
         }
         render();
       } catch (error) {
@@ -940,6 +1025,62 @@
       }).join('');
     }
 
+    function employeeName(employeeId) {
+      const item = managerProfiles.find((profileItem) => profileItem.employee_id === employeeId);
+      return item?.full_name || 'Employee';
+    }
+
+    function jobName(jobId) {
+      const job = jobs.find((item) => item.id === jobId);
+      return job ? moneylessJobName(job) : 'Other / No job';
+    }
+
+    function renderManagerReview() {
+      $('managerReviewCard').classList.toggle('hidden', !canReviewTime());
+      if (!canReviewTime()) {
+        $('managerTimeList').innerHTML = '';
+        $('managerTimeForm').classList.add('hidden');
+        return;
+      }
+
+      if (!managerEntries.length) {
+        $('managerTimeList').innerHTML = '<div class="muted">No time entries to review yet.</div>';
+        return;
+      }
+
+      const sortedEntries = [...managerEntries].sort((a, b) => {
+        const statusRank = { submitted: 0, rejected: 1, draft: 2, approved: 3 };
+        const aRank = statusRank[a.status] ?? 9;
+        const bRank = statusRank[b.status] ?? 9;
+        if (aRank !== bRank) return aRank - bRank;
+        return String(b.work_date || '').localeCompare(String(a.work_date || ''));
+      });
+
+      $('managerTimeList').innerHTML = sortedEntries.map((entry) => `
+        <article class="entry-card">
+          <header>
+            <div>
+              <h3>${esc(employeeName(entry.employee_id))}</h3>
+              <span class="muted">${esc(jobName(entry.job_id))}</span>
+            </div>
+            <span class="status ${statusClass(entry.status)}">${esc(entry.status || 'draft')}</span>
+          </header>
+          <div class="facts">
+            <div class="fact"><b>Date</b>${esc(formatDate(entry.work_date))}</div>
+            <div class="fact"><b>Time</b>${esc(formatTime(entry.start_time))} - ${esc(formatTime(entry.end_time))}</div>
+            <div class="fact"><b>Total</b>${Number(entry.total_hours || 0).toFixed(2)} hours</div>
+            <div class="fact"><b>Submitted</b>${entry.submitted_at ? esc(new Date(entry.submitted_at).toLocaleDateString()) : '-'}</div>
+          </div>
+          ${entry.notes ? `<p class="muted">${esc(entry.notes)}</p>` : ''}
+          ${entry.rejection_reason ? `<p class="muted">Rejected: ${esc(entry.rejection_reason)}</p>` : ''}
+          <div class="actions">
+            ${entry.status !== 'approved' ? `<button class="primary" type="button" onclick="approveManagerEntry('${esc(entry.id)}')">Approve</button>` : ''}
+            <button type="button" onclick="editManagerEntry('${esc(entry.id)}')">Edit</button>
+          </div>
+        </article>
+      `).join('');
+    }
+
     function entriesForPeriod(startDate) {
       const start = isoDate(startDate);
       const end = isoDate(addDays(startDate, 6));
@@ -997,6 +1138,7 @@
       renderSchedule();
       renderTotals();
       renderEntries();
+      renderManagerReview();
       renderWeeklySummaries();
       calculateHours();
     }
@@ -1059,6 +1201,53 @@
       try {
         const result = await supa.from('time_entries').delete().eq('id', id);
         if (result.error) throw result.error;
+        await refresh();
+      } catch (error) {
+        setMessage('appMessage', error.message, true);
+      }
+    };
+
+    window.editManagerEntry = function editManagerEntry(id) {
+      const entry = managerEntries.find((item) => item.id === id);
+      if (!entry) return;
+      $('managerEntryId').value = entry.id;
+      $('managerEntryEmployee').value = employeeName(entry.employee_id);
+      $('managerEntryJob').value = jobName(entry.job_id);
+      $('managerEntryDate').value = entry.work_date || today();
+      $('managerEntryStatus').value = entry.status || 'draft';
+      $('managerEntryStart').value = normalizeQuarterTime(entry.start_time);
+      $('managerEntryEnd').value = normalizeQuarterTime(entry.end_time);
+      $('managerEntryNotes').value = entry.notes || '';
+      $('managerEntryRejectReason').value = entry.rejection_reason || '';
+      $('managerEntryChangeReason').value = '';
+      $('managerTimeForm').classList.remove('hidden');
+      $('managerTimeForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+
+    async function updateManagerTimeEntry(id, updates) {
+      if (!canReviewTime()) throw new Error('Manager or admin access is required.');
+      const result = await supa
+        .from('time_entries')
+        .update({
+          ...updates,
+          break_minutes: 0,
+          device_info: deviceInfo()
+        })
+        .eq('id', id)
+        .select()
+        .single();
+      if (result.error) throw result.error;
+      return result.data;
+    }
+
+    window.approveManagerEntry = async function approveManagerEntry(id) {
+      try {
+        await updateManagerTimeEntry(id, {
+          status: 'approved',
+          rejection_reason: null,
+          change_reason: `Approved from employee portal by ${profile?.full_name || session?.user?.email || 'manager'}`
+        });
+        setMessage('appMessage', 'Time entry approved.');
         await refresh();
       } catch (error) {
         setMessage('appMessage', error.message, true);
@@ -1236,8 +1425,31 @@
       saveTime('draft');
     });
 
+    $('managerTimeForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      try {
+        const id = $('managerEntryId').value;
+        const status = $('managerEntryStatus').value;
+        await updateManagerTimeEntry(id, {
+          work_date: $('managerEntryDate').value,
+          start_time: $('managerEntryStart').value,
+          end_time: $('managerEntryEnd').value,
+          notes: $('managerEntryNotes').value.trim() || null,
+          status,
+          rejection_reason: status === 'rejected' ? $('managerEntryRejectReason').value.trim() || null : null,
+          change_reason: $('managerEntryChangeReason').value.trim() || `Manager edit from employee portal by ${profile?.full_name || session?.user?.email || 'manager'}`
+        });
+        $('managerTimeForm').classList.add('hidden');
+        setMessage('appMessage', 'Time entry saved and logged.');
+        await refresh();
+      } catch (error) {
+        setMessage('appMessage', error.message, true);
+      }
+    });
+
     $('submitNowBtn').addEventListener('click', () => saveTime('submitted'));
     $('cancelEditBtn').addEventListener('click', resetForm);
+    $('cancelManagerEditBtn').addEventListener('click', () => $('managerTimeForm').classList.add('hidden'));
     $('jobId').addEventListener('change', () => loadCrewOptionsForJob($('jobId').value));
     ['startTime', 'endTime'].forEach((id) => {
       $(id).addEventListener('input', calculateHours);
@@ -1252,6 +1464,8 @@
       jobs = [];
       scheduleJobs = [];
       entries = [];
+      managerEntries = [];
+      managerProfiles = [];
       clearTimeout(authRefreshTimer);
       if (session) {
         authRefreshTimer = setTimeout(async () => {
