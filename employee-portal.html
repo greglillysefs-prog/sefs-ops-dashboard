@@ -137,12 +137,17 @@
       align-items: start;
     }
 
+    .grid > * {
+      min-width: 0;
+    }
+
     .card {
       background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.015));
       border: 1px solid var(--line);
       border-radius: 8px;
       padding: 16px;
       box-shadow: 0 14px 40px rgba(0,0,0,.28);
+      min-width: 0;
     }
 
     .card + .card {
@@ -293,6 +298,7 @@
       background: rgba(0,0,0,.28);
       border-radius: 8px;
       padding: 14px;
+      min-width: 0;
     }
 
     .job-card header, .entry-card header {
@@ -324,6 +330,7 @@
     }
 
     .timesheet-wrap {
+      max-width: 100%;
       overflow-x: auto;
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -394,11 +401,40 @@
       margin-top: 12px;
     }
 
+    .day-notes-grid {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(150px, 1fr));
+      gap: 8px;
+      margin-top: 12px;
+      max-width: 100%;
+      overflow-x: auto;
+      padding-bottom: 2px;
+    }
+
+    .day-note {
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 8px;
+      padding: 10px;
+      background: rgba(0,0,0,.2);
+      min-width: 150px;
+    }
+
+    .day-note h4 {
+      margin: 0 0 8px;
+      color: var(--orange2);
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
     .timesheet-note {
       border: 1px solid rgba(255,255,255,.12);
       border-radius: 8px;
       padding: 10px;
       background: rgba(0,0,0,.2);
+    }
+
+    .timesheet-note + .timesheet-note {
+      margin-top: 8px;
     }
 
     .hours {
@@ -1371,8 +1407,12 @@
       }
 
       const noteEntries = payableEntries
-        .filter((entry) => entry.notes || entry.job_id)
+        .filter((entry) => entry.notes)
         .sort((a, b) => String(a.work_date || '').localeCompare(String(b.work_date || '')) || employeeName(a.employee_id).localeCompare(employeeName(b.employee_id)));
+      const notesByDay = Object.fromEntries(days.map((day) => [day.iso, []]));
+      for (const entry of noteEntries) {
+        if (notesByDay[entry.work_date]) notesByDay[entry.work_date].push(entry);
+      }
 
       return `
         <article class="entry-card">
@@ -1416,18 +1456,23 @@
               </tfoot>
             </table>
           </div>
-          <details>
-            <summary>Job Descriptions and Notes</summary>
-            <div class="timesheet-notes">
-              ${noteEntries.length ? noteEntries.map((entry) => `
-                <div class="timesheet-note">
-                  <b>${esc(formatDate(entry.work_date))} - ${esc(employeeName(entry.employee_id))}</b>
-                  <div class="muted">${esc(jobName(entry.job_id))} - ${esc(formatTime(entry.start_time))} to ${esc(formatTime(entry.end_time))} - ${Number(entry.total_hours || 0).toFixed(2)} hrs</div>
-                  ${entry.notes ? `<div>${esc(entry.notes)}</div>` : ''}
+          <section class="timesheet-notes">
+            <h3>Daily Notes</h3>
+            <div class="day-notes-grid">
+              ${days.map((day) => `
+                <div class="day-note">
+                  <h4>${esc(day.label)} ${esc(day.dateLabel)}</h4>
+                  ${notesByDay[day.iso].length ? notesByDay[day.iso].map((entry) => `
+                    <div class="timesheet-note">
+                      <b>${esc(employeeName(entry.employee_id))}</b>
+                      <div class="muted">${esc(jobName(entry.job_id))} - ${esc(formatTime(entry.start_time))} to ${esc(formatTime(entry.end_time))} - ${Number(entry.total_hours || 0).toFixed(2)} hrs</div>
+                      <div>${esc(entry.notes)}</div>
+                    </div>
+                  `).join('') : '<p class="muted">No notes.</p>'}
                 </div>
-              `).join('') : '<p class="muted">No notes for this pay period.</p>'}
+              `).join('')}
             </div>
-          </details>
+          </section>
           <details>
             <summary>Status Summary</summary>
             ${byStatus.size ? Array.from(byStatus.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([status, hours]) => `<p class="muted"><b>${esc(status)}</b>: ${hours.toFixed(2)} hrs</p>`).join('') : '<p class="muted">No status totals.</p>'}
