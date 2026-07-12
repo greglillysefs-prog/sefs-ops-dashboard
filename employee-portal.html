@@ -559,6 +559,7 @@
           </div>
           <div class="card">
             <h2>Pay Periods</h2>
+            <div id="payPeriodControls" class="full"></div>
             <div id="weeklySummaries" class="entry-list"></div>
           </div>
         </aside>
@@ -582,6 +583,7 @@
     let managerProfiles = [];
     let managerEmployees = [];
     let managerReviewView = 'pending';
+    let selectedPayPeriodStart = '';
     let crewOptions = [];
     let selectedCrewIds = new Set();
     let authRefreshTimer = null;
@@ -1096,19 +1098,25 @@
 
       const groups = managerTimeGroups();
       const approvedGroups = groups.filter((group) => group.entry.status === 'approved');
-      const pendingGroups = groups.filter((group) => group.entry.status !== 'approved');
-      const visibleGroups = managerReviewView === 'approved' ? approvedGroups : pendingGroups;
+      const rejectedGroups = groups.filter((group) => group.entry.status === 'rejected');
+      const pendingGroups = groups.filter((group) => !['approved', 'rejected'].includes(group.entry.status));
+      const visibleGroups = managerReviewView === 'approved'
+        ? approvedGroups
+        : managerReviewView === 'rejected'
+          ? rejectedGroups
+          : pendingGroups;
 
       $('managerReviewMode').innerHTML = `
         <button class="${managerReviewView === 'pending' ? 'primary' : ''}" type="button" onclick="setManagerReviewView('pending')">Pending Review (${pendingGroups.length})</button>
         <button class="${managerReviewView === 'approved' ? 'primary' : ''}" type="button" onclick="setManagerReviewView('approved')">Approved Time (${approvedGroups.length})</button>
+        <button class="${managerReviewView === 'rejected' ? 'primary' : ''}" type="button" onclick="setManagerReviewView('rejected')">Rejected Time (${rejectedGroups.length})</button>
       `;
-      $('managerReviewFooter').innerHTML = managerReviewView === 'approved'
+      $('managerReviewFooter').innerHTML = managerReviewView !== 'pending'
         ? '<button type="button" onclick="setManagerReviewView(\'pending\')">Back to Pending Review</button>'
-        : '<button type="button" onclick="setManagerReviewView(\'approved\')">View Approved Time</button>';
+        : '<button type="button" onclick="setManagerReviewView(\'approved\')">View Approved Time</button><button type="button" onclick="setManagerReviewView(\'rejected\')">View Rejected Time</button>';
 
       if (!visibleGroups.length) {
-        $('managerTimeList').innerHTML = `<div class="muted">${managerReviewView === 'approved' ? 'No approved time entries yet.' : 'No pending time entries to review.'}</div>`;
+        $('managerTimeList').innerHTML = `<div class="muted">${managerReviewView === 'approved' ? 'No approved time entries yet.' : managerReviewView === 'rejected' ? 'No rejected time entries.' : 'No pending time entries to review.'}</div>`;
         return;
       }
 
@@ -1151,7 +1159,7 @@
     }
 
     window.setManagerReviewView = function setManagerReviewView(view) {
-      managerReviewView = view === 'approved' ? 'approved' : 'pending';
+      managerReviewView = ['approved', 'rejected'].includes(view) ? view : 'pending';
       renderManagerReview();
     };
 
@@ -1159,6 +1167,10 @@
       const start = isoDate(startDate);
       const end = isoDate(addDays(startDate, 6));
       return entries.filter((entry) => entry.work_date >= start && entry.work_date <= end && !entry.deleted_at);
+    }
+
+    function periodRangeLabel(startDate) {
+      return `${formatDate(isoDate(startDate))} - ${formatDate(isoDate(addDays(startDate, 6)))}`;
     }
 
     function periodSummary(label, startDate) {
@@ -1180,7 +1192,7 @@
           <header>
             <div>
               <h3>${label}</h3>
-              <span class="muted">${esc(formatDate(isoDate(startDate)))} - ${esc(formatDate(isoDate(addDays(startDate, 6))))}</span>
+              <span class="muted">${esc(periodRangeLabel(startDate))}</span>
             </div>
             <span class="status approved">${total.toFixed(2)} hrs</span>
           </header>
@@ -1193,11 +1205,96 @@
       `;
     }
 
+    function payPeriodStartOptions() {
+      const starts = new Set();
+      const thisStart = payPeriodStart(today());
+      for (let i = 0; i < 12; i += 1) {
+        starts.add(isoDate(addDays(thisStart, -7 * i)));
+      }
+      for (const entry of managerEntries) {
+        if (entry.work_date) starts.add(isoDate(payPeriodStart(entry.work_date)));
+      }
+      return Array.from(starts).sort((a, b) => b.localeCompare(a));
+    }
+
+    function renderPayPeriodControls(options) {
+      if (!canReviewTime()) {
+        $('payPeriodControls').innerHTML = '';
+        return;
+      }
+      if (!selectedPayPeriodStart || !options.includes(selectedPayPeriodStart)) {
+        selectedPayPeriodStart = options[0] || isoDate(payPeriodStart(today()));
+      }
+      $('payPeriodControls').innerHTML = `
+        <label for="payPeriodSelect">Pay Period</label>
+        <select id="payPeriodSelect" onchange="setPayPeriodStart(this.value)">
+          ${options.map((start) => `<option value="${esc(start)}" ${start === selectedPayPeriodStart ? 'selected' : ''}>${esc(periodRangeLabel(dateOnly(start)))}</option>`).join('')}
+        </select>
+      `;
+    }
+
+    function managerPeriodSummary() {
+      const options = payPeriodStartOptions();
+      renderPayPeriodControls(options);
+      const startDate = dateOnly(selectedPayPeriodStart || options[0] || today());
+      const start = isoDate(startDate);
+      const end = isoDate(addDays(startDate, 6));
+      const periodEntries = managerEntries.filter((entry) => entry.work_date >= start && entry.work_date <= end && !entry.deleted_at);
+      const payableEntries = periodEntries.filter((entry) => entry.status !== 'rejected');
+      const total = payableEntries.reduce((sum, entry) => sum + Number(entry.total_hours || 0), 0);
+      const byEmployee = new Map();
+      const byJob = new Map();
+      const byStatus = new Map();
+
+      for (const entry of payableEntries) {
+        const employee = employeeName(entry.employee_id);
+        const job = jobName(entry.job_id);
+        byEmployee.set(employee, (byEmployee.get(employee) || 0) + Number(entry.total_hours || 0));
+        byJob.set(job, (byJob.get(job) || 0) + Number(entry.total_hours || 0));
+        byStatus.set(entry.status || 'draft', (byStatus.get(entry.status || 'draft') || 0) + Number(entry.total_hours || 0));
+      }
+
+      return `
+        <article class="entry-card">
+          <header>
+            <div>
+              <h3>All Employees</h3>
+              <span class="muted">${esc(periodRangeLabel(startDate))}</span>
+            </div>
+            <span class="status approved">${total.toFixed(2)} hrs</span>
+          </header>
+          <details open>
+            <summary>Employee Summary</summary>
+            ${byEmployee.size ? Array.from(byEmployee.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([name, hours]) => `<p class="muted"><b>${esc(name)}</b>: ${hours.toFixed(2)} hrs</p>`).join('') : '<p class="muted">No payable time logged.</p>'}
+          </details>
+          <details>
+            <summary>Job Summary</summary>
+            ${byJob.size ? Array.from(byJob.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([name, hours]) => `<p class="muted"><b>${esc(name)}</b>: ${hours.toFixed(2)} hrs</p>`).join('') : '<p class="muted">No job time logged.</p>'}
+          </details>
+          <details>
+            <summary>Status Summary</summary>
+            ${byStatus.size ? Array.from(byStatus.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([status, hours]) => `<p class="muted"><b>${esc(status)}</b>: ${hours.toFixed(2)} hrs</p>`).join('') : '<p class="muted">No status totals.</p>'}
+          </details>
+          ${periodEntries.some((entry) => entry.status === 'rejected') ? '<p class="muted">Rejected time is excluded from the payable total.</p>' : ''}
+        </article>
+      `;
+    }
+
     function renderWeeklySummaries() {
+      if (canReviewTime()) {
+        $('weeklySummaries').innerHTML = managerPeriodSummary();
+        return;
+      }
+      $('payPeriodControls').innerHTML = '';
       const thisStart = payPeriodStart(today());
       const lastStart = addDays(thisStart, -7);
       $('weeklySummaries').innerHTML = periodSummary('This Week', thisStart) + periodSummary('Last Week', lastStart);
     }
+
+    window.setPayPeriodStart = function setPayPeriodStart(start) {
+      selectedPayPeriodStart = start;
+      renderWeeklySummaries();
+    };
 
     function render() {
       $('authCard').classList.toggle('hidden', Boolean(session));
