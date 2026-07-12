@@ -1006,7 +1006,7 @@
       crewOptions = [];
       selectedCrewIds = new Set();
       renderCrewTimePanel();
-      if (!jobId || !canEnterCrewTime()) return;
+      if (!canEnterCrewTime()) return;
 
       try {
         const response = await fetch(ADMIN_FUNCTION_URL, {
@@ -1048,7 +1048,7 @@
     }
 
     function renderCrewTimePanel() {
-      if (!canEnterCrewTime() || !$('jobId').value) {
+      if (!canEnterCrewTime()) {
         $('crewTimePanel').classList.add('hidden');
         $('crewTimeList').innerHTML = '';
         return;
@@ -1086,6 +1086,16 @@
         ${checkboxMarkup}
         ${selectedMarkup}
       `;
+    }
+
+    let lastCrewOptionJobId = null;
+
+    function ensureCrewOptionsForSelectedJob() {
+      if (!canEnterCrewTime()) return;
+      const jobId = $('jobId').value || '';
+      if (lastCrewOptionJobId === jobId) return;
+      lastCrewOptionJobId = jobId;
+      loadCrewOptionsForJob(jobId);
     }
 
     function renderSchedule() {
@@ -1518,6 +1528,7 @@
 
       if (!session) return;
       renderJobOptions();
+      ensureCrewOptionsForSelectedJob();
       renderSchedule();
       renderTotals();
       renderEntries();
@@ -1680,7 +1691,7 @@
     }
 
     function selectedCrewEmployeeIds() {
-      if (!canEnterCrewTime() || !$('jobId').value || !selectedCrewIds.size) return [];
+      if (!canEnterCrewTime() || !selectedCrewIds.size) return [];
       const ids = [profile?.employee_id, ...Array.from(selectedCrewIds)].filter(Boolean);
       return [...new Set(ids)];
     }
@@ -1840,7 +1851,10 @@
     $('submitNowBtn').addEventListener('click', () => saveTime('submitted'));
     $('cancelEditBtn').addEventListener('click', resetForm);
     $('cancelManagerEditBtn').addEventListener('click', () => $('managerTimeForm').classList.add('hidden'));
-    $('jobId').addEventListener('change', () => loadCrewOptionsForJob($('jobId').value));
+    $('jobId').addEventListener('change', () => {
+      lastCrewOptionJobId = null;
+      ensureCrewOptionsForSelectedJob();
+    });
     ['startTime', 'endTime'].forEach((id) => {
       $(id).addEventListener('input', calculateHours);
       $(id).addEventListener('change', () => snapTimeInput(id));

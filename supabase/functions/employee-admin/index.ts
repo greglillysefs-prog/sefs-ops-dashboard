@@ -112,15 +112,15 @@ Deno.serve(async (req) => {
       }
 
       const jobId = cleanText(payload.job_id);
-      if (!jobId) return json({ employees: [] });
+      const assignments = jobId
+        ? await supa
+            .from("employee_job_assignments")
+            .select("employee_id, assigned_role")
+            .eq("job_id", jobId)
+        : { data: [], error: null };
+      if (assignments.error) throw assignments.error;
 
-      const { data: assignments, error: assignmentsError } = await supa
-        .from("employee_job_assignments")
-        .select("employee_id, assigned_role")
-        .eq("job_id", jobId);
-      if (assignmentsError) throw assignmentsError;
-
-      const assignedIds = [...new Set((assignments || []).map((row) => row.employee_id).filter(Boolean))];
+      const assignedIds = [...new Set((assignments.data || []).map((row) => row.employee_id).filter(Boolean))];
       const hasAssignments = assignedIds.length > 0;
       if (hasAssignments && !["manager", "admin"].includes(String(actor.profile.role)) && !assignedIds.includes(actor.profile.employee_id)) {
         return json({ error: "Crew leads can only enter crew time for jobs they are assigned to." }, 403);
@@ -163,16 +163,17 @@ Deno.serve(async (req) => {
       const employeeIds = Array.isArray(payload.employee_ids)
         ? [...new Set(payload.employee_ids.map((id) => cleanText(id)).filter(Boolean))]
         : [];
-      if (!jobId) return json({ error: "Choose a job before entering crew time." }, 400);
       if (!employeeIds.length) return json({ error: "Choose at least one employee." }, 400);
 
-      const { data: assignments, error: assignmentsError } = await supa
-        .from("employee_job_assignments")
-        .select("employee_id")
-        .eq("job_id", jobId);
-      if (assignmentsError) throw assignmentsError;
+      const assignments = jobId
+        ? await supa
+            .from("employee_job_assignments")
+            .select("employee_id")
+            .eq("job_id", jobId)
+        : { data: [], error: null };
+      if (assignments.error) throw assignments.error;
 
-      const assignedIds = new Set((assignments || []).map((row) => row.employee_id));
+      const assignedIds = new Set((assignments.data || []).map((row) => row.employee_id));
       const hasAssignments = assignedIds.size > 0;
       if (hasAssignments && !["manager", "admin"].includes(String(actor.profile.role)) && !assignedIds.has(actor.profile.employee_id)) {
         return json({ error: "Crew leads can only enter crew time for jobs they are assigned to." }, 403);
@@ -200,7 +201,7 @@ Deno.serve(async (req) => {
       const profileByEmployee = new Map((profiles || []).map((profile) => [profile.employee_id, profile]));
 
       const basePayload = {
-        job_id: jobId,
+        job_id: jobId || null,
         work_date: cleanText(payload.work_date),
         start_time: cleanText(payload.start_time),
         end_time: cleanText(payload.end_time),
