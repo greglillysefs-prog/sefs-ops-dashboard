@@ -1610,9 +1610,12 @@
             ${entry.notes ? `<p class="muted">${esc(entry.notes)}</p>` : ''}
             ${entry.manager_note ? `<p class="muted">Manager: ${esc(entry.manager_note)}</p>` : ''}
             ${canReviewTime() && entry.status === 'submitted' ? `
+              <div class="full">
+                <input data-pto-note="${esc(entry.id)}" placeholder="Manager note or rejection reason">
+              </div>
               <div class="actions">
-                <button class="primary" type="button" onclick="decidePto('${esc(entry.id)}', 'approved')">Approve PTO</button>
-                <button type="button" onclick="decidePto('${esc(entry.id)}', 'rejected')">Reject PTO</button>
+                <button class="primary" type="button" data-pto-id="${esc(entry.id)}" data-pto-status="approved">Approve PTO</button>
+                <button type="button" data-pto-id="${esc(entry.id)}" data-pto-status="rejected">Reject PTO</button>
               </div>
             ` : ''}
           </article>
@@ -1917,16 +1920,16 @@
       if (!response.ok || payload.error) throw new Error(payload.error || `PTO request failed (${response.status})`);
     }
 
-    window.decidePto = async function decidePto(id, status) {
+    window.decidePto = async function decidePto(id, status, managerNote = '') {
       try {
-        const manager_note = window.prompt(status === 'approved' ? 'Approval note (optional)' : 'Rejection reason (optional)') || '';
+        setMessage('appMessage', `Updating PTO ${status}...`);
         const response = await fetch(ADMIN_FUNCTION_URL, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${session.access_token}`
           },
-          body: JSON.stringify({ action: 'pto_decision', id, status, manager_note })
+          body: JSON.stringify({ action: 'pto_decision', id, status, manager_note: managerNote })
         });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok || payload.error) throw new Error(payload.error || `PTO update failed (${response.status})`);
@@ -1936,6 +1939,17 @@
         setMessage('appMessage', error.message, true);
       }
     };
+
+    $('ptoSummary').addEventListener('click', async (event) => {
+      const button = event.target.closest('[data-pto-id][data-pto-status]');
+      if (!button) return;
+      const id = button.dataset.ptoId;
+      const status = button.dataset.ptoStatus;
+      const noteInput = Array.from(document.querySelectorAll('[data-pto-note]')).find((input) => input.dataset.ptoNote === id);
+      button.disabled = true;
+      await window.decidePto(id, status, noteInput?.value?.trim() || '');
+      button.disabled = false;
+    });
 
     $('loginForm').addEventListener('submit', async (event) => {
       event.preventDefault();
