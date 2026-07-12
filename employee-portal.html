@@ -191,17 +191,6 @@
       min-width: 90px;
     }
 
-    .crew-picker {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 8px;
-      align-items: stretch;
-    }
-
-    .crew-picker select {
-      min-height: 112px;
-    }
-
     .crew-selected {
       display: flex;
       flex-wrap: wrap;
@@ -228,6 +217,33 @@
       min-width: 28px;
       padding: 0;
       line-height: 1;
+    }
+
+    .crew-check-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .crew-check {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,.28);
+      border-radius: 8px;
+      padding: 10px;
+      cursor: pointer;
+    }
+
+    .crew-check input {
+      width: 20px;
+      min-height: 20px;
+      accent-color: var(--orange);
+    }
+
+    .crew-check b {
+      display: block;
     }
 
     .status {
@@ -379,9 +395,6 @@
         flex: 1 1 auto;
       }
 
-      .crew-picker {
-        grid-template-columns: 1fr;
-      }
     }
   </style>
 </head>
@@ -831,10 +844,7 @@
         return;
       }
 
-      const availableOptions = crewOptions
-        .filter((employee) => employee.id !== profile?.employee_id && !selectedCrewIds.has(employee.id))
-        .map((employee) => `<option value="${esc(employee.id)}">${esc(employee.name)}${employee.role ? ` - ${esc(employee.role)}` : ''}${employee.assignment_status === 'available' ? ' - available' : ''}</option>`)
-        .join('');
+      const availableEmployees = crewOptions.filter((employee) => employee.id !== profile?.employee_id);
       const selectedEmployees = crewOptions.filter((employee) => selectedCrewIds.has(employee.id));
       const selectedMarkup = selectedEmployees.length
         ? `<div class="crew-selected">${selectedEmployees.map((employee) => `
@@ -844,14 +854,20 @@
             </span>
           `).join('')}</div>`
         : '<div class="muted">This saves your own time. Add employees here to submit the same hours for them too.</div>';
+      const checkboxMarkup = availableEmployees.length
+        ? `<div class="crew-check-list">${availableEmployees.map((employee) => `
+            <label class="crew-check">
+              <input type="checkbox" ${selectedCrewIds.has(employee.id) ? 'checked' : ''} onchange="toggleCrewEmployee('${esc(employee.id)}', this.checked)">
+              <span>
+                <b>${esc(employee.name)}</b>
+                <span class="muted">${esc(employee.role || 'employee')}${employee.assignment_status === 'available' ? ' - available' : ''}</span>
+              </span>
+            </label>
+          `).join('')}</div>`
+        : '<div class="muted">No other employees available for crew time.</div>';
 
       $('crewTimeList').innerHTML = `
-        <div class="crew-picker">
-          <select id="crewEmployeeSelect" multiple size="${Math.min(Math.max(crewOptions.length - selectedEmployees.length - 1, 3), 6)}" aria-label="Employees to add">
-            ${availableOptions || '<option value="">No more employees available</option>'}
-          </select>
-          <button type="button" onclick="addCrewEmployeesFromSelect()">Add Selected</button>
-        </div>
+        ${checkboxMarkup}
         ${selectedMarkup}
       `;
     }
@@ -1090,11 +1106,12 @@
       return [...new Set(ids)];
     }
 
-    window.addCrewEmployeesFromSelect = function addCrewEmployeesFromSelect() {
-      const select = $('crewEmployeeSelect');
-      const employeeIds = Array.from(select?.selectedOptions || []).map((option) => option.value).filter(Boolean);
-      if (!employeeIds.length) return;
-      employeeIds.forEach((employeeId) => selectedCrewIds.add(employeeId));
+    window.toggleCrewEmployee = function toggleCrewEmployee(employeeId, isSelected) {
+      if (isSelected) {
+        selectedCrewIds.add(employeeId);
+      } else {
+        selectedCrewIds.delete(employeeId);
+      }
       renderCrewTimePanel();
     };
 
