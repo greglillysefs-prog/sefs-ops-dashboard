@@ -692,7 +692,7 @@
                 <textarea id="ptoNotes" placeholder="PTO request notes"></textarea>
               </div>
               <div class="actions full">
-                <button class="primary" type="submit">Request PTO</button>
+                <button id="ptoRequestBtn" class="primary" type="submit">Request PTO</button>
               </div>
             </form>
             <div id="ptoSummary" class="entry-list"></div>
@@ -723,6 +723,7 @@
     let crewOptions = [];
     let selectedCrewIds = new Set();
     let ptoEntries = [];
+    let ptoBalance = { accrued: 0, ledger: 0, pending: 0, balance: 0, available: 0 };
     let authRefreshTimer = null;
     let loginOptions = [];
 
@@ -878,6 +879,7 @@
       managerProfiles = [];
       managerEmployees = [];
       ptoEntries = [];
+      ptoBalance = { accrued: 0, ledger: 0, pending: 0, balance: 0, available: 0 };
       crewOptions = [];
       selectedCrewIds = new Set();
       resetForm();
@@ -1002,6 +1004,7 @@
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || payload.error) throw new Error(payload.error || `Could not load PTO (${response.status})`);
       ptoEntries = payload.pto_entries || [];
+      ptoBalance = payload.pto_balance || { accrued: 0, ledger: 0, pending: 0, balance: 0, available: 0 };
     }
 
     async function loadManagerReviewData() {
@@ -1583,12 +1586,18 @@
       const approved = ptoEntries.filter((entry) => entry.status === 'approved').reduce((sum, entry) => sum + Number(entry.hours || 0), 0);
       const rejected = ptoEntries.filter((entry) => entry.status === 'rejected').length;
       const rows = canReviewTime() ? ptoEntries : ptoEntries.filter((entry) => entry.employee_id === profile?.employee_id);
+      const available = Math.max(0, Number(ptoBalance.available || 0));
+      $('ptoHours').max = available.toFixed(2);
+      $('ptoHours').placeholder = `${available.toFixed(2)} available`;
+      $('ptoRequestBtn').disabled = available <= 0;
       $('ptoSummary').innerHTML = `
         <div class="totals">
-          <div class="total"><span class="muted">Pending</span><b>${pending.length}</b></div>
+          <div class="total"><span class="muted">Available</span><b>${available.toFixed(2)}</b></div>
+          <div class="total"><span class="muted">Pending</span><b>${Number(ptoBalance.pending || 0).toFixed(2)}</b></div>
           <div class="total"><span class="muted">Approved</span><b>${approved.toFixed(2)}</b></div>
-          <div class="total"><span class="muted">Rejected</span><b>${rejected}</b></div>
         </div>
+        ${available <= 0 ? '<div class="muted">No PTO hours are currently available to request.</div>' : ''}
+        ${rejected ? `<div class="muted">${rejected} rejected PTO request${rejected === 1 ? '' : 's'}.</div>` : ''}
         ${rows.length ? rows.map((entry) => `
           <article class="entry-card">
             <header>
@@ -1885,6 +1894,10 @@
     async function requestPto() {
       const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       if ($('ptoDate').value < tomorrow) throw new Error('PTO requests must be for a future date.');
+      const hours = Number($('ptoHours').value || 0);
+      const available = Math.max(0, Number(ptoBalance.available || 0));
+      if (!Number.isFinite(hours) || hours <= 0) throw new Error('PTO hours must be greater than zero.');
+      if (hours > available + 0.001) throw new Error(`Only ${available.toFixed(2)} PTO hours are available.`);
       const response = await fetch(ADMIN_FUNCTION_URL, {
         method: 'POST',
         headers: {
@@ -1894,7 +1907,7 @@
         body: JSON.stringify({
           action: 'pto_request',
           request_date: $('ptoDate').value,
-          hours: Number($('ptoHours').value || 0),
+          hours,
           notes: $('ptoNotes').value.trim() || null
         })
       });
@@ -2025,6 +2038,7 @@
       managerProfiles = [];
       managerEmployees = [];
       ptoEntries = [];
+      ptoBalance = { accrued: 0, ledger: 0, pending: 0, balance: 0, available: 0 };
       clearTimeout(authRefreshTimer);
       if (session) {
         authRefreshTimer = setTimeout(async () => {

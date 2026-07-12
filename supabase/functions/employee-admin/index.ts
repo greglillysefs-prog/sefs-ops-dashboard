@@ -19,6 +19,41 @@ function cleanText(value: unknown) {
   return String(value ?? "").trim();
 }
 
+function ptoAccruedHours(startDate: unknown) {
+  const startValue = cleanText(startDate) || "2026-07-01";
+  const start = new Date(`${startValue}T00:00:00`);
+  if (Number.isNaN(start.getTime())) return 0;
+
+  const now = new Date();
+  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  if (firstOfMonth < start) return 0;
+
+  const months =
+    (firstOfMonth.getFullYear() - start.getFullYear()) * 12 +
+    (firstOfMonth.getMonth() - start.getMonth()) +
+    1;
+  return months * 4;
+}
+
+function ptoBalance(employee: Record<string, unknown> | undefined, ledgerEntries: Record<string, unknown>[], requests: Record<string, unknown>[]) {
+  const accrued = ptoAccruedHours(employee?.start_date);
+  const ledger = (ledgerEntries || []).reduce((sum, entry) => {
+    const hours = Math.abs(Number(entry.hours || 0));
+    return sum + (entry.entry_type === "add" ? hours : -hours);
+  }, 0);
+  const pending = (requests || [])
+    .filter((request) => request.status === "submitted")
+    .reduce((sum, request) => sum + Math.abs(Number(request.hours || 0)), 0);
+  const balance = accrued + ledger;
+  return {
+    accrued,
+    ledger,
+    pending,
+    balance,
+    available: Math.max(0, balance - pending),
+  };
+}
+
 const elevatedRoles = ["crew_lead", "manager", "admin"];
 const reviewRoles = ["manager", "admin"];
 
@@ -243,17 +278,36 @@ Deno.serve(async (req) => {
 
       const [{ data: requests, error: requestsError }, { data: employees, error: employeesError }] = await Promise.all([
         query,
-        supa.from("employees").select("id, name").order("name"),
+        supa.from("employees").select("id, name, start_date").order("name"),
       ]);
       if (requestsError) throw requestsError;
       if (employeesError) throw employeesError;
 
       const employeesById = new Map((employees || []).map((employee) => [employee.id, employee]));
+      const employeeIds = [...new Set((canReviewPto ? employees || [] : (employees || []).filter((employee) => employee.id === actor.profile.employee_id)).map((employee) => employee.id).filter(Boolean))];
+      const { data: ledgerEntries, error: ledgerError } = employeeIds.length
+        ? await supa
+            .from("personal_time_entries")
+            .select("employee_id, entry_type, hours")
+            .in("employee_id", employeeIds)
+        : { data: [], error: null };
+      if (ledgerError) throw ledgerError;
+
+      const balanceByEmployee = new Map(employeeIds.map((employeeId) => {
+        const employee = employeesById.get(employeeId);
+        const employeeLedger = (ledgerEntries || []).filter((entry) => entry.employee_id === employeeId);
+        const employeeRequests = (requests || []).filter((request) => request.employee_id === employeeId);
+        return [employeeId, ptoBalance(employee, employeeLedger, employeeRequests)];
+      }));
       const rows = (requests || []).map((request) => ({
         ...request,
         employee_name: employeesById.get(request.employee_id)?.name || "Employee",
       }));
-      return json({ pto_entries: rows });
+      return json({
+        pto_entries: rows,
+        pto_balance: balanceByEmployee.get(actor.profile.employee_id) || ptoBalance(employeesById.get(actor.profile.employee_id), [], []),
+        pto_balances: Object.fromEntries(balanceByEmployee),
+      });
     }
 
     if (action === "pto_request") {
@@ -268,6 +322,27 @@ Deno.serve(async (req) => {
       }
       if (!Number.isFinite(hours) || hours <= 0) {
         return json({ error: "PTO hours must be greater than zero." }, 400);
+      }
+      if (!actor.profile.employee_id) {
+        return json({ error: "Your profile is not linked to an employee record." }, 400);
+      }
+
+      const [
+        { data: employee, error: employeeError },
+        { data: ledgerEntries, error: ledgerError },
+        { data: pendingRequests, error: pendingRequestsError },
+      ] = await Promise.all([
+        supa.from("employees").select("id, start_date").eq("id", actor.profile.employee_id).maybeSingle(),
+        supa.from("personal_time_entries").select("entry_type, hours").eq("employee_id", actor.profile.employee_id),
+        supa.from("pto_requests").select("status, hours").eq("employee_id", actor.profile.employee_id).eq("status", "submitted"),
+      ]);
+      if (employeeError) throw employeeError;
+      if (ledgerError) throw ledgerError;
+      if (pendingRequestsError) throw pendingRequestsError;
+
+      const balance = ptoBalance(employee || undefined, ledgerEntries || [], pendingRequests || []);
+      if (hours > balance.available + 0.001) {
+        return json({ error: `Only ${balance.available.toFixed(2)} PTO hours are available.` }, 400);
       }
 
       const { data, error } = await supa
@@ -310,6 +385,25 @@ Deno.serve(async (req) => {
 
       let personalTimeEntryId = request.personal_time_entry_id || null;
       if (status === "approved" && !personalTimeEntryId) {
+        const [
+          { data: employee, error: employeeError },
+          { data: ledgerEntries, error: balanceLedgerError },
+          { data: pendingRequests, error: pendingRequestsError },
+        ] = await Promise.all([
+          supa.from("employees").select("id, start_date").eq("id", request.employee_id).maybeSingle(),
+          supa.from("personal_time_entries").select("entry_type, hours").eq("employee_id", request.employee_id),
+          supa.from("pto_requests").select("id, status, hours").eq("employee_id", request.employee_id).eq("status", "submitted"),
+        ]);
+        if (employeeError) throw employeeError;
+        if (balanceLedgerError) throw balanceLedgerError;
+        if (pendingRequestsError) throw pendingRequestsError;
+
+        const otherPendingRequests = (pendingRequests || []).filter((pendingRequest) => pendingRequest.id !== request.id);
+        const balance = ptoBalance(employee || undefined, ledgerEntries || [], otherPendingRequests);
+        if (Number(request.hours || 0) > balance.available + 0.001) {
+          return json({ error: `Only ${balance.available.toFixed(2)} PTO hours are available for approval.` }, 400);
+        }
+
         const { data: ledgerEntry, error: ledgerError } = await supa
           .from("personal_time_entries")
           .insert({
