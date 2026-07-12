@@ -1300,11 +1300,10 @@
       const periodEntries = entriesForPeriod(startDate);
       const entryIds = new Set(periodEntries.map((entry) => entry.id));
       const changes = entryAuditLogs.filter((log) => entryIds.has(log.time_entry_id) && !['created'].includes(log.action_type));
-      const total = periodEntries
-        .filter((entry) => entry.status !== 'rejected')
-        .reduce((sum, entry) => sum + Number(entry.total_hours || 0), 0);
+      const approvedEntries = periodEntries.filter((entry) => entry.status === 'approved');
+      const total = approvedEntries.reduce((sum, entry) => sum + Number(entry.total_hours || 0), 0);
       const byJob = new Map();
-      for (const entry of periodEntries) {
+      for (const entry of approvedEntries) {
         const job = jobs.find((item) => item.id === entry.job_id);
         const name = job ? moneylessJobName(job) : 'Other / No job';
         byJob.set(name, (byJob.get(name) || 0) + Number(entry.total_hours || 0));
@@ -1377,11 +1376,11 @@
         };
       });
       const periodEntries = managerEntries.filter((entry) => entry.work_date >= start && entry.work_date <= end && !entry.deleted_at);
-      const payableEntries = periodEntries.filter((entry) => entry.status !== 'rejected');
+      const approvedEntries = periodEntries.filter((entry) => entry.status === 'approved');
       const employees = new Map();
       const byStatus = new Map();
 
-      for (const entry of payableEntries) {
+      for (const entry of approvedEntries) {
         const employeeId = entry.employee_id || 'unknown';
         const name = employeeName(employeeId);
         const hours = Number(entry.total_hours || 0);
@@ -1415,7 +1414,7 @@
         for (const day of days) dayTotals[day.iso] += row.dayHours[day.iso] || 0;
       }
 
-      const noteEntries = payableEntries
+      const noteEntries = approvedEntries
         .filter((entry) => entry.notes)
         .sort((a, b) => String(a.work_date || '').localeCompare(String(b.work_date || '')) || employeeName(a.employee_id).localeCompare(employeeName(b.employee_id)));
       const noteGroups = new Map();
@@ -1464,7 +1463,7 @@
                     <td>${row.regular.toFixed(2)}</td>
                     <td class="overtime-col">${row.overtime ? row.overtime.toFixed(2) : ''}</td>
                   </tr>
-                `).join('') : `<tr><td class="employee-col">No hours</td><td colspan="10" class="muted">No payable time logged for this pay period.</td></tr>`}
+                `).join('') : `<tr><td class="employee-col">No approved hours</td><td colspan="10" class="muted">No approved time logged for this pay period.</td></tr>`}
               </tbody>
               <tfoot>
                 <tr class="timesheet-foot">
@@ -1496,7 +1495,7 @@
             <summary>Status Summary</summary>
             ${byStatus.size ? Array.from(byStatus.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([status, hours]) => `<p class="muted"><b>${esc(status)}</b>: ${hours.toFixed(2)} hrs</p>`).join('') : '<p class="muted">No status totals.</p>'}
           </details>
-          ${periodEntries.some((entry) => entry.status === 'rejected') ? '<p class="muted">Rejected time is excluded from the payable total.</p>' : ''}
+          ${periodEntries.some((entry) => entry.status !== 'approved') ? '<p class="muted">Only approved time is included in payroll totals.</p>' : ''}
         </article>
       `;
     }
