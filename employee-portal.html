@@ -323,6 +323,84 @@
       text-transform: uppercase;
     }
 
+    .timesheet-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(0,0,0,.22);
+    }
+
+    .timesheet {
+      width: 100%;
+      min-width: 860px;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .timesheet th,
+    .timesheet td {
+      border: 1px solid rgba(255,255,255,.12);
+      padding: 9px 8px;
+      text-align: center;
+      vertical-align: middle;
+    }
+
+    .timesheet thead th {
+      background: rgba(255,122,0,.18);
+      color: #fff;
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    .timesheet .employee-col {
+      position: sticky;
+      left: 0;
+      z-index: 1;
+      min-width: 150px;
+      text-align: left;
+      background: #111;
+      color: #fff;
+      font-weight: 900;
+    }
+
+    .timesheet tbody tr:nth-child(even) td {
+      background: rgba(255,255,255,.025);
+    }
+
+    .timesheet tbody tr:nth-child(even) .employee-col {
+      background: #111;
+    }
+
+    .timesheet .total-col {
+      background: rgba(255,122,0,.12);
+      color: var(--orange2);
+      font-weight: 900;
+    }
+
+    .timesheet .overtime-col {
+      background: rgba(255,98,98,.1);
+      color: #ffb8b8;
+      font-weight: 900;
+    }
+
+    .timesheet-foot {
+      background: rgba(255,122,0,.16);
+      font-weight: 900;
+    }
+
+    .timesheet-notes {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .timesheet-note {
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 8px;
+      padding: 10px;
+      background: rgba(0,0,0,.2);
+    }
+
     .hours {
       font-size: 38px;
       font-weight: 900;
@@ -1233,43 +1311,122 @@
       `;
     }
 
+    function formatHoursValue(value) {
+      const number = Number(value || 0);
+      return number ? number.toFixed(2).replace(/\.00$/, '') : '';
+    }
+
     function managerPeriodSummary() {
       const options = payPeriodStartOptions();
       renderPayPeriodControls(options);
       const startDate = dateOnly(selectedPayPeriodStart || options[0] || today());
       const start = isoDate(startDate);
       const end = isoDate(addDays(startDate, 6));
+      const days = Array.from({ length: 7 }, (_, index) => {
+        const date = addDays(startDate, index);
+        const iso = isoDate(date);
+        return {
+          iso,
+          label: date.toLocaleDateString(undefined, { weekday: 'short' }),
+          dateLabel: date.toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' })
+        };
+      });
       const periodEntries = managerEntries.filter((entry) => entry.work_date >= start && entry.work_date <= end && !entry.deleted_at);
       const payableEntries = periodEntries.filter((entry) => entry.status !== 'rejected');
-      const total = payableEntries.reduce((sum, entry) => sum + Number(entry.total_hours || 0), 0);
-      const byEmployee = new Map();
-      const byJob = new Map();
+      const employees = new Map();
       const byStatus = new Map();
 
       for (const entry of payableEntries) {
-        const employee = employeeName(entry.employee_id);
-        const job = jobName(entry.job_id);
-        byEmployee.set(employee, (byEmployee.get(employee) || 0) + Number(entry.total_hours || 0));
-        byJob.set(job, (byJob.get(job) || 0) + Number(entry.total_hours || 0));
-        byStatus.set(entry.status || 'draft', (byStatus.get(entry.status || 'draft') || 0) + Number(entry.total_hours || 0));
+        const employeeId = entry.employee_id || 'unknown';
+        const name = employeeName(employeeId);
+        const hours = Number(entry.total_hours || 0);
+        if (!employees.has(employeeId)) {
+          employees.set(employeeId, {
+            name,
+            dayHours: Object.fromEntries(days.map((day) => [day.iso, 0])),
+            total: 0,
+            entries: []
+          });
+        }
+        const row = employees.get(employeeId);
+        if (row.dayHours[entry.work_date] !== undefined) row.dayHours[entry.work_date] += hours;
+        row.total += hours;
+        row.entries.push(entry);
+        byStatus.set(entry.status || 'draft', (byStatus.get(entry.status || 'draft') || 0) + hours);
       }
+
+      const rows = Array.from(employees.values()).sort((a, b) => a.name.localeCompare(b.name));
+      const dayTotals = Object.fromEntries(days.map((day) => [day.iso, 0]));
+      let totalHours = 0;
+      let regularHours = 0;
+      let overtimeHours = 0;
+
+      for (const row of rows) {
+        row.regular = Math.min(row.total, 40);
+        row.overtime = Math.max(row.total - 40, 0);
+        totalHours += row.total;
+        regularHours += row.regular;
+        overtimeHours += row.overtime;
+        for (const day of days) dayTotals[day.iso] += row.dayHours[day.iso] || 0;
+      }
+
+      const noteEntries = payableEntries
+        .filter((entry) => entry.notes || entry.job_id)
+        .sort((a, b) => String(a.work_date || '').localeCompare(String(b.work_date || '')) || employeeName(a.employee_id).localeCompare(employeeName(b.employee_id)));
 
       return `
         <article class="entry-card">
           <header>
             <div>
-              <h3>All Employees</h3>
+              <h3>Weekly Timesheet</h3>
               <span class="muted">${esc(periodRangeLabel(startDate))}</span>
             </div>
-            <span class="status approved">${total.toFixed(2)} hrs</span>
+            <span class="status approved">${totalHours.toFixed(2)} hrs</span>
           </header>
-          <details open>
-            <summary>Employee Summary</summary>
-            ${byEmployee.size ? Array.from(byEmployee.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([name, hours]) => `<p class="muted"><b>${esc(name)}</b>: ${hours.toFixed(2)} hrs</p>`).join('') : '<p class="muted">No payable time logged.</p>'}
-          </details>
+          <div class="timesheet-wrap">
+            <table class="timesheet">
+              <thead>
+                <tr>
+                  <th class="employee-col">Employee</th>
+                  ${days.map((day) => `<th>${esc(day.label)}<br>${esc(day.dateLabel)}</th>`).join('')}
+                  <th>Total<br>Hours</th>
+                  <th>Reg<br>Time</th>
+                  <th>Over<br>Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows.length ? rows.map((row) => `
+                  <tr>
+                    <td class="employee-col">${esc(row.name)}</td>
+                    ${days.map((day) => `<td>${esc(formatHoursValue(row.dayHours[day.iso]))}</td>`).join('')}
+                    <td class="total-col">${row.total.toFixed(2)}</td>
+                    <td>${row.regular.toFixed(2)}</td>
+                    <td class="overtime-col">${row.overtime ? row.overtime.toFixed(2) : ''}</td>
+                  </tr>
+                `).join('') : `<tr><td class="employee-col">No hours</td><td colspan="10" class="muted">No payable time logged for this pay period.</td></tr>`}
+              </tbody>
+              <tfoot>
+                <tr class="timesheet-foot">
+                  <td class="employee-col">Totals</td>
+                  ${days.map((day) => `<td>${esc(formatHoursValue(dayTotals[day.iso]))}</td>`).join('')}
+                  <td>${totalHours.toFixed(2)}</td>
+                  <td>${regularHours.toFixed(2)}</td>
+                  <td>${overtimeHours.toFixed(2)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
           <details>
-            <summary>Job Summary</summary>
-            ${byJob.size ? Array.from(byJob.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([name, hours]) => `<p class="muted"><b>${esc(name)}</b>: ${hours.toFixed(2)} hrs</p>`).join('') : '<p class="muted">No job time logged.</p>'}
+            <summary>Job Descriptions and Notes</summary>
+            <div class="timesheet-notes">
+              ${noteEntries.length ? noteEntries.map((entry) => `
+                <div class="timesheet-note">
+                  <b>${esc(formatDate(entry.work_date))} - ${esc(employeeName(entry.employee_id))}</b>
+                  <div class="muted">${esc(jobName(entry.job_id))} - ${esc(formatTime(entry.start_time))} to ${esc(formatTime(entry.end_time))} - ${Number(entry.total_hours || 0).toFixed(2)} hrs</div>
+                  ${entry.notes ? `<div>${esc(entry.notes)}</div>` : ''}
+                </div>
+              `).join('') : '<p class="muted">No notes for this pay period.</p>'}
+            </div>
           </details>
           <details>
             <summary>Status Summary</summary>
