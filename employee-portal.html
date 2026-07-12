@@ -567,6 +567,7 @@
           <div class="card">
             <h2>My Time Entries</h2>
             <div id="totals" class="totals"></div>
+            <div id="entryMode" class="actions"></div>
             <div id="entryList" class="entry-list"></div>
           </div>
 
@@ -675,6 +676,27 @@
             <div id="payPeriodControls" class="full"></div>
             <div id="weeklySummaries" class="entry-list"></div>
           </div>
+          <div class="card">
+            <h2>PTO</h2>
+            <form id="ptoForm" class="form-grid">
+              <div>
+                <label>Date</label>
+                <input id="ptoDate" type="date" required>
+              </div>
+              <div>
+                <label>Hours</label>
+                <input id="ptoHours" type="number" min="0.25" step="0.25" required>
+              </div>
+              <div class="full">
+                <label>Notes</label>
+                <textarea id="ptoNotes" placeholder="PTO request notes"></textarea>
+              </div>
+              <div class="actions full">
+                <button class="primary" type="submit">Request PTO</button>
+              </div>
+            </form>
+            <div id="ptoSummary" class="entry-list"></div>
+          </div>
         </aside>
       </div>
     </main>
@@ -696,9 +718,11 @@
     let managerProfiles = [];
     let managerEmployees = [];
     let managerReviewView = 'pending';
+    let entryReviewView = 'accepted';
     let selectedPayPeriodStart = '';
     let crewOptions = [];
     let selectedCrewIds = new Set();
+    let ptoEntries = [];
     let authRefreshTimer = null;
     let loginOptions = [];
 
@@ -853,6 +877,7 @@
       managerEntries = [];
       managerProfiles = [];
       managerEmployees = [];
+      ptoEntries = [];
       crewOptions = [];
       selectedCrewIds = new Set();
       resetForm();
@@ -965,6 +990,20 @@
       entryAuditLogs = result.data || [];
     }
 
+    async function loadPtoEntries() {
+      const response = await fetch(ADMIN_FUNCTION_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ action: 'pto_list' })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload.error) throw new Error(payload.error || `Could not load PTO (${response.status})`);
+      ptoEntries = payload.pto_entries || [];
+    }
+
     async function loadManagerReviewData() {
       if (!canReviewTime()) {
         managerEntries = [];
@@ -1005,8 +1044,9 @@
     async function loadCrewOptionsForJob(jobId) {
       crewOptions = [];
       selectedCrewIds = new Set();
-      renderCrewTimePanel();
       if (!canEnterCrewTime()) return;
+      $('crewTimePanel').classList.remove('hidden');
+      $('crewTimeList').innerHTML = '<div class="muted">Loading employees...</div>';
 
       try {
         const response = await fetch(ADMIN_FUNCTION_URL, {
@@ -1032,7 +1072,7 @@
       try {
         await loadProfile();
         if (profile?.active) {
-          await Promise.all([loadJobs(), loadScheduleJobs(), loadEntries()]);
+          await Promise.all([loadJobs(), loadScheduleJobs(), loadEntries(), loadPtoEntries()]);
           await loadEntryAuditLogs();
           await loadManagerReviewData();
         }
@@ -1135,11 +1175,24 @@
 
     function renderEntries() {
       if (!entries.length) {
+        $('entryMode').innerHTML = '';
         $('entryList').innerHTML = '<div class="muted">No time entries yet.</div>';
         return;
       }
 
-      $('entryList').innerHTML = entries.map((entry) => {
+      const acceptedEntries = entries.filter((entry) => entry.status !== 'rejected');
+      const rejectedEntries = entries.filter((entry) => entry.status === 'rejected');
+      const visibleEntries = entryReviewView === 'rejected' ? rejectedEntries : acceptedEntries;
+      $('entryMode').innerHTML = `
+        <button class="${entryReviewView !== 'rejected' ? 'primary' : ''}" type="button" onclick="setEntryReviewView('accepted')">Accepted / Submitted (${acceptedEntries.length})</button>
+        <button class="${entryReviewView === 'rejected' ? 'primary' : ''}" type="button" onclick="setEntryReviewView('rejected')">Rejected (${rejectedEntries.length})</button>
+      `;
+      if (!visibleEntries.length) {
+        $('entryList').innerHTML = `<div class="muted">${entryReviewView === 'rejected' ? 'No rejected time entries.' : 'No accepted or submitted time entries.'}</div>`;
+        return;
+      }
+
+      $('entryList').innerHTML = visibleEntries.map((entry) => {
         const job = jobs.find((item) => item.id === entry.job_id);
         const canEdit = entry.status === 'draft' || entry.status === 'rejected';
         return `
@@ -1165,6 +1218,11 @@
         `;
       }).join('');
     }
+
+    window.setEntryReviewView = function setEntryReviewView(view) {
+      entryReviewView = view === 'rejected' ? 'rejected' : 'accepted';
+      renderEntries();
+    };
 
     function employeeName(employeeId) {
       const profileItem = managerProfiles.find((item) => item.employee_id === employeeId);
@@ -1300,10 +1358,10 @@
       const periodEntries = entriesForPeriod(startDate);
       const entryIds = new Set(periodEntries.map((entry) => entry.id));
       const changes = entryAuditLogs.filter((log) => entryIds.has(log.time_entry_id) && !['created'].includes(log.action_type));
-      const approvedEntries = periodEntries.filter((entry) => entry.status === 'approved');
-      const total = approvedEntries.reduce((sum, entry) => sum + Number(entry.total_hours || 0), 0);
+      const acceptedEntries = periodEntries.filter((entry) => ['approved', 'submitted'].includes(entry.status));
+      const total = acceptedEntries.reduce((sum, entry) => sum + Number(entry.total_hours || 0), 0);
       const byJob = new Map();
-      for (const entry of approvedEntries) {
+      for (const entry of acceptedEntries) {
         const job = jobs.find((item) => item.id === entry.job_id);
         const name = job ? moneylessJobName(job) : 'Other / No job';
         byJob.set(name, (byJob.get(name) || 0) + Number(entry.total_hours || 0));
@@ -1511,6 +1569,48 @@
       $('weeklySummaries').innerHTML = periodSummary('This Week', thisStart) + periodSummary('Last Week', lastStart);
     }
 
+    function ptoStatusClass(status) {
+      if (status === 'approved') return 'approved';
+      if (status === 'rejected') return 'rejected';
+      return 'submitted';
+    }
+
+    function renderPto() {
+      const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      $('ptoDate').min = tomorrow;
+      if (!$('ptoDate').value || $('ptoDate').value < tomorrow) $('ptoDate').value = tomorrow;
+      const pending = ptoEntries.filter((entry) => entry.status === 'submitted');
+      const approved = ptoEntries.filter((entry) => entry.status === 'approved').reduce((sum, entry) => sum + Number(entry.hours || 0), 0);
+      const rejected = ptoEntries.filter((entry) => entry.status === 'rejected').length;
+      const rows = canReviewTime() ? ptoEntries : ptoEntries.filter((entry) => entry.employee_id === profile?.employee_id);
+      $('ptoSummary').innerHTML = `
+        <div class="totals">
+          <div class="total"><span class="muted">Pending</span><b>${pending.length}</b></div>
+          <div class="total"><span class="muted">Approved</span><b>${approved.toFixed(2)}</b></div>
+          <div class="total"><span class="muted">Rejected</span><b>${rejected}</b></div>
+        </div>
+        ${rows.length ? rows.map((entry) => `
+          <article class="entry-card">
+            <header>
+              <div>
+                <h3>${esc(canReviewTime() ? entry.employee_name || 'Employee' : 'PTO Request')}</h3>
+                <span class="muted">${esc(formatDate(entry.request_date))} - ${Number(entry.hours || 0).toFixed(2)} hrs</span>
+              </div>
+              <span class="status ${ptoStatusClass(entry.status)}">${esc(entry.status)}</span>
+            </header>
+            ${entry.notes ? `<p class="muted">${esc(entry.notes)}</p>` : ''}
+            ${entry.manager_note ? `<p class="muted">Manager: ${esc(entry.manager_note)}</p>` : ''}
+            ${canReviewTime() && entry.status === 'submitted' ? `
+              <div class="actions">
+                <button class="primary" type="button" onclick="decidePto('${esc(entry.id)}', 'approved')">Approve PTO</button>
+                <button type="button" onclick="decidePto('${esc(entry.id)}', 'rejected')">Reject PTO</button>
+              </div>
+            ` : ''}
+          </article>
+        `).join('') : '<div class="muted">No PTO requests yet.</div>'}
+      `;
+    }
+
     window.setPayPeriodStart = function setPayPeriodStart(start) {
       selectedPayPeriodStart = start;
       renderWeeklySummaries();
@@ -1533,6 +1633,7 @@
       renderEntries();
       renderManagerReview();
       renderWeeklySummaries();
+      renderPto();
       calculateHours();
     }
 
@@ -1781,6 +1882,46 @@
       }
     }
 
+    async function requestPto() {
+      const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      if ($('ptoDate').value < tomorrow) throw new Error('PTO requests must be for a future date.');
+      const response = await fetch(ADMIN_FUNCTION_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          action: 'pto_request',
+          request_date: $('ptoDate').value,
+          hours: Number($('ptoHours').value || 0),
+          notes: $('ptoNotes').value.trim() || null
+        })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload.error) throw new Error(payload.error || `PTO request failed (${response.status})`);
+    }
+
+    window.decidePto = async function decidePto(id, status) {
+      try {
+        const manager_note = window.prompt(status === 'approved' ? 'Approval note (optional)' : 'Rejection reason (optional)') || '';
+        const response = await fetch(ADMIN_FUNCTION_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({ action: 'pto_decision', id, status, manager_note })
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload.error) throw new Error(payload.error || `PTO update failed (${response.status})`);
+        setMessage('appMessage', `PTO ${status}.`);
+        await refresh();
+      } catch (error) {
+        setMessage('appMessage', error.message, true);
+      }
+    };
+
     $('loginForm').addEventListener('submit', async (event) => {
       event.preventDefault();
       setMessage('authMessage', 'Signing in...');
@@ -1823,6 +1964,19 @@
     $('timeForm').addEventListener('submit', (event) => {
       event.preventDefault();
       saveTime('draft');
+    });
+
+    $('ptoForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      try {
+        await requestPto();
+        $('ptoHours').value = '';
+        $('ptoNotes').value = '';
+        setMessage('appMessage', 'PTO request submitted.');
+        await refresh();
+      } catch (error) {
+        setMessage('appMessage', error.message, true);
+      }
     });
 
     $('managerTimeForm').addEventListener('submit', async (event) => {
@@ -1870,6 +2024,7 @@
       managerEntries = [];
       managerProfiles = [];
       managerEmployees = [];
+      ptoEntries = [];
       clearTimeout(authRefreshTimer);
       if (session) {
         authRefreshTimer = setTimeout(async () => {

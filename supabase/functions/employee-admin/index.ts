@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-type AdminAction = "login_options" | "job_crew_options" | "save_group_time_entries" | "list" | "upsert" | "deactivate" | "remove_employee" | "update_time_entry";
+type AdminAction = "login_options" | "job_crew_options" | "save_group_time_entries" | "pto_list" | "pto_request" | "pto_decision" | "list" | "upsert" | "deactivate" | "remove_employee" | "update_time_entry";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -20,6 +20,7 @@ function cleanText(value: unknown) {
 }
 
 const elevatedRoles = ["crew_lead", "manager", "admin"];
+const reviewRoles = ["manager", "admin"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -225,6 +226,121 @@ Deno.serve(async (req) => {
       const { data, error } = await supa.from("time_entries").insert(rows).select();
       if (error) throw error;
       return json({ ok: true, time_entries: data || [] });
+    }
+
+    if (action === "pto_list") {
+      const actor = await getPortalActor();
+      if (actor.error) return actor.error;
+      const canReviewPto = reviewRoles.includes(String(actor.profile.role));
+
+      let query = supa
+        .from("pto_requests")
+        .select("*")
+        .order("request_date", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(200);
+      if (!canReviewPto) query = query.eq("employee_id", actor.profile.employee_id);
+
+      const [{ data: requests, error: requestsError }, { data: employees, error: employeesError }] = await Promise.all([
+        query,
+        supa.from("employees").select("id, name").order("name"),
+      ]);
+      if (requestsError) throw requestsError;
+      if (employeesError) throw employeesError;
+
+      const employeesById = new Map((employees || []).map((employee) => [employee.id, employee]));
+      const rows = (requests || []).map((request) => ({
+        ...request,
+        employee_name: employeesById.get(request.employee_id)?.name || "Employee",
+      }));
+      return json({ pto_entries: rows });
+    }
+
+    if (action === "pto_request") {
+      const actor = await getPortalActor();
+      if (actor.error) return actor.error;
+
+      const requestDate = cleanText(payload.request_date);
+      const hours = Number(payload.hours || 0);
+      const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      if (!requestDate || requestDate < tomorrow) {
+        return json({ error: "PTO requests must use a future date." }, 400);
+      }
+      if (!Number.isFinite(hours) || hours <= 0) {
+        return json({ error: "PTO hours must be greater than zero." }, 400);
+      }
+
+      const { data, error } = await supa
+        .from("pto_requests")
+        .insert({
+          employee_id: actor.profile.employee_id,
+          user_id: actor.user.id,
+          request_date: requestDate,
+          hours,
+          notes: cleanText(payload.notes) || null,
+          status: "submitted",
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      return json({ ok: true, pto_entry: data });
+    }
+
+    if (action === "pto_decision") {
+      const actor = await getPortalActor();
+      if (actor.error) return actor.error;
+      if (!reviewRoles.includes(String(actor.profile.role))) {
+        return json({ error: "Manager or admin access is required to approve PTO." }, 403);
+      }
+
+      const id = cleanText(payload.id);
+      const status = cleanText(payload.status);
+      if (!id) return json({ error: "PTO request id is required." }, 400);
+      if (!["approved", "rejected"].includes(status)) return json({ error: "PTO status must be approved or rejected." }, 400);
+
+      const { data: request, error: requestError } = await supa
+        .from("pto_requests")
+        .select("*")
+        .eq("id", id)
+        .single();
+      if (requestError) throw requestError;
+      if (request.status === "approved" && status === "rejected") {
+        return json({ error: "Approved PTO has already been added to the PTO ledger." }, 400);
+      }
+
+      let personalTimeEntryId = request.personal_time_entry_id || null;
+      if (status === "approved" && !personalTimeEntryId) {
+        const { data: ledgerEntry, error: ledgerError } = await supa
+          .from("personal_time_entries")
+          .insert({
+            employee_id: request.employee_id,
+            entry_type: "used",
+            hours: request.hours,
+            date_used: request.request_date,
+            manager: actor.profile.full_name || actor.user.email || "manager",
+            notes: request.notes,
+          })
+          .select("id")
+          .single();
+        if (ledgerError) throw ledgerError;
+        personalTimeEntryId = ledgerEntry?.id || null;
+      }
+
+      const { data, error } = await supa
+        .from("pto_requests")
+        .update({
+          status,
+          manager_id: actor.user.id,
+          manager_note: cleanText(payload.manager_note) || null,
+          decided_at: new Date().toISOString(),
+          personal_time_entry_id: personalTimeEntryId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id)
+        .select()
+        .single();
+      if (error) throw error;
+      return json({ ok: true, pto_entry: data });
     }
 
     if (req.headers.get("x-sefs-admin-pin") !== adminPin) {
