@@ -462,7 +462,7 @@
             <form id="managerTimeForm" class="form-grid hidden">
               <input id="managerEntryId" type="hidden">
               <div>
-                <label>Employee</label>
+                <label>Employee(s)</label>
                 <input id="managerEntryEmployee" disabled>
               </div>
               <div>
@@ -507,7 +507,9 @@
                 <button id="cancelManagerEditBtn" class="ghost" type="button">Cancel</button>
               </div>
             </form>
+            <div id="managerReviewMode" class="actions"></div>
             <div id="managerTimeList" class="entry-list"></div>
+            <div id="managerReviewFooter" class="actions"></div>
           </div>
         </section>
 
@@ -578,6 +580,8 @@
     let entryAuditLogs = [];
     let managerEntries = [];
     let managerProfiles = [];
+    let managerEmployees = [];
+    let managerReviewView = 'pending';
     let crewOptions = [];
     let selectedCrewIds = new Set();
     let authRefreshTimer = null;
@@ -733,6 +737,7 @@
       entryAuditLogs = [];
       managerEntries = [];
       managerProfiles = [];
+      managerEmployees = [];
       crewOptions = [];
       selectedCrewIds = new Set();
       resetForm();
@@ -849,10 +854,15 @@
       if (!canReviewTime()) {
         managerEntries = [];
         managerProfiles = [];
+        managerEmployees = [];
         return;
       }
 
-      const [{ data: timeData, error: timeError }, { data: profileData, error: profileError }] = await Promise.all([
+      const [
+        { data: timeData, error: timeError },
+        { data: profileData, error: profileError },
+        { data: employeeData, error: employeeError }
+      ] = await Promise.all([
         supa
           .from('time_entries')
           .select('*')
@@ -863,12 +873,18 @@
         supa
           .from('profiles')
           .select('id, employee_id, role, full_name, active')
-          .order('full_name')
+          .order('full_name'),
+        supa
+          .from('employees')
+          .select('id, name, active')
+          .order('name')
       ]);
       if (timeError) throw timeError;
       if (profileError) throw profileError;
+      if (employeeError) throw employeeError;
       managerEntries = timeData || [];
       managerProfiles = profileData || [];
+      managerEmployees = employeeData || [];
     }
 
     async function loadCrewOptionsForJob(jobId) {
@@ -1026,8 +1042,9 @@
     }
 
     function employeeName(employeeId) {
-      const item = managerProfiles.find((profileItem) => profileItem.employee_id === employeeId);
-      return item?.full_name || 'Employee';
+      const profileItem = managerProfiles.find((item) => item.employee_id === employeeId);
+      const employeeItem = managerEmployees.find((item) => item.id === employeeId);
+      return profileItem?.full_name || employeeItem?.name || 'Employee';
     }
 
     function jobName(jobId) {
@@ -1035,32 +1052,82 @@
       return job ? moneylessJobName(job) : 'Other / No job';
     }
 
+    function reviewGroupKey(entry) {
+      return [
+        entry.status || 'draft',
+        entry.job_id || 'other',
+        entry.work_date || '',
+        String(entry.start_time || '').slice(0, 5),
+        String(entry.end_time || '').slice(0, 5),
+        Number(entry.total_hours || 0).toFixed(2),
+        entry.notes || '',
+        entry.rejection_reason || ''
+      ].join('|');
+    }
+
+    function managerTimeGroups() {
+      const grouped = new Map();
+      for (const entry of managerEntries) {
+        const key = reviewGroupKey(entry);
+        if (!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key).push(entry);
+      }
+      return Array.from(grouped.values()).map((items) => ({
+        id: items.map((entry) => entry.id).join(','),
+        entries: items,
+        entry: items[0],
+        employees: items.map((entry) => employeeName(entry.employee_id)).sort((a, b) => a.localeCompare(b))
+      }));
+    }
+
+    function groupLabel(group) {
+      return group.employees.length > 1 ? `${group.employees.length} employees` : group.employees[0] || 'Employee';
+    }
+
     function renderManagerReview() {
       $('managerReviewCard').classList.toggle('hidden', !canReviewTime());
       if (!canReviewTime()) {
         $('managerTimeList').innerHTML = '';
+        $('managerReviewMode').innerHTML = '';
+        $('managerReviewFooter').innerHTML = '';
         $('managerTimeForm').classList.add('hidden');
         return;
       }
 
-      if (!managerEntries.length) {
-        $('managerTimeList').innerHTML = '<div class="muted">No time entries to review yet.</div>';
+      const groups = managerTimeGroups();
+      const approvedGroups = groups.filter((group) => group.entry.status === 'approved');
+      const pendingGroups = groups.filter((group) => group.entry.status !== 'approved');
+      const visibleGroups = managerReviewView === 'approved' ? approvedGroups : pendingGroups;
+
+      $('managerReviewMode').innerHTML = `
+        <button class="${managerReviewView === 'pending' ? 'primary' : ''}" type="button" onclick="setManagerReviewView('pending')">Pending Review (${pendingGroups.length})</button>
+        <button class="${managerReviewView === 'approved' ? 'primary' : ''}" type="button" onclick="setManagerReviewView('approved')">Approved Time (${approvedGroups.length})</button>
+      `;
+      $('managerReviewFooter').innerHTML = managerReviewView === 'approved'
+        ? '<button type="button" onclick="setManagerReviewView(\'pending\')">Back to Pending Review</button>'
+        : '<button type="button" onclick="setManagerReviewView(\'approved\')">View Approved Time</button>';
+
+      if (!visibleGroups.length) {
+        $('managerTimeList').innerHTML = `<div class="muted">${managerReviewView === 'approved' ? 'No approved time entries yet.' : 'No pending time entries to review.'}</div>`;
         return;
       }
 
-      const sortedEntries = [...managerEntries].sort((a, b) => {
+      const sortedGroups = [...visibleGroups].sort((a, b) => {
         const statusRank = { submitted: 0, rejected: 1, draft: 2, approved: 3 };
-        const aRank = statusRank[a.status] ?? 9;
-        const bRank = statusRank[b.status] ?? 9;
+        const aRank = statusRank[a.entry.status] ?? 9;
+        const bRank = statusRank[b.entry.status] ?? 9;
         if (aRank !== bRank) return aRank - bRank;
-        return String(b.work_date || '').localeCompare(String(a.work_date || ''));
+        return String(b.entry.work_date || '').localeCompare(String(a.entry.work_date || ''));
       });
 
-      $('managerTimeList').innerHTML = sortedEntries.map((entry) => `
+      $('managerTimeList').innerHTML = sortedGroups.map((group) => {
+        const entry = group.entry;
+        const names = group.employees.join(', ');
+        return `
         <article class="entry-card">
           <header>
             <div>
-              <h3>${esc(employeeName(entry.employee_id))}</h3>
+              <h3>${esc(groupLabel(group))}</h3>
               <span class="muted">${esc(jobName(entry.job_id))}</span>
             </div>
             <span class="status ${statusClass(entry.status)}">${esc(entry.status || 'draft')}</span>
@@ -1071,15 +1138,22 @@
             <div class="fact"><b>Total</b>${Number(entry.total_hours || 0).toFixed(2)} hours</div>
             <div class="fact"><b>Submitted</b>${entry.submitted_at ? esc(new Date(entry.submitted_at).toLocaleDateString()) : '-'}</div>
           </div>
+          <p class="muted">${esc(names)}</p>
           ${entry.notes ? `<p class="muted">${esc(entry.notes)}</p>` : ''}
           ${entry.rejection_reason ? `<p class="muted">Rejected: ${esc(entry.rejection_reason)}</p>` : ''}
           <div class="actions">
-            ${entry.status !== 'approved' ? `<button class="primary" type="button" onclick="approveManagerEntry('${esc(entry.id)}')">Approve</button>` : ''}
-            <button type="button" onclick="editManagerEntry('${esc(entry.id)}')">Edit</button>
+            ${entry.status !== 'approved' ? `<button class="primary" type="button" onclick="approveManagerGroup('${esc(group.id)}')">Approve Group</button>` : ''}
+            <button type="button" onclick="editManagerGroup('${esc(group.id)}')">Edit Group</button>
           </div>
         </article>
-      `).join('');
+      `;
+      }).join('');
     }
+
+    window.setManagerReviewView = function setManagerReviewView(view) {
+      managerReviewView = view === 'approved' ? 'approved' : 'pending';
+      renderManagerReview();
+    };
 
     function entriesForPeriod(startDate) {
       const start = isoDate(startDate);
@@ -1207,11 +1281,17 @@
       }
     };
 
-    window.editManagerEntry = function editManagerEntry(id) {
-      const entry = managerEntries.find((item) => item.id === id);
+    function managerGroupById(groupId) {
+      const ids = new Set(String(groupId || '').split(',').filter(Boolean));
+      return managerTimeGroups().find((group) => group.entries.some((entry) => ids.has(entry.id)));
+    }
+
+    window.editManagerGroup = function editManagerGroup(groupId) {
+      const group = managerGroupById(groupId);
+      const entry = group?.entry;
       if (!entry) return;
-      $('managerEntryId').value = entry.id;
-      $('managerEntryEmployee').value = employeeName(entry.employee_id);
+      $('managerEntryId').value = group.id;
+      $('managerEntryEmployee').value = group.employees.join(', ');
       $('managerEntryJob').value = jobName(entry.job_id);
       $('managerEntryDate').value = entry.work_date || today();
       $('managerEntryStatus').value = entry.status || 'draft';
@@ -1224,8 +1304,10 @@
       $('managerTimeForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
 
-    async function updateManagerTimeEntry(id, updates) {
+    async function updateManagerTimeEntries(ids, updates) {
       if (!canReviewTime()) throw new Error('Manager or admin access is required.');
+      const entryIds = Array.isArray(ids) ? ids : String(ids || '').split(',').filter(Boolean);
+      if (!entryIds.length) throw new Error('Choose a time entry to update.');
       const result = await supa
         .from('time_entries')
         .update({
@@ -1233,21 +1315,20 @@
           break_minutes: 0,
           device_info: deviceInfo()
         })
-        .eq('id', id)
-        .select()
-        .single();
+        .in('id', entryIds)
+        .select();
       if (result.error) throw result.error;
       return result.data;
     }
 
-    window.approveManagerEntry = async function approveManagerEntry(id) {
+    window.approveManagerGroup = async function approveManagerGroup(groupId) {
       try {
-        await updateManagerTimeEntry(id, {
+        await updateManagerTimeEntries(groupId, {
           status: 'approved',
           rejection_reason: null,
-          change_reason: `Approved from employee portal by ${profile?.full_name || session?.user?.email || 'manager'}`
+          change_reason: `Approved group from employee portal by ${profile?.full_name || session?.user?.email || 'manager'}`
         });
-        setMessage('appMessage', 'Time entry approved.');
+        setMessage('appMessage', 'Time group approved.');
         await refresh();
       } catch (error) {
         setMessage('appMessage', error.message, true);
@@ -1430,7 +1511,7 @@
       try {
         const id = $('managerEntryId').value;
         const status = $('managerEntryStatus').value;
-        await updateManagerTimeEntry(id, {
+        await updateManagerTimeEntries(id, {
           work_date: $('managerEntryDate').value,
           start_time: $('managerEntryStart').value,
           end_time: $('managerEntryEnd').value,
@@ -1466,6 +1547,7 @@
       entries = [];
       managerEntries = [];
       managerProfiles = [];
+      managerEmployees = [];
       clearTimeout(authRefreshTimer);
       if (session) {
         authRefreshTimer = setTimeout(async () => {
