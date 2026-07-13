@@ -711,6 +711,7 @@ async function createJobFromQuote(id){
  const quote=await loadQuote(id);if(!quote)return;
  if(quote.job_id&&!confirm("This quote already has a job. Create another job anyway?"))return;
  const jobStatus=await jobStatusForQuote(quote);if(!jobStatus)return;
+ const linkedLeadId=quote.lead_id||quote.quote_json?.source_measurement?.lead_id||"";
  const qFloors=quote.quote_json?.floors||[];
  const floorScopes=qFloors.map(f=>({floor:f.i,area_name:f.area_name||'',area_type:f.area_type||'',system:f.system,sqft:f.sqft,options:f.options||{},option_details:f.option_details||[],notes:f.notes||[],field_measurement_id:f.field_measurement_id||'',field_measurement_area_id:f.field_measurement_area_id||''}));
  const systemType=floorScopes.map(f=>f.system).filter(Boolean).join(", ")||quote.system_type||"";
@@ -731,6 +732,7 @@ async function createJobFromQuote(id){
   other_cost:quote.other_cost||0,
   notes:`Created from quote ${quote.quote_name||quote.id}`,
   material_notes:"",
+  source_lead_id:linkedLeadId||null,
   source_quote_id:quote.id,
   quote_json:quote.quote_json||{},
   quote_status:quote.status||"Draft",
@@ -746,7 +748,7 @@ async function createJobFromQuote(id){
  try{await parent.syncJobToCalendar?.(result.data,{interactive:false})}catch(e){}
  const update=await supa.from("quotes").update({job_id:result.data.id,status:"Job"}).eq("id",quote.id);
  if(update.error){alert("Job created, but quote link update failed: "+update.error.message);return;}
- if(quote.lead_id)await supa.from("leads").update({converted_job_id:result.data.id}).eq("id",quote.lead_id);
+ if(linkedLeadId)await supa.from("leads").update({stage:"Won",converted_job_id:result.data.id,converted_quote_id:quote.id}).eq("id",linkedLeadId);
  alert(linkOk?"Job created from quote.":"Job created from quote, but measurement/photo links need review. Try refreshing; if they are missing, use the job photo upload or relink the measurement.");
  renderHistory();renderRecentQuotes();syncParentDashboard();
 }
