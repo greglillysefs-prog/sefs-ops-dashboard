@@ -56,6 +56,19 @@
       color: var(--muted);
     }
 
+    a.ghost {
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, #222, #141414);
+      color: var(--muted);
+      border-radius: 8px;
+      min-height: 44px;
+      padding: 10px 14px;
+      font-weight: 800;
+      letter-spacing: 0;
+      display: inline-flex;
+      align-items: center;
+    }
+
     button:disabled {
       opacity: .55;
     }
@@ -188,6 +201,23 @@
       gap: 10px;
       margin: 0 0 14px;
       font-size: 20px;
+    }
+
+    .card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+
+    .card-head h2 {
+      margin: 0;
+    }
+
+    .card-head a {
+      text-decoration: none;
     }
 
     .card h2:before {
@@ -727,7 +757,10 @@
 
       <section id="payPeriodsPanel" class="mobile-panel pay-periods-wide">
         <div class="card">
-          <h2>Pay Periods</h2>
+          <div class="card-head">
+            <h2>Pay Periods</h2>
+            <a id="employeeAdminLink" class="ghost hidden" href="employee-admin.html">Manage Employees</a>
+          </div>
           <div id="payPeriodControls" class="full"></div>
           <div id="weeklySummaries" class="entry-list"></div>
         </div>
@@ -1271,6 +1304,12 @@
       return profileItem?.full_name || employeeItem?.name || 'Employee';
     }
 
+    function employeeIsActiveForPayroll(employeeId) {
+      const employeeItem = managerEmployees.find((item) => item.id === employeeId);
+      if (!employeeItem || employeeItem.active === false) return false;
+      return !String(employeeItem.name || '').toLowerCase().startsWith('removed employee');
+    }
+
     function jobName(jobId) {
       const job = jobs.find((item) => item.id === jobId);
       return job ? moneylessJobName(job) : 'Other / No job';
@@ -1475,7 +1514,7 @@
         };
       });
       const periodEntries = managerEntries.filter((entry) => entry.work_date >= start && entry.work_date <= end && !entry.deleted_at);
-      const approvedEntries = periodEntries.filter((entry) => entry.status === 'approved');
+      const approvedEntries = periodEntries.filter((entry) => entry.status === 'approved' && employeeIsActiveForPayroll(entry.employee_id));
       const employees = new Map();
       const byStatus = new Map();
 
@@ -1675,6 +1714,7 @@
         : 'Sign in to view your schedule and time.';
       document.body.classList.toggle('manager-view', Boolean(session && canReviewTime()));
       document.body.classList.toggle('crew-view', Boolean(session && canEnterCrewTime()));
+      $('employeeAdminLink').classList.toggle('hidden', !(session && canReviewTime()));
 
       if (!session) return;
       renderJobOptions();
