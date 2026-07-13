@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-type AdminAction = "login_options" | "job_crew_options" | "save_group_time_entries" | "pto_list" | "pto_request" | "pto_decision" | "list" | "upsert" | "deactivate" | "remove_employee" | "update_time_entry";
+type AdminAction = "login_options" | "job_crew_options" | "save_group_time_entries" | "pto_list" | "pto_request" | "pto_decision" | "verify_pin" | "list" | "upsert" | "deactivate" | "remove_employee" | "update_time_entry";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -441,15 +441,15 @@ Deno.serve(async (req) => {
       return json({ error: "Invalid employee admin PIN." }, 401);
     }
 
-    let adminActorUserId: string | null = null;
-    if (action === "remove_employee") {
-      const token = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
-      if (!token) return json({ error: "Admin login is required to remove an employee." }, 401);
+    if (action === "verify_pin") {
+      return json({ ok: true });
+    }
 
+    let adminActorUserId: string | null = null;
+    const token = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+    if (token) {
       const { data: authData, error: authError } = await supa.auth.getUser(token);
-      if (authError || !authData.user) {
-        return json({ error: "Admin login could not be verified." }, 401);
-      }
+      if (authError || !authData.user) return json({ error: "Admin login could not be verified." }, 401);
 
       const { data: actorProfile, error: actorProfileError } = await supa
         .from("profiles")
@@ -457,11 +457,9 @@ Deno.serve(async (req) => {
         .eq("id", authData.user.id)
         .maybeSingle();
       if (actorProfileError) throw actorProfileError;
-      if (!actorProfile?.active || actorProfile.role !== "admin") {
-        return json({ error: "Only an active admin can remove an employee." }, 403);
+      if (actorProfile?.active && actorProfile.role === "admin") {
+        adminActorUserId = authData.user.id;
       }
-
-      adminActorUserId = authData.user.id;
     }
 
     if (action === "list") {

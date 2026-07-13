@@ -353,10 +353,10 @@
     <header class="topbar">
       <div class="brand">
         <img src="assets/sefs-icon.jpeg" alt="SEFS">
-        <div>
-          <h1>Employee Admin</h1>
-          <p>Add or remove employee portal access without touching SQL.</p>
-        </div>
+      <div>
+        <h1>Employee Admin</h1>
+        <p>Add or remove employee portal access with the admin PIN.</p>
+      </div>
       </div>
       <div class="quick-links">
         <a href="index.html">Dashboard</a>
@@ -367,7 +367,7 @@
 
     <div id="message" class="notice hidden"></div>
 
-    <section id="adminAuth" class="card">
+    <section id="adminAuth" class="card hidden">
       <h2>Admin Login</h2>
       <form id="adminLoginForm" class="form-grid">
         <div>
@@ -387,7 +387,7 @@
       </form>
     </section>
 
-    <div id="adminApp" class="grid hidden">
+    <div id="adminApp" class="grid">
       <section class="card">
         <h2>Add Employee Access</h2>
         <form id="employeeForm" class="form-grid">
@@ -573,29 +573,27 @@
     }
 
     function renderAdminShell() {
-      const isAdmin = Boolean(adminSession && adminProfile?.active && adminProfile?.role === 'admin');
-      $('adminAuth').classList.toggle('hidden', isAdmin);
-      $('adminApp').classList.toggle('hidden', !isAdmin);
+      $('adminAuth').classList.add('hidden');
+      $('adminApp').classList.remove('hidden');
       $('adminSignOutBtn').classList.toggle('hidden', !adminSession);
-      if (adminSession && !isAdmin) {
-        setMessage('This login is not an active admin profile.', 'error');
-      }
     }
 
     async function callAdmin(action, extra = {}) {
       const pin = $('adminPin').value.trim();
       if (!pin) throw new Error('Enter the employee admin PIN first.');
-      if (!adminSession?.access_token) throw new Error('Sign in as admin first.');
+      const headers = {
+        'Content-Type': 'application/json',
+        'x-sefs-admin-pin': pin
+      };
+      if (adminSession?.access_token) {
+        headers.Authorization = `Bearer ${adminSession.access_token}`;
+      }
 
       let response;
       try {
         response = await fetch(FUNCTION_URL, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${adminSession.access_token}`,
-            'x-sefs-admin-pin': pin
-          },
+          headers,
           body: JSON.stringify({ action, ...extra })
         });
       } catch (error) {
@@ -789,7 +787,7 @@
         await callAdmin('remove_employee', {
           employee_id: pendingRemoval.employeeId,
           user_id: pendingRemoval.userId,
-          reason: `Employee ${pendingRemoval.name} removed from Employee Admin by ${adminProfile?.full_name || adminSession?.user?.email || 'admin'}`,
+          reason: `Employee ${pendingRemoval.name} removed from Employee Admin by ${adminProfile?.full_name || adminSession?.user?.email || 'PIN admin'}`,
           device_info: navigator.userAgent || 'Employee Admin'
         });
         pendingRemoval = null;
