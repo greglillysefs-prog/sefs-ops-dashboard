@@ -193,6 +193,27 @@ button.danger{background:#c21d17}
   .navInner{padding:10px 16px;overflow-x:auto}
   .app{padding:18px 16px 34px}
 }
+@media(max-width:640px){
+  .app{padding:14px 10px 88px}
+  .heroTitle{font-size:31px}
+  .heroSub{font-size:14px}
+  .iconRow{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:20px}
+  .dashboard,.card{border-radius:8px}
+  .dashTop{padding:10px 12px}
+  .dashLogo{width:138px}
+  .dashBody{padding:14px}
+  .dashGrid{grid-template-columns:1fr}
+  .recentRow,.summaryLine,.orangeBar{display:grid;grid-template-columns:1fr;gap:4px}
+  .btnRow{display:grid;grid-template-columns:1fr}
+  .btnRow button{width:100%;min-width:0}
+  .paper{overflow-x:auto}
+  .paper table{min-width:520px}
+  #history{min-height:0}
+  #historyList{max-height:none;min-height:0;overflow:visible;padding-right:0}
+  .nav{position:fixed;top:auto;bottom:0;left:0;right:0}
+  .navInner{padding:8px 10px;gap:6px}
+  .nav button{padding:9px 10px;white-space:nowrap}
+}
 @media print{
   body:before,body:after,.hero,.nav,.noPrint,#setup,#floors,#summaryControls,#history{display:none!important}
   body{background:#fff}

@@ -121,12 +121,17 @@
       align-items: start;
     }
 
+    .grid > * {
+      min-width: 0;
+    }
+
     .card {
       background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.015));
       border: 1px solid var(--line);
       border-radius: 8px;
       padding: 16px;
       box-shadow: 0 14px 40px rgba(0,0,0,.28);
+      min-width: 0;
     }
 
     .card h2 {
@@ -322,20 +327,56 @@
 
       .topbar {
         align-items: flex-start;
+        flex-wrap: wrap;
       }
     }
 
     @media (max-width: 560px) {
       .shell {
-        padding: 12px;
+        padding: 10px;
+      }
+
+      .brand {
+        align-items: flex-start;
+      }
+
+      .brand img {
+        width: 42px;
+        height: 42px;
+      }
+
+      .quick-links {
+        width: 100%;
+      }
+
+      .quick-links a,
+      .quick-links button {
+        flex: 1 1 auto;
+        min-height: 42px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
       }
 
       .person {
         grid-template-columns: 1fr;
       }
 
+      .entry-card header {
+        display: grid;
+        grid-template-columns: 1fr;
+      }
+
       .two-col {
         grid-template-columns: 1fr;
+      }
+
+      .password-control {
+        grid-template-columns: 1fr;
+      }
+
+      .password-control button {
+        width: 100%;
       }
 
       .person button {
