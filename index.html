@@ -95,10 +95,12 @@ img,iframe{max-width:100%}
   .two,.three,.measure-mobile-grid,.dash-actions,.list-toolbar{grid-template-columns:1fr!important}
   .dash-hero,.queue-grid,.metric-grid{grid-template-columns:1fr}
   .calendar-toolbar{display:grid;grid-template-columns:1fr;gap:8px}
-  .calendar-grid{display:block;overflow:visible}
-  .calendar-head{display:none}
-  .calendar-day{min-height:auto;border-right:0}
-  .calendar-day.other{display:none}
+  #schedule{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(96px,1fr));grid-template-rows:auto repeat(6,minmax(120px,auto));min-width:760px;overflow:hidden}
+  .calendar-head{display:block}
+  .calendar-day{display:block;min-height:120px;border-right:1px solid #333}
+  .calendar-day.other{display:block}
+  .calendar-event{font-size:11px}
   table{display:block;width:100%;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap}
   th,td{min-width:115px}
   td:first-child,th:first-child{min-width:145px}
