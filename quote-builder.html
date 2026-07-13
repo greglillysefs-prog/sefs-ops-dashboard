@@ -501,7 +501,7 @@ function buildFloorForms(){
 function selectHTML(id,label,opts,onchange=""){return `<div><label>${label}</label><select id="${id}" ${onchange?`onchange="${onchange}"`:""}>${opts.map(o=>`<option>${o}</option>`).join("")}</select></div>`}
 function renderOptions(i){
   let system=val("system"+i),h="";
-  if(system==="Flake"){h+=selectHTML(`flakeSize${i}`,"Flake Size",["1/16","1/8","1/4"]);h+=selectHTML(`flakeExtra${i}`,"Additional Sealer?",["No","Yes"],`toggleExtra(${i},'flake')`);h+=`<div id="flakeFinishBox${i}" class="hidden">${selectHTML(`flakeFinish${i}`,"Additional Sealer Finish",["Matte","Gloss"])}</div>`;}
+  if(system==="Flake"){h+=selectHTML(`flakeSize${i}`,"Flake Size",["1/4","1/8","1/16"]);h+=selectHTML(`flakeExtra${i}`,"Additional Sealer?",["No","Yes"],`toggleExtra(${i},'flake')`);h+=`<div id="flakeFinishBox${i}" class="hidden">${selectHTML(`flakeFinish${i}`,"Additional Sealer Finish",["Matte","Gloss"])}</div>`;}
   if(system==="Metallic") h+=selectHTML(`metalFinish${i}`,"Finish",["Matte","Gloss"]);
   if(system==="Wood/Stone Overlay"){h+=selectHTML(`woodLoc${i}`,"Interior or Exterior",["Interior","Exterior"]);h+=selectHTML(`woodFinish${i}`,"Finish",["Matte","Gloss"]);}
   if(system==="Broom Overlay") h+=`<p class="small">No additional options.</p>`;
