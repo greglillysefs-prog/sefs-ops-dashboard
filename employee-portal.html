@@ -178,8 +178,8 @@
       margin-top: 0;
     }
 
-    .crew-view #timePanel .card:first-child {
-      grid-column: 1 / -1;
+    .pay-periods-wide {
+      margin-top: 16px;
     }
 
     .card h2 {
@@ -702,11 +702,6 @@
             </form>
           </div>
           <div class="card">
-            <h2>Pay Periods</h2>
-            <div id="payPeriodControls" class="full"></div>
-            <div id="weeklySummaries" class="entry-list"></div>
-          </div>
-          <div class="card">
             <h2>PTO</h2>
             <form id="ptoForm" class="form-grid">
               <div>
@@ -729,6 +724,14 @@
           </div>
         </aside>
       </div>
+
+      <section id="payPeriodsPanel" class="mobile-panel pay-periods-wide">
+        <div class="card">
+          <h2>Pay Periods</h2>
+          <div id="payPeriodControls" class="full"></div>
+          <div id="weeklySummaries" class="entry-list"></div>
+        </div>
+      </section>
     </main>
   </div>
 
@@ -1926,9 +1929,11 @@
       });
       $('schedulePanel').classList.toggle('hidden-mobile', tab === 'time');
       $('timePanel').classList.toggle('hidden-mobile', tab !== 'time');
+      $('payPeriodsPanel').classList.toggle('hidden-mobile', tab !== 'time');
       if (tab === 'entries') {
         $('schedulePanel').classList.remove('hidden-mobile');
         $('timePanel').classList.add('hidden-mobile');
+        $('payPeriodsPanel').classList.add('hidden-mobile');
       }
     }
 
