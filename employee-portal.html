@@ -758,7 +758,12 @@
     let loginOptions = [];
 
     const $ = (id) => document.getElementById(id);
-    const today = () => new Date().toISOString().slice(0, 10);
+    const DEFAULT_START_TIME = '06:00';
+    const today = () => {
+      const date = new Date();
+      date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+      return date.toISOString().slice(0, 10);
+    };
     const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
     const moneylessJobName = (job) => [job.customer, job.system_type].filter(Boolean).join(' - ') || job.job_name || 'Scheduled job';
     const canEnterCrewTime = () => ['crew_lead', 'manager', 'admin'].includes(profile?.role);
@@ -1684,7 +1689,7 @@
       $('entryId').value = '';
       $('formTitle').textContent = 'Add Time';
       $('workDate').value = today();
-      $('startTime').value = '';
+      $('startTime').value = DEFAULT_START_TIME;
       $('endTime').value = '';
       $('notes').value = '';
       $('timePhotos').value = '';
@@ -2099,6 +2104,7 @@
 
     (async function init() {
       $('workDate').value = today();
+      $('startTime').value = DEFAULT_START_TIME;
       await loadLoginOptions();
       const result = await supa.auth.getSession();
       session = result.data.session;
