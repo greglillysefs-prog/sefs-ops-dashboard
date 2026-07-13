@@ -511,6 +511,7 @@ function renderOptions(i){
   if(system==="Prep Only") h+=selectHTML(`prepType${i}`,"Blast or Grind",["Blast","Grind"]);
   if(["Flake","Quartz","Mortar/Prime & Coat"].includes(system)){h+=selectHTML(`cove${i}`,"Add Cove Base?",["No","Yes"],`toggleCove(${i})`);h+=`<div id="coveBox${i}" class="hidden">${selectHTML(`coveSize${i}`,"Cove Size",["4","6"])}<label>Linear Feet of Cove</label><input id="coveLF${i}" type="number" inputmode="decimal"></div>`;}
   $("options"+i).innerHTML=h;
+  if(system==="Flake"&&$("flakeSize"+i)) $("flakeSize"+i).value="1/4";
   queueQuoteResize();
 }
 function toggleExtra(i,type){$(type+"FinishBox"+i)?.classList.toggle("hidden",val(type+"Extra"+i)!=="Yes");queueQuoteResize();}
