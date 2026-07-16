@@ -31,6 +31,8 @@ alter table public.profiles add column if not exists active boolean not null def
 alter table public.profiles add column if not exists created_at timestamptz not null default now();
 alter table public.profiles add column if not exists updated_at timestamptz not null default now();
 
+alter table public.employees add column if not exists hourly_rate numeric(10,2) not null default 0;
+
 create table if not exists public.employee_job_assignments (
   id uuid primary key default gen_random_uuid(),
   employee_id uuid not null references public.employees(id) on delete cascade,
@@ -414,6 +416,8 @@ to authenticated
 using (employee_id = public.current_employee_id() or public.is_sefs_manager());
 
 grant usage on schema public to authenticated;
+grant select on public.employees to authenticated;
+grant update (hourly_rate) on public.employees to authenticated;
 grant select on public.employee_job_schedule to authenticated;
 grant select on public.profiles to authenticated;
 grant select on public.employee_job_assignments to authenticated;

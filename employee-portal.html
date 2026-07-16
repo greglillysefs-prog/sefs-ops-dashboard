@@ -196,6 +196,12 @@
       width: 100%;
     }
 
+    .manager-top-stack {
+      display: grid;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
     .card h2 {
       display: flex;
       align-items: center;
@@ -456,6 +462,37 @@
       font-weight: 900;
     }
 
+    .timesheet .pay-col {
+      background: rgba(21,199,122,.08);
+      color: #d8ffee;
+      font-weight: 900;
+    }
+
+    .pay-rate-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .pay-rate-table th,
+    .pay-rate-table td {
+      border-bottom: 1px solid rgba(255,255,255,.1);
+      padding: 8px 0;
+      text-align: left;
+    }
+
+    .pay-rate-table th:last-child,
+    .pay-rate-table td:last-child {
+      text-align: right;
+      width: 140px;
+    }
+
+    .pay-rate-table input {
+      min-height: 36px;
+      padding: 7px 9px;
+      text-align: right;
+    }
+
     .timesheet-foot {
       background: rgba(255,122,0,.16);
       font-weight: 900;
@@ -479,6 +516,24 @@
 
     .timesheet-note + .timesheet-note {
       margin-top: 6px;
+    }
+
+    .weekly-tools {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    .weekly-tools header {
+      margin: 0;
+    }
+
+    .weekly-tools button {
+      min-height: 38px;
+      padding: 8px 12px;
     }
 
     .hours {
@@ -618,6 +673,70 @@
       }
 
     }
+
+    @media print {
+      body.print-weekly * {
+        visibility: hidden !important;
+      }
+
+      body.print-weekly,
+      body.print-weekly .shell,
+      body.print-weekly #app,
+      body.print-weekly #weeklySummaries,
+      body.print-weekly #weeklySummaries *,
+      body.print-weekly .weekly-print-target,
+      body.print-weekly .weekly-print-target * {
+        visibility: visible !important;
+      }
+
+      body.print-weekly {
+        background: #fff !important;
+        color: #111 !important;
+      }
+
+      body.print-weekly .weekly-print-target {
+        position: absolute;
+        inset: 0 auto auto 0;
+        width: 100%;
+        margin: 0;
+        background: #fff !important;
+        color: #111 !important;
+        border: 0 !important;
+        box-shadow: none !important;
+      }
+
+      body.print-weekly .no-print,
+      body.print-weekly details,
+      body.print-weekly .weekly-print-target > p.muted {
+        display: none !important;
+      }
+
+      body.print-weekly .timesheet-wrap {
+        overflow: visible !important;
+        border-color: #999 !important;
+        background: #fff !important;
+      }
+
+      body.print-weekly .timesheet {
+        min-width: 0 !important;
+        table-layout: fixed;
+        font-size: 9px;
+        color: #111 !important;
+      }
+
+      body.print-weekly .timesheet th,
+      body.print-weekly .timesheet td,
+      body.print-weekly .timesheet .employee-col {
+        background: #fff !important;
+        color: #111 !important;
+        border: 1px solid #999 !important;
+      }
+
+      @page {
+        size: landscape;
+        margin: .35in;
+      }
+    }
   </style>
 </head>
 <body>
@@ -666,20 +785,7 @@
         <button type="button" data-tab="entries">Entries</button>
       </div>
 
-      <div class="grid">
-        <section id="schedulePanel" class="mobile-panel">
-          <div class="card">
-            <h2>My Schedule</h2>
-            <div id="scheduleList" class="job-list"></div>
-          </div>
-
-          <div class="card">
-            <h2>My Time Entries</h2>
-            <div id="totals" class="totals"></div>
-            <div id="entryMode" class="actions"></div>
-            <div id="entryList" class="entry-list"></div>
-          </div>
-
+      <section id="managerTopPanel" class="manager-top-stack hidden">
           <div id="managerReviewCard" class="card hidden">
             <h2>Time Review</h2>
             <form id="managerTimeForm" class="form-grid hidden">
@@ -733,6 +839,32 @@
             <div id="managerReviewMode" class="actions"></div>
             <div id="managerTimeList" class="entry-list"></div>
             <div id="managerReviewFooter" class="actions"></div>
+          </div>
+
+        <section id="payPeriodsPanel" class="mobile-panel pay-periods-wide">
+          <div class="card">
+            <div class="card-head">
+              <h2>Pay Periods</h2>
+              <a id="employeeAdminLink" class="ghost hidden" href="employee-admin.html">Manage Employees</a>
+            </div>
+            <div id="payPeriodControls" class="full"></div>
+            <div id="weeklySummaries" class="entry-list"></div>
+          </div>
+        </section>
+      </section>
+
+      <div class="grid">
+        <section id="schedulePanel" class="mobile-panel">
+          <div class="card">
+            <h2>My Schedule</h2>
+            <div id="scheduleList" class="job-list"></div>
+          </div>
+
+          <div class="card">
+            <h2>My Time Entries</h2>
+            <div id="totals" class="totals"></div>
+            <div id="entryMode" class="actions"></div>
+            <div id="entryList" class="entry-list"></div>
           </div>
         </section>
 
@@ -801,19 +933,13 @@
             </form>
             <div id="ptoSummary" class="entry-list"></div>
           </div>
+          <div id="payRatesCard" class="card hidden">
+            <h2>Hourly Pay Rates</h2>
+            <div id="payRatesMessage" class="notice hidden"></div>
+            <div id="payRatesList"></div>
+          </div>
         </aside>
       </div>
-
-      <section id="payPeriodsPanel" class="mobile-panel pay-periods-wide">
-        <div class="card">
-          <div class="card-head">
-            <h2>Pay Periods</h2>
-            <a id="employeeAdminLink" class="ghost hidden" href="employee-admin.html">Manage Employees</a>
-          </div>
-          <div id="payPeriodControls" class="full"></div>
-          <div id="weeklySummaries" class="entry-list"></div>
-        </div>
-      </section>
     </main>
   </div>
 
@@ -839,6 +965,7 @@
     let selectedCrewIds = new Set();
     let ptoEntries = [];
     let ptoBalance = { accrued: 0, ledger: 0, pending: 0, balance: 0, available: 0 };
+    let payRatesColumnAvailable = true;
     let authRefreshTimer = null;
     let loginOptions = [];
 
@@ -850,6 +977,7 @@
       return date.toISOString().slice(0, 10);
     };
     const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    const money = (value) => `$${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const moneylessJobName = (job) => [job.customer, job.system_type].filter(Boolean).join(' - ') || job.job_name || 'Scheduled job';
     const canEnterCrewTime = () => ['crew_lead', 'manager', 'admin'].includes(profile?.role);
     const canReviewTime = () => ['manager', 'admin'].includes(profile?.role);
@@ -998,6 +1126,7 @@
       managerEntries = [];
       managerProfiles = [];
       managerEmployees = [];
+      payRatesColumnAvailable = true;
       ptoEntries = [];
       ptoBalance = { accrued: 0, ledger: 0, pending: 0, balance: 0, available: 0 };
       crewOptions = [];
@@ -1137,8 +1266,7 @@
 
       const [
         { data: timeData, error: timeError },
-        { data: profileData, error: profileError },
-        { data: employeeData, error: employeeError }
+        { data: profileData, error: profileError }
       ] = await Promise.all([
         supa
           .from('time_entries')
@@ -1150,18 +1278,26 @@
         supa
           .from('profiles')
           .select('id, employee_id, role, full_name, active')
-          .order('full_name'),
-        supa
-          .from('employees')
-          .select('id, name, active')
-          .order('name')
+          .order('full_name')
       ]);
       if (timeError) throw timeError;
       if (profileError) throw profileError;
-      if (employeeError) throw employeeError;
+
+      let employeeResult = await supa
+        .from('employees')
+        .select('id, name, active, hourly_rate')
+        .order('name');
+      payRatesColumnAvailable = !employeeResult.error;
+      if (employeeResult.error) {
+        employeeResult = await supa
+          .from('employees')
+          .select('id, name, active')
+          .order('name');
+      }
+      if (employeeResult.error) throw employeeResult.error;
       managerEntries = timeData || [];
       managerProfiles = profileData || [];
-      managerEmployees = employeeData || [];
+      managerEmployees = employeeResult.data || [];
     }
 
     async function loadCrewOptionsForJob(jobId) {
@@ -1353,10 +1489,30 @@
       return profileItem?.full_name || employeeItem?.name || 'Employee';
     }
 
+    function employeeProfile(employeeId) {
+      return managerProfiles.find((item) => item.employee_id === employeeId);
+    }
+
+    function employeeById(employeeId) {
+      return managerEmployees.find((item) => item.id === employeeId);
+    }
+
+    function employeeHourlyRate(employeeId) {
+      return Number(employeeById(employeeId)?.hourly_rate || 0);
+    }
+
     function employeeIsActiveForPayroll(employeeId) {
-      const employeeItem = managerEmployees.find((item) => item.id === employeeId);
+      const profileItem = employeeProfile(employeeId);
+      if (['manager', 'admin'].includes(profileItem?.role)) return false;
+      const employeeItem = employeeById(employeeId);
       if (!employeeItem || employeeItem.active === false) return false;
       return !String(employeeItem.name || '').toLowerCase().startsWith('removed employee');
+    }
+
+    function payrollEmployees() {
+      return managerEmployees
+        .filter((employee) => employeeIsActiveForPayroll(employee.id))
+        .sort((a, b) => employeeName(a.id).localeCompare(employeeName(b.id)));
     }
 
     function jobName(jobId) {
@@ -1574,6 +1730,8 @@
         if (!employees.has(employeeId)) {
           employees.set(employeeId, {
             name,
+            employeeId,
+            hourlyRate: employeeHourlyRate(employeeId),
             dayHours: Object.fromEntries(days.map((day) => [day.iso, 0])),
             total: 0,
             entries: []
@@ -1591,13 +1749,22 @@
       let totalHours = 0;
       let regularHours = 0;
       let overtimeHours = 0;
+      let regularPayTotal = 0;
+      let overtimePayTotal = 0;
+      let totalPayTotal = 0;
 
       for (const row of rows) {
         row.regular = Math.min(row.total, 40);
         row.overtime = Math.max(row.total - 40, 0);
+        row.regularPay = row.regular * row.hourlyRate;
+        row.overtimePay = row.overtime * row.hourlyRate * 1.5;
+        row.totalPay = row.regularPay + row.overtimePay;
         totalHours += row.total;
         regularHours += row.regular;
         overtimeHours += row.overtime;
+        regularPayTotal += row.regularPay;
+        overtimePayTotal += row.overtimePay;
+        totalPayTotal += row.totalPay;
         for (const day of days) dayTotals[day.iso] += row.dayHours[day.iso] || 0;
       }
 
@@ -1622,7 +1789,8 @@
       }
 
       return `
-        <article class="entry-card">
+        <article class="entry-card weekly-print-target">
+          <div class="weekly-tools">
           <header>
             <div>
               <h3>Weekly Timesheet</h3>
@@ -1630,6 +1798,8 @@
             </div>
             <span class="status approved">${totalHours.toFixed(2)} hrs</span>
           </header>
+          <button class="ghost no-print" type="button" onclick="printWeeklyTimesheet()">Share / Save PDF</button>
+          </div>
           <div class="timesheet-wrap">
             <table class="timesheet">
               <thead>
@@ -1639,6 +1809,10 @@
                   <th>Total<br>Hours</th>
                   <th>Reg<br>Time</th>
                   <th>Over<br>Time</th>
+                  <th>Reg<br>Pay</th>
+                  <th>OT<br>Pay</th>
+                  <th>Total<br>Pay</th>
+                  <th>Hourly<br>Rate</th>
                 </tr>
               </thead>
               <tbody>
@@ -1649,8 +1823,12 @@
                     <td class="total-col">${row.total.toFixed(2)}</td>
                     <td>${row.regular.toFixed(2)}</td>
                     <td class="overtime-col">${row.overtime ? row.overtime.toFixed(2) : ''}</td>
+                    <td class="pay-col">${money(row.regularPay)}</td>
+                    <td class="pay-col">${row.overtimePay ? money(row.overtimePay) : ''}</td>
+                    <td class="pay-col">${money(row.totalPay)}</td>
+                    <td>${money(row.hourlyRate)}</td>
                   </tr>
-                `).join('') : `<tr><td class="employee-col">No approved hours</td><td colspan="10" class="muted">No approved time logged for this pay period.</td></tr>`}
+                `).join('') : `<tr><td class="employee-col">No approved hours</td><td colspan="14" class="muted">No approved time logged for this pay period.</td></tr>`}
               </tbody>
               <tfoot>
                 <tr class="timesheet-foot">
@@ -1659,6 +1837,10 @@
                   <td>${totalHours.toFixed(2)}</td>
                   <td>${regularHours.toFixed(2)}</td>
                   <td>${overtimeHours.toFixed(2)}</td>
+                  <td>${money(regularPayTotal)}</td>
+                  <td>${money(overtimePayTotal)}</td>
+                  <td>${money(totalPayTotal)}</td>
+                  <td></td>
                 </tr>
                 <tr class="timesheet-notes-row">
                   <td class="employee-col">Notes</td>
@@ -1673,7 +1855,7 @@
                       `).join('') : '<span class="muted">No notes.</span>'}
                     </td>
                   `).join('')}
-                  <td colspan="3" class="muted">Notes are grouped by work day.</td>
+                  <td colspan="7" class="muted">Notes are grouped by work day.</td>
                 </tr>
               </tfoot>
             </table>
@@ -1697,6 +1879,70 @@
       const lastStart = addDays(thisStart, -7);
       $('weeklySummaries').innerHTML = periodSummary('This Week', thisStart) + periodSummary('Last Week', lastStart);
     }
+
+    function renderPayRates() {
+      $('payRatesCard').classList.toggle('hidden', !canReviewTime());
+      if (!canReviewTime()) {
+        $('payRatesList').innerHTML = '';
+        setMessage('payRatesMessage', '');
+        return;
+      }
+
+      if (!payRatesColumnAvailable) {
+        setMessage('payRatesMessage', 'Hourly rates need the database update first. Run the hourly_rate SQL migration, then refresh this page.', true);
+      } else {
+        setMessage('payRatesMessage', '');
+      }
+
+      const employees = payrollEmployees();
+      $('payRatesList').innerHTML = employees.length ? `
+        <table class="pay-rate-table">
+          <thead>
+            <tr>
+              <th>Employee</th>
+              <th>Hourly Rate</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${employees.map((employee) => `
+              <tr>
+                <td>${esc(employeeName(employee.id))}</td>
+                <td>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value="${esc(employee.hourly_rate ?? '')}"
+                    ${payRatesColumnAvailable ? '' : 'disabled'}
+                    onchange="saveEmployeePayRate('${esc(employee.id)}', this.value)"
+                  >
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      ` : '<div class="muted">No active employee pay rates to manage.</div>';
+    }
+
+    window.saveEmployeePayRate = async function saveEmployeePayRate(employeeId, rawValue) {
+      if (!canReviewTime()) return;
+      const rate = Math.max(0, Number(rawValue || 0));
+      try {
+        const result = await supa
+          .from('employees')
+          .update({ hourly_rate: rate })
+          .eq('id', employeeId)
+          .select('id, name, active, hourly_rate')
+          .single();
+        if (result.error) throw result.error;
+        managerEmployees = managerEmployees.map((employee) => employee.id === employeeId ? { ...employee, hourly_rate: result.data.hourly_rate } : employee);
+        renderPayRates();
+        renderWeeklySummaries();
+        setMessage('payRatesMessage', `Updated ${employeeName(employeeId)} to ${money(rate)} per hour.`);
+      } catch (error) {
+        setMessage('payRatesMessage', error.message, true);
+      }
+    };
 
     function ptoStatusClass(status) {
       if (status === 'approved') return 'approved';
@@ -1754,6 +2000,90 @@
       renderWeeklySummaries();
     };
 
+    function weeklyTimesheetPrintData() {
+      const source = document.querySelector('.weekly-print-target');
+      if (!source) throw new Error('Weekly timesheet is not available yet.');
+      const clone = source.cloneNode(true);
+      clone.querySelectorAll('.no-print, details, .weekly-print-target > p.muted').forEach((node) => node.remove());
+      const title = clone.querySelector('h3')?.textContent || 'Weekly Timesheet';
+      const period = clone.querySelector('.muted')?.textContent || '';
+      return { title, period, html: clone.outerHTML };
+    }
+
+    function weeklyTimesheetPrintHTML() {
+      const data = weeklyTimesheetPrintData();
+      return `<!doctype html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>${esc(data.title)} ${esc(data.period)}</title>
+          <style>
+            * { box-sizing: border-box; }
+            body { margin: 0; padding: 18px; color: #111; background: #fff; font-family: Arial, Helvetica, sans-serif; }
+            h3 { margin: 0 0 4px; font-size: 20px; text-transform: uppercase; }
+            .muted { color: #444; }
+            .weekly-tools { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
+            .status { border: 1px solid #111; border-radius: 999px; padding: 6px 10px; font-weight: 800; white-space: nowrap; }
+            .timesheet-wrap { width: 100%; overflow: visible; }
+            table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 9px; }
+            th, td { border: 1px solid #999; padding: 5px 4px; text-align: center; vertical-align: middle; color: #111; }
+            th { background: #eee; text-transform: uppercase; font-weight: 800; }
+            .employee-col { width: 120px; text-align: left; font-weight: 800; background: #f7f7f7; }
+            .total-col, .pay-col, .overtime-col { font-weight: 800; }
+            tfoot td { font-weight: 800; background: #f3f3f3; }
+            .timesheet-notes-row td { vertical-align: top; font-weight: 400; }
+            .timesheet-note { text-align: left; white-space: normal; overflow-wrap: anywhere; line-height: 1.25; }
+            @page { size: landscape; margin: .35in; }
+            @media print { body { padding: 0; } }
+          </style>
+        </head>
+        <body>${data.html}</body>
+        </html>`;
+    }
+
+    window.printWeeklyTimesheet = function printWeeklyTimesheet() {
+      try {
+        const data = weeklyTimesheetPrintData();
+        sessionStorage.setItem('sefs_weekly_timesheet_print', JSON.stringify(data));
+        const printPage = window.open('weekly-timesheet-pdf.html', '_blank');
+        if (printPage) return;
+
+        window.location.href = 'weekly-timesheet-pdf.html';
+      } catch (error) {
+        try {
+        const html = weeklyTimesheetPrintHTML();
+        const printWindow = window.open('', '_blank');
+        if (printWindow) {
+          printWindow.document.open();
+          printWindow.document.write(html);
+          printWindow.document.close();
+          printWindow.focus();
+          setTimeout(() => printWindow.print(), 300);
+          return;
+        }
+
+        const frame = document.createElement('iframe');
+        frame.style.position = 'fixed';
+        frame.style.right = '0';
+        frame.style.bottom = '0';
+        frame.style.width = '0';
+        frame.style.height = '0';
+        frame.style.border = '0';
+        document.body.appendChild(frame);
+        frame.contentDocument.open();
+        frame.contentDocument.write(html);
+        frame.contentDocument.close();
+        setTimeout(() => {
+          frame.contentWindow.focus();
+          frame.contentWindow.print();
+          setTimeout(() => frame.remove(), 1000);
+        }, 300);
+        } catch (fallbackError) {
+          setMessage('appMessage', fallbackError.message, true);
+        }
+      }
+    };
+
     function render() {
       $('authCard').classList.toggle('hidden', Boolean(session));
       $('app').classList.toggle('hidden', !session);
@@ -1763,6 +2093,7 @@
         : 'Sign in to view your schedule and time.';
       document.body.classList.toggle('manager-view', Boolean(session && canReviewTime()));
       document.body.classList.toggle('crew-view', Boolean(session && canEnterCrewTime()));
+      $('managerTopPanel').classList.toggle('hidden', !session);
       $('employeeAdminLink').classList.toggle('hidden', !(session && canReviewTime()));
 
       if (!session) return;
@@ -1773,6 +2104,7 @@
       renderEntries();
       renderManagerReview();
       renderWeeklySummaries();
+      renderPayRates();
       renderPto();
       calculateHours();
     }
@@ -2018,11 +2350,11 @@
       });
       $('schedulePanel').classList.toggle('hidden-mobile', tab === 'time');
       $('timePanel').classList.toggle('hidden-mobile', tab !== 'time');
-      $('payPeriodsPanel').classList.toggle('hidden-mobile', tab !== 'time');
+      $('payPeriodsPanel').classList.toggle('hidden-mobile', !canReviewTime() && tab !== 'time');
       if (tab === 'entries') {
         $('schedulePanel').classList.remove('hidden-mobile');
         $('timePanel').classList.add('hidden-mobile');
-        $('payPeriodsPanel').classList.add('hidden-mobile');
+        $('payPeriodsPanel').classList.toggle('hidden-mobile', !canReviewTime());
       }
     }
 

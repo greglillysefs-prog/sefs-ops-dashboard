@@ -414,7 +414,7 @@ const COSTS = {
   wbEpoxy2g:145,flakeBox:175,quartzBag:20,metallicPowder:48,solidColorPod:35,
   aliphatic:305,coveMortar:55,lowLusterAcrylic:120,glossAcrylic:140
 };
-const WASTE_FACTOR=1.05, DEFAULT_LABOR_PER_DAY=250, ADMIN_PER_DAY=150, MIN_JOB_PRICE=1500, OUT_TOWN=150;
+const WASTE_FACTOR=1.05, DEFAULT_LABOR_PER_DAY=250, ADMIN_PER_DAY=150, MIN_JOB_PRICE=1500, MIN_MARGIN_DOLLARS=200, OUT_TOWN=150;
 let lastQuoteHTML="", lastPlainText="", lastData=null;
 
 function $(id){return document.getElementById(id)}
@@ -586,9 +586,16 @@ function calculate(){
  let companyCost=totalMat+totalLabor+totalAdmin;
  if(val("useMargin")==="Yes"){let margin=num("targetMargin")/100;if(margin>0&&margin<1)totalSell=(companyCost/(1-margin))+totalOut;}
  if(totalSell<MIN_JOB_PRICE)totalSell=MIN_JOB_PRICE;
- let marginDollars=totalSell-companyCost,marginPercent=totalSell?marginDollars/totalSell*100:0;
+ let baseTotalSell=totalSell,serviceFee=0,marginDollars=totalSell-companyCost;
+ if(marginDollars<MIN_MARGIN_DOLLARS){
+  serviceFee=MIN_MARGIN_DOLLARS-marginDollars;
+  totalSell+=serviceFee;
+  marginDollars=totalSell-companyCost;
+  alert(`A Service Fee of ${money(serviceFee)} was automatically added to bring quote margin to ${money(MIN_MARGIN_DOLLARS)}.`);
+ }
+ let marginPercent=totalSell?marginDollars/totalSell*100:0;
  const sourceMeasurement=pendingMeasurementExport?{id:pendingMeasurementExport.id||'',lead_id:pendingMeasurementExport.lead_id||'',job_id:pendingMeasurementExport.job_id||'',source_entity_type:pendingMeasurementExport.source_entity_type||'',source_entity_id:pendingMeasurementExport.source_entity_id||''}:null;
- lastData={customer,floors,totalSell,totalMat,totalLabor,totalAdmin,totalOut,companyCost,marginDollars,marginPercent,laborMen,laborDays,laborRate,laborDetails,source_measurement_id:sourceMeasurement?.id||'',source_measurement:sourceMeasurement};
+ lastData={customer,floors,totalSell,baseTotalSell,serviceFee,totalMat,totalLabor,totalAdmin,totalOut,companyCost,marginDollars,marginPercent,laborMen,laborDays,laborRate,laborDetails,source_measurement_id:sourceMeasurement?.id||'',source_measurement:sourceMeasurement};
  renderResults(lastData); resizeParentQuoteFrame(); $("results").scrollIntoView({behavior:"smooth"});
 }
 
@@ -600,7 +607,8 @@ function renderResults(data){
 
  let installer=`<div class="paper materialPaper"><div class="paperHeader"><img class="paperLogo" src="${LOGO_URI}"><div><strong>MATERIALS NEEDED</strong><br><small>WITH COST TOTALS</small></div></div><div class="paperBody"><h3>Materials Sheet</h3><p><strong>Customer:</strong> ${data.customer.name}</p>${data.floors.map(f=>`<h3>Floor ${f.i}: ${f.system} - ${f.sqft} SQ FT</h3>${f.option_details?.length?`<p class="small">${f.option_details.map(qEsc).join("<br>")}</p>`:""}${f.materials.length?`<table><tr><th>Material</th><th>Qty</th><th>Unit Cost</th><th>Total</th></tr>${f.materials.map(m=>`<tr><td>${m.name}</td><td>${m.qty}</td><td>${money(m.unitCost)}</td><td>${money(m.total)}</td></tr>`).join("")}<tr><th colspan="3">Floor Material Total</th><th>${money(f.mat)}</th></tr></table>`:`<p>No coating materials required.</p>`}${f.notes.map(n=>`<p>${n}</p>`).join("")}`).join("")}<div class="orangeBar"><span>Total Material Cost</span><span>${money(data.totalMat)}</span></div></div></div>`;
 
- let summary=`<div class="paper summaryPaper"><div class="paperHeader"><img class="paperLogo" src="${LOGO_URI}"><div><strong>MANAGEMENT SUMMARY</strong><br><small>FULL COST BREAKDOWN</small></div></div><div class="paperBody"><h3>Management Summary</h3>${data.floors.map(f=>`<div class="summaryLine"><span>Floor ${f.i}: ${f.system}${f.option_details?.length?`<br><small>${f.option_details.map(qEsc).join("<br>")}</small>`:""}</span><strong>${f.sqft} SQ FT</strong></div>`).join("")}<div class="summaryLine"><span>Material Cost</span><strong>${money(data.totalMat)}</strong></div><div class="summaryLine"><span>Labor Cost</span><strong>${money(data.totalLabor)}</strong></div><div class="summaryLine"><span>Admin Cost</span><strong>${money(data.totalAdmin)}</strong></div><div class="summaryLine"><span>Out Of Town</span><strong>${money(data.totalOut)}</strong></div><div class="summaryLine"><span>Company Cost</span><strong>${money(data.companyCost)}</strong></div><div class="orangeBar"><span>CUSTOMER PRICE</span><span>${money(data.totalSell)}</span></div><div class="summaryLine"><span>Margin Dollars</span><strong>${money(data.marginDollars)}</strong></div><div class="summaryLine"><span>Margin Percent</span><strong>${data.marginPercent.toFixed(1)}%</strong></div><h3>Quote Labor</h3><p>${data.laborDetails.join("<br>")}</p></div></div>`;
+ let serviceFeeSummary=data.serviceFee>0?`<div class="notice"><strong>Service Fee Applied</strong><br>A service fee was added automatically because the original margin was below ${money(MIN_MARGIN_DOLLARS)}.</div><div class="summaryLine"><span>Base Customer Price</span><strong>${money(data.baseTotalSell)}</strong></div><div class="summaryLine"><span>Service Fee</span><strong>${money(data.serviceFee)}</strong></div>`:"";
+ let summary=`<div class="paper summaryPaper"><div class="paperHeader"><img class="paperLogo" src="${LOGO_URI}"><div><strong>MANAGEMENT SUMMARY</strong><br><small>FULL COST BREAKDOWN</small></div></div><div class="paperBody"><h3>Management Summary</h3>${data.floors.map(f=>`<div class="summaryLine"><span>Floor ${f.i}: ${f.system}${f.option_details?.length?`<br><small>${f.option_details.map(qEsc).join("<br>")}</small>`:""}</span><strong>${f.sqft} SQ FT</strong></div>`).join("")}<div class="summaryLine"><span>Material Cost</span><strong>${money(data.totalMat)}</strong></div><div class="summaryLine"><span>Labor Cost</span><strong>${money(data.totalLabor)}</strong></div><div class="summaryLine"><span>Admin Cost</span><strong>${money(data.totalAdmin)}</strong></div><div class="summaryLine"><span>Out Of Town</span><strong>${money(data.totalOut)}</strong></div><div class="summaryLine"><span>Company Cost</span><strong>${money(data.companyCost)}</strong></div>${serviceFeeSummary}<div class="orangeBar"><span>CUSTOMER PRICE</span><span>${money(data.totalSell)}</span></div><div class="summaryLine"><span>Margin Dollars</span><strong>${money(data.marginDollars)}</strong></div><div class="summaryLine"><span>Margin Percent</span><strong>${data.marginPercent.toFixed(1)}%</strong></div><h3>Quote Labor</h3><p>${data.laborDetails.join("<br>")}</p></div></div>`;
 
  proposal += customer+installer+summary+`</div><div class="btnRow noPrint"><button onclick="saveQuote()">Save Quote</button><button class="secondary" onclick="createLeadFromCurrentQuote()">Create Lead</button><button class="secondary" onclick="createJobFromCurrentQuote()">Create Job</button><button onclick="window.print()">Print / Save PDF</button><button class="secondary" onclick="downloadHTML()">Download HTML</button></div></div>`;
  $("results").innerHTML=proposal; lastQuoteHTML=proposal; lastPlainText=dataToText(data); resizeParentQuoteFrame();

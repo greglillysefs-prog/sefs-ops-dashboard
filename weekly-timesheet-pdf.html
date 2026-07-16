@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Weekly Timesheet PDF</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #f3f3f3;
+      color: #111;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+    .toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      padding: 12px 16px;
+      background: #111;
+      color: #fff;
+    }
+    .toolbar strong { display: block; }
+    .toolbar span { color: #cfcfcf; font-size: 13px; }
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    button, a {
+      border: 1px solid #ff7a00;
+      border-radius: 8px;
+      background: #ff7a00;
+      color: #111;
+      min-height: 40px;
+      padding: 9px 12px;
+      font: inherit;
+      font-weight: 800;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    a {
+      display: inline-flex;
+      align-items: center;
+      background: #222;
+      color: #fff;
+    }
+    main {
+      padding: 18px;
+    }
+    .paper {
+      max-width: 13.5in;
+      margin: 0 auto;
+      padding: 18px;
+      background: #fff;
+      box-shadow: 0 12px 36px rgba(0,0,0,.16);
+    }
+    h3 {
+      margin: 0 0 4px;
+      font-size: 20px;
+      text-transform: uppercase;
+    }
+    .muted { color: #444; }
+    .weekly-tools {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+      margin-bottom: 12px;
+    }
+    .status {
+      border: 1px solid #111;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .timesheet-wrap {
+      width: 100%;
+      overflow: visible;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-size: 9px;
+    }
+    th, td {
+      border: 1px solid #999;
+      padding: 5px 4px;
+      text-align: center;
+      vertical-align: middle;
+      color: #111;
+    }
+    th {
+      background: #eee;
+      text-transform: uppercase;
+      font-weight: 800;
+    }
+    .employee-col {
+      width: 120px;
+      text-align: left;
+      font-weight: 800;
+      background: #f7f7f7;
+    }
+    .total-col, .pay-col, .overtime-col {
+      font-weight: 800;
+    }
+    tfoot td {
+      font-weight: 800;
+      background: #f3f3f3;
+    }
+    .timesheet-notes-row td {
+      vertical-align: top;
+      font-weight: 400;
+    }
+    .timesheet-note {
+      text-align: left;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      line-height: 1.25;
+    }
+    .empty {
+      max-width: 680px;
+      margin: 60px auto;
+      padding: 20px;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+    }
+    @page {
+      size: landscape;
+      margin: .35in;
+    }
+    @media print {
+      body { background: #fff; }
+      .toolbar { display: none; }
+      main { padding: 0; }
+      .paper {
+        max-width: none;
+        margin: 0;
+        padding: 0;
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <div>
+      <strong id="docTitle">Weekly Timesheet</strong>
+      <span id="docPeriod"></span>
+    </div>
+    <div class="actions">
+      <a href="employee-portal.html">Back to Portal</a>
+      <button type="button" onclick="window.print()">Print / Save PDF</button>
+    </div>
+  </div>
+  <main>
+    <div id="paper" class="paper"></div>
+  </main>
+  <script>
+    const paper = document.getElementById('paper');
+    try {
+      const data = JSON.parse(sessionStorage.getItem('sefs_weekly_timesheet_print') || '{}');
+      if (!data.html) throw new Error('No weekly timesheet was sent to this page.');
+      document.title = `${data.title || 'Weekly Timesheet'} ${data.period || ''}`.trim();
+      document.getElementById('docTitle').textContent = data.title || 'Weekly Timesheet';
+      document.getElementById('docPeriod').textContent = data.period || '';
+      paper.innerHTML = data.html;
+    } catch (error) {
+      paper.className = 'empty';
+      paper.innerHTML = `<h2>Weekly Timesheet Not Found</h2><p>${String(error.message || error)}</p><p>Go back to the Employee Portal and press Share / Save PDF again.</p>`;
+    }
+  </script>
+</body>
+</html>

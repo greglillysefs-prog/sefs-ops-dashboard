@@ -13,6 +13,7 @@ alter table employees add column if not exists name text;
 alter table employees add column if not exists start_date date default '2026-07-01';
 alter table employees add column if not exists active boolean default true;
 alter table employees add column if not exists notes text;
+alter table employees add column if not exists hourly_rate numeric(10,2) not null default 0;
 alter table employees add column if not exists created_at timestamptz default now();
 
 create table if not exists personal_time_entries (
