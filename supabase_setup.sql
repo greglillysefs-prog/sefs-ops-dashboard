@@ -56,6 +56,27 @@ alter table leads add column if not exists estimated_value numeric default 0;
 alter table leads add column if not exists notes text;
 alter table leads add column if not exists created_at timestamptz default now();
 
+create table if not exists customers (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  phone text,
+  email text,
+  address text,
+  status text default 'Active',
+  notes text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+alter table customers add column if not exists name text;
+alter table customers add column if not exists phone text;
+alter table customers add column if not exists email text;
+alter table customers add column if not exists address text;
+alter table customers add column if not exists status text default 'Active';
+alter table customers add column if not exists notes text;
+alter table customers add column if not exists created_at timestamptz default now();
+alter table customers add column if not exists updated_at timestamptz default now();
+alter table leads add column if not exists customer_id uuid;
+
 create table if not exists jobs (
   id uuid primary key default gen_random_uuid(),
   customer text not null,
@@ -99,6 +120,7 @@ alter table jobs add column if not exists material_notes text;
 alter table jobs add column if not exists material_list jsonb;
 alter table jobs add column if not exists floor_scopes jsonb;
 alter table jobs add column if not exists source_lead_id uuid;
+alter table jobs add column if not exists customer_id uuid;
 alter table jobs add column if not exists quote_json jsonb;
 alter table jobs add column if not exists created_at timestamptz default now();
 alter table jobs add column if not exists google_calendar_event_id text;
@@ -219,6 +241,7 @@ create table if not exists field_measurements (
 );
 alter table field_measurements add column if not exists lead_id uuid;
 alter table field_measurements add column if not exists job_id uuid;
+alter table field_measurements add column if not exists customer_id uuid;
 alter table field_measurements add column if not exists customer text;
 alter table field_measurements add column if not exists phone text;
 alter table field_measurements add column if not exists address text;
@@ -298,6 +321,12 @@ alter table field_scan_uploads add column if not exists created_at timestamptz d
 
 create index if not exists field_measurements_lead_idx on field_measurements(lead_id);
 create index if not exists field_measurements_job_idx on field_measurements(job_id);
+create index if not exists customers_name_idx on customers(lower(name));
+create index if not exists customers_phone_idx on customers(phone);
+create index if not exists customers_email_idx on customers(lower(email));
+create index if not exists leads_customer_idx on leads(customer_id);
+create index if not exists jobs_customer_idx on jobs(customer_id);
+create index if not exists field_measurements_customer_idx on field_measurements(customer_id);
 create index if not exists field_measurement_areas_measurement_idx on field_measurement_areas(field_measurement_id);
 create index if not exists field_measurement_areas_lead_idx on field_measurement_areas(lead_id);
 create index if not exists field_measurement_areas_job_idx on field_measurement_areas(job_id);
@@ -508,6 +537,7 @@ create table if not exists quotes (
 
 alter table quotes add column if not exists lead_id uuid;
 alter table quotes add column if not exists job_id uuid;
+alter table quotes add column if not exists customer_id uuid;
 alter table quotes add column if not exists customer text;
 alter table quotes add column if not exists phone text;
 alter table quotes add column if not exists email text;
@@ -524,6 +554,7 @@ alter table quotes add column if not exists other_cost numeric default 0;
 alter table quotes add column if not exists quote_json jsonb;
 alter table quotes add column if not exists notes text;
 alter table quotes add column if not exists created_at timestamptz default now();
+create index if not exists quotes_customer_idx on quotes(customer_id);
 
 create table if not exists quote_systems (
   id uuid primary key default gen_random_uuid(),

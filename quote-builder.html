@@ -645,6 +645,7 @@ function quotePayload(){
  const systemType=floors.map(f=>f.system).filter(Boolean).join(", ");
  const quoteName=`${customer.name||"SEFS Quote"} - ${customer.date||dateStamp()}`;
  const payload={
+  customer_id:customer.customer_id||lastData?.source_measurement?.customer_id||null,
   customer:customer.name||"",
   phone:customer.phone||"",
   email:customer.email||"",
@@ -664,6 +665,7 @@ function quotePayload(){
  const sourceMeasurement=lastData?.source_measurement||{};
  if(sourceMeasurement.lead_id)payload.lead_id=sourceMeasurement.lead_id;
  if(sourceMeasurement.job_id)payload.job_id=sourceMeasurement.job_id;
+ if(sourceMeasurement.customer_id)payload.customer_id=sourceMeasurement.customer_id;
  return payload;
 }
 async function saveQuote(options={}){
@@ -733,6 +735,7 @@ async function createLeadFromQuote(id){
  const quote=await loadQuote(id);if(!quote)return;
  if(quote.lead_id&&!confirm("This quote already has a lead. Create another lead anyway?"))return;
  const payload={
+  customer_id:quote.customer_id||quote.quote_json?.source_measurement?.customer_id||null,
   customer:quote.customer||quote.quote_name||"Quote Lead",
   phone:quote.phone||"",
   email:quote.email||"",
@@ -746,7 +749,7 @@ async function createLeadFromQuote(id){
  if(result.error){alert("Lead creation failed: "+result.error.message);return;}
  await copyPhotosByEntity("quote",quote.id,"lead",result.data.id);
  await copyQuoteSourcePhotosToTarget("lead",result.data.id,quote);
- const update=await supa.from("quotes").update({lead_id:result.data.id,status:"Lead"}).eq("id",quote.id);
+ const update=await supa.from("quotes").update({lead_id:result.data.id,status:"Lead",customer_id:payload.customer_id}).eq("id",quote.id);
  if(update.error){alert("Lead created, but quote link update failed: "+update.error.message);return;}
  alert("Lead created from quote.");
  renderHistory();renderRecentQuotes();syncParentDashboard();
@@ -762,6 +765,7 @@ async function createJobFromQuote(id){
  const squareFeet=floorScopes.reduce((sum,f)=>sum+(+f.sqft||0),0)||quote.square_feet||0;
  const materialList=qFloors.flatMap(f=>(f.materials||[]).map(m=>({floor:f.i,area_name:f.area_name||'',system:f.system,sqft:f.sqft,options:f.options||{},option_details:f.option_details||[],name:m.name,qty:m.qty})));
  const payload={
+  customer_id:quote.customer_id||quote.quote_json?.source_measurement?.customer_id||null,
   customer:quote.customer||quote.quote_name||"Quote Job",
   phone:quote.phone||"",
   job_name:quote.quote_name||quote.customer||"Quote Job",
@@ -790,9 +794,9 @@ async function createJobFromQuote(id){
  linkOk=await copyQuoteSourcePhotosToTarget("job",result.data.id,quote)&&linkOk;
  linkOk=await linkMeasurementToJob(quote,result.data.id)&&linkOk;
  try{await parent.syncJobToCalendar?.(result.data,{interactive:false})}catch(e){}
- const update=await supa.from("quotes").update({job_id:result.data.id,status:"Job"}).eq("id",quote.id);
+ const update=await supa.from("quotes").update({job_id:result.data.id,status:"Job",customer_id:payload.customer_id}).eq("id",quote.id);
  if(update.error){alert("Job created, but quote link update failed: "+update.error.message);return;}
- if(linkedLeadId)await supa.from("leads").update({stage:"Won",converted_job_id:result.data.id,converted_quote_id:quote.id}).eq("id",linkedLeadId);
+ if(linkedLeadId)await supa.from("leads").update({stage:"Won",converted_job_id:result.data.id,converted_quote_id:quote.id,customer_id:payload.customer_id}).eq("id",linkedLeadId);
  alert(linkOk?"Job created from quote.":"Job created from quote, but measurement/photo links need review. Try refreshing; if they are missing, use the job photo upload or relink the measurement.");
  renderHistory();renderRecentQuotes();syncParentDashboard();
 }
