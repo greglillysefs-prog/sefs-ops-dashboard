@@ -416,6 +416,8 @@ const COSTS = {
 };
 const WASTE_FACTOR=1.05, DEFAULT_LABOR_PER_DAY=250, ADMIN_PER_DAY=150, MIN_JOB_PRICE=1500, MIN_MARGIN_DOLLARS=200, OUT_TOWN=150;
 let lastQuoteHTML="", lastPlainText="", lastData=null;
+let sharedRecipes={recipes:[],items:[],inventory:[],loaded:false,error:""};
+const FALLBACK_SYSTEMS=["Flake","Metallic","Wood/Stone Overlay","Broom Overlay","Mortar/Prime & Coat","Quartz","Grind/Stain & Seal","Polish","Prep Only"];
 
 function $(id){return document.getElementById(id)}
 function val(id){return $(id)?.value||""}
@@ -427,6 +429,16 @@ function addMaterial(materials,name,qty,unitCost){ if(qty>0) materials.push({nam
 function materialTotal(materials){return materials.reduce((s,m)=>s+m.total,0)}
 function dateStamp(){return new Date().toLocaleString()}
 function cleanName(s){return String(s||"SEFS_Quote").replace(/[^a-z0-9]/gi,"_")}
+function normName(s){return String(s||"").toLowerCase().replace(/&/g,"and").replace(/[^a-z0-9]/g,"")}
+function recipeNameAliases(system){let n=normName(system),a=[n];if(n==="mortarprimeandcoat")a.push("mortar");if(n==="mortar")a.push("mortarprimeandcoat");if(n==="grindstainandseal")a.push("grindstainseal");if(n==="grindstainseal")a.push("grindstainandseal");return a}
+function sameSystemName(a,b){let aa=recipeNameAliases(a),bb=recipeNameAliases(b);return aa.some(x=>bb.includes(x))}
+function sharedRecipeForSystem(system,quoteOnly=false){let names=recipeNameAliases(system);return sharedRecipes.recipes.find(r=>r.active!==false&&(!quoteOnly||r.quote_enabled===true)&&names.includes(normName(r.name)))}
+function systemSelectOptions(){let names=[...FALLBACK_SYSTEMS];sharedRecipes.recipes.filter(r=>r.active!==false).sort((a,b)=>(+a.sort_order||0)-(+b.sort_order||0)||String(a.name).localeCompare(String(b.name))).forEach(r=>{if(!names.some(n=>sameSystemName(n,r.name)))names.push(r.name)});return names.map(n=>`<option>${qEsc(n)}</option>`).join("")}
+function optionValuesFor(system,key,fallbacks=[]){let recipe=sharedRecipeForSystem(system,false),vals=[...fallbacks];if(recipe){sharedRecipes.items.filter(it=>it.recipe_id===recipe.id&&it.active!==false&&String(it.option_key||"").toLowerCase()===key.toLowerCase()).forEach(it=>String(it.option_value||"").split(/[,|]/).map(v=>v.trim()).filter(Boolean).forEach(v=>{if(!vals.some(x=>x.toLowerCase()===v.toLowerCase()))vals.push(v)}))}return vals}
+function materialUnitCost(name,item={}){let inv=sharedRecipes.inventory.find(i=>i.id&&i.id===item.inventory_item_id);if(inv&&+inv.cost)return +inv.cost;if(+item.unit_cost)return +item.unit_cost;let n=normName(name);let map=[["primer3g",COSTS.primer3g],["xr3g",COSTS.xr3g],["poly2g",COSTS.poly2g],["silicasand",COSTS.sand],["sand",COSTS.sand],["overlay",COSTS.overlay],["stain",COSTS.stain32],["wburethane",COSTS.wbUrethane3g],["wbepoxy",COSTS.wbEpoxy2g],["flakebox",COSTS.flakeBox],["quartz",COSTS.quartzBag],["metallicpowder",COSTS.metallicPowder],["colorpod",COSTS.solidColorPod],["aliphatic",COSTS.aliphatic],["cove",COSTS.coveMortar],["lowluster",COSTS.lowLusterAcrylic],["glossacrylic",COSTS.glossAcrylic]];return (map.find(([k])=>n.includes(k))||[])[1]||0}
+function optionMatches(item,options){let key=String(item.option_key||"").trim();if(!key)return true;let allowed=String(item.option_value||"").split(/[,|]/).map(v=>v.trim().toLowerCase()).filter(Boolean);if(!allowed.length)return true;let actual=String(options[key]??"").trim().toLowerCase();return allowed.includes(actual)}
+function calculateSharedRecipeFloor(system,sqft,options={}){let recipe=sharedRecipeForSystem(system,true);if(!recipe)return null;let w=1+(+recipe.default_waste_percent||0)/100,materials=[];for(const it of sharedRecipes.items.filter(x=>x.recipe_id===recipe.id).sort((a,b)=>(+a.sort_order||0)-(+b.sort_order||0))){if(it.active===false||!optionMatches(it,options))continue;let basis=it.basis||"sqft",cov=+it.coverage_rate||0,fixed=+it.fixed_qty||0,qty=0;if(basis==="sqft")qty=cov?sqft/cov:fixed;else if(basis==="linear_feet")qty=cov?((+options.cove_linear_feet||+options.joint_linear_feet||0)/cov):fixed;else qty=fixed;qty=qty*w*(it.waste_factor==null?1:+it.waste_factor||1);if(qty>0){let name=it.material_name||(sharedRecipes.inventory.find(i=>i.id===it.inventory_item_id)?.name)||"Material";addMaterial(materials,name,Math.ceil(qty*100)/100,materialUnitCost(name,it))}}let notes=[];if(!materials.length)notes.push("Shared recipe is enabled, but no matching material lines applied.");return {materials,sell:sqft*(+recipe.default_price_per_sqft||0),notes,recipe_snapshot:{id:recipe.id,name:recipe.name,default_waste_percent:recipe.default_waste_percent,default_price_per_sqft:recipe.default_price_per_sqft}}}
+async function loadSharedQuoteRecipes(){if(!supa){sharedRecipes.error="Supabase unavailable";return}try{let [r,i,inv]=await Promise.all([supa.from("system_recipes").select("*"),supa.from("system_recipe_items").select("*"),supa.from("inventory_items").select("id,name,unit,cost")]);if(r.error||i.error||inv.error)throw new Error(r.error?.message||i.error?.message||inv.error?.message);sharedRecipes={recipes:r.data||[],items:i.data||[],inventory:inv.data||[],loaded:true,error:""};}catch(e){sharedRecipes={recipes:[],items:[],inventory:[],loaded:false,error:e.message||String(e)};console.warn("Shared quote recipes unavailable",sharedRecipes.error)}}
 
 function goTo(id, btn){
   ["dashboard","setup","floors","summaryControls","history"].forEach(x=>$(x)?.classList.add("hidden"));
@@ -505,8 +517,7 @@ function buildFloorForms(){
       ${measurementAreaDetails(importedArea)}
       <div class="grid two">
         <div><label>System</label><select id="system${i}" onchange="renderOptions(${i})">
-          <option value="">Select System</option>
-          <option>Flake</option><option>Metallic</option><option>Wood/Stone Overlay</option><option>Broom Overlay</option><option>Mortar/Prime & Coat</option><option>Quartz</option><option>Grind/Stain & Seal</option><option>Polish</option><option>Prep Only</option>
+          <option value="">Select System</option>${systemSelectOptions()}
         </select></div>
         <div><label>Square Feet</label><input id="sqft${i}" type="number" inputmode="decimal"></div>
       </div>
@@ -519,16 +530,16 @@ function buildFloorForms(){
   goTo("floors");
 }
 
-function selectHTML(id,label,opts,onchange=""){return `<div><label>${label}</label><select id="${id}" ${onchange?`onchange="${onchange}"`:""}>${opts.map(o=>`<option>${o}</option>`).join("")}</select></div>`}
+function selectHTML(id,label,opts,onchange=""){return `<div><label>${label}</label><select id="${id}" ${onchange?`onchange="${onchange}"`:""}>${opts.map(o=>`<option>${qEsc(o)}</option>`).join("")}</select></div>`}
 function renderOptions(i){
   let system=val("system"+i),h="";
-  if(system==="Flake"){h+=selectHTML(`flakeSize${i}`,"Flake Size",["1/4","1/8","1/16"]);h+=selectHTML(`flakeExtra${i}`,"Additional Sealer?",["No","Yes"],`toggleExtra(${i},'flake')`);h+=`<div id="flakeFinishBox${i}" class="hidden">${selectHTML(`flakeFinish${i}`,"Additional Sealer Finish",["Matte","Gloss"])}</div>`;}
-  if(system==="Metallic") h+=selectHTML(`metalFinish${i}`,"Finish",["Matte","Gloss"]);
-  if(system==="Wood/Stone Overlay"){h+=selectHTML(`woodLoc${i}`,"Interior or Exterior",["Interior","Exterior"]);h+=selectHTML(`woodFinish${i}`,"Finish",["Matte","Gloss"]);}
+  if(system==="Flake"){h+=selectHTML(`flakeSize${i}`,"Flake Size",optionValuesFor(system,"flake_size",["1/4","1/8","1/16"]));h+=selectHTML(`flakeExtra${i}`,"Additional Sealer?",["No","Yes"],`toggleExtra(${i},'flake')`);h+=`<div id="flakeFinishBox${i}" class="hidden">${selectHTML(`flakeFinish${i}`,"Additional Sealer Finish",optionValuesFor(system,"additional_sealer_finish",["Matte","Gloss"]))}</div>`;}
+  if(system==="Metallic") h+=selectHTML(`metalFinish${i}`,"Finish",optionValuesFor(system,"finish",["Matte","Gloss"]));
+  if(system==="Wood/Stone Overlay"){h+=selectHTML(`woodLoc${i}`,"Interior or Exterior",["Interior","Exterior"]);h+=selectHTML(`woodFinish${i}`,"Finish",optionValuesFor(system,"finish",["Matte","Gloss"]));}
   if(system==="Broom Overlay") h+=`<p class="small">No additional options.</p>`;
-  if(system==="Mortar/Prime & Coat"){h+=selectHTML(`mortarType${i}`,"Mortar or Prime & Coat?",["Mortar","Prime & Coat"]);h+=selectHTML(`mortarCondition${i}`,"Floor Condition",["Rough","Smooth"]);h+=selectHTML(`mortarFill${i}`,"Fill Joints?",["No","Yes"],`toggleJoint(${i})`);h+=`<div id="jointBox${i}" class="hidden"><label>Linear Feet of Joints</label><input id="jointLF${i}" type="number" inputmode="decimal"></div>`;h+=selectHTML(`mortarExtra${i}`,"Additional Sealer?",["No","Yes"],`toggleExtra(${i},'mortar')`);h+=`<div id="mortarFinishBox${i}" class="hidden">${selectHTML(`mortarFinish${i}`,"Additional Sealer Finish",["Matte","Gloss"])}</div>`;}
-  if(system==="Quartz"){h+=selectHTML(`quartzLoc${i}`,"Interior or Exterior",["Interior","Exterior"]);h+=selectHTML(`quartzExtra${i}`,"Additional Sealer?",["No","Yes"],`toggleExtra(${i},'quartz')`);h+=`<div id="quartzFinishBox${i}" class="hidden">${selectHTML(`quartzFinish${i}`,"Additional Sealer Finish",["Matte","Gloss"])}</div>`;}
-  if(system==="Grind/Stain & Seal"){h+=selectHTML(`gssStain${i}`,"Stain?",["Yes","No"]);h+=selectHTML(`gssLoc${i}`,"Interior or Exterior",["Interior","Exterior"]);h+=selectHTML(`gssFinish${i}`,"Finish",["Matte","Gloss"]);}
+  if(system==="Mortar/Prime & Coat"){h+=selectHTML(`mortarType${i}`,"Mortar or Prime & Coat?",["Mortar","Prime & Coat"]);h+=selectHTML(`mortarCondition${i}`,"Floor Condition",["Rough","Smooth"]);h+=selectHTML(`mortarFill${i}`,"Fill Joints?",["No","Yes"],`toggleJoint(${i})`);h+=`<div id="jointBox${i}" class="hidden"><label>Linear Feet of Joints</label><input id="jointLF${i}" type="number" inputmode="decimal"></div>`;h+=selectHTML(`mortarExtra${i}`,"Additional Sealer?",["No","Yes"],`toggleExtra(${i},'mortar')`);h+=`<div id="mortarFinishBox${i}" class="hidden">${selectHTML(`mortarFinish${i}`,"Additional Sealer Finish",optionValuesFor(system,"additional_sealer_finish",["Matte","Gloss"]))}</div>`;}
+  if(system==="Quartz"){h+=selectHTML(`quartzLoc${i}`,"Interior or Exterior",["Interior","Exterior"]);h+=selectHTML(`quartzExtra${i}`,"Additional Sealer?",["No","Yes"],`toggleExtra(${i},'quartz')`);h+=`<div id="quartzFinishBox${i}" class="hidden">${selectHTML(`quartzFinish${i}`,"Additional Sealer Finish",optionValuesFor(system,"additional_sealer_finish",["Matte","Gloss"]))}</div>`;}
+  if(system==="Grind/Stain & Seal"){h+=selectHTML(`gssStain${i}`,"Stain?",["Yes","No"]);h+=selectHTML(`gssLoc${i}`,"Interior or Exterior",["Interior","Exterior"]);h+=selectHTML(`gssFinish${i}`,"Finish",optionValuesFor(system,"finish",["Matte","Gloss"]));}
   if(system==="Prep Only") h+=selectHTML(`prepType${i}`,"Blast or Grind",["Blast","Grind"]);
   if(["Flake","Quartz","Mortar/Prime & Coat"].includes(system)){h+=selectHTML(`cove${i}`,"Add Cove Base?",["No","Yes"],`toggleCove(${i})`);h+=`<div id="coveBox${i}" class="hidden">${selectHTML(`coveSize${i}`,"Cove Size",["4","6"])}<label>Linear Feet of Cove</label><input id="coveLF${i}" type="number" inputmode="decimal"></div>`;}
   $("options"+i).innerHTML=h;
@@ -564,6 +575,9 @@ function calculate(){
  for(let i=1;i<=count;i++){
   let system=val("system"+i),sqft=num("sqft"+i),materials=[],sell=0,notes=[];
   if(!system||!sqft)continue;
+  let optionData=floorOptionData(i,system),sharedFloor=calculateSharedRecipeFloor(system,sqft,optionData.options);
+  if(sharedFloor){materials=sharedFloor.materials;sell=sharedFloor.sell;notes.push(...sharedFloor.notes);}
+  else{
   if(system==="Flake"){let size=val("flakeSize"+i),p=kitsNeeded(sqft,500);addMaterial(materials,"Primer 3G",p,COSTS.primer3g);if(size!=="1/16")addMaterial(materials,"Color Pod",p,COSTS.solidColorPod);addMaterial(materials,"Flake Box",kitsNeeded(sqft,280),COSTS.flakeBox);let pc=size==="1/16"?180:size==="1/4"?250:220;addMaterial(materials,"Poly 2G",kitsNeeded(sqft,pc),COSTS.poly2g);if(val("flakeExtra"+i)==="Yes"){if(val("flakeFinish"+i)==="Matte")addMaterial(materials,"WB Urethane 3G",kitsNeeded(sqft,2500),COSTS.wbUrethane3g);else addMaterial(materials,"Aliphatic Urethane",kitsNeeded(sqft,2000),COSTS.aliphatic);}sell=sqft*5;}
   if(system==="Metallic"){let p=kitsNeeded(sqft,300);addMaterial(materials,"Primer 3G",p,COSTS.primer3g);addMaterial(materials,"Color Pod",p,COSTS.solidColorPod);let xr=kitsNeeded(sqft,100);addMaterial(materials,"XR 3G",xr,COSTS.xr3g);addMaterial(materials,"Metallic Powder",Math.ceil(xr*.5),COSTS.metallicPowder);if(val("metalFinish"+i)==="Matte"){addMaterial(materials,"WB Urethane 3G",kitsNeeded(sqft,2500),COSTS.wbUrethane3g);sell=sqft*12}else{addMaterial(materials,"Aliphatic Urethane",kitsNeeded(sqft,2000),COSTS.aliphatic);sell=sqft*14}}
   if(system==="Wood/Stone Overlay"){let loc=val("woodLoc"+i),finish=val("woodFinish"+i);addMaterial(materials,"Primer 3G Base",kitsNeeded(sqft,500),COSTS.primer3g);addMaterial(materials,"Sand",kitsNeeded(sqft,200),COSTS.sand);addMaterial(materials,"Overlay",kitsNeeded(sqft,100),COSTS.overlay);addMaterial(materials,"Stain 32oz",kitsNeeded(sqft,500),COSTS.stain32);if(loc==="Interior"){addMaterial(materials,"Primer Flood Coat",kitsNeeded(sqft,300),COSTS.primer3g);if(finish==="Matte")addMaterial(materials,"WB Urethane 3G",kitsNeeded(sqft,2500),COSTS.wbUrethane3g);else addMaterial(materials,"Aliphatic Urethane",kitsNeeded(sqft,2000),COSTS.aliphatic);}else{if(finish==="Matte")addMaterial(materials,"Low Luster Acrylic",kitsNeeded(sqft,500),COSTS.lowLusterAcrylic);else addMaterial(materials,"Poly 2G",kitsNeeded(sqft,200),COSTS.poly2g);}sell=sqft*10;}
@@ -574,8 +588,9 @@ function calculate(){
   if(system==="Polish"){sell=sqft*4;notes.push("Polish materials: densifier and guard/seal as needed.")}
   if(system==="Prep Only"){let prep=val("prepType"+i);sell=sqft*(prep==="Blast"?.40:1.00);notes.push(prep==="Blast"?"Blast prep estimated around 7,000 sq ft per day.":"Grind prep estimated around 2,000 sq ft per day.");notes.push("No coating materials required for prep-only scope.")}
   if(["Flake","Quartz","Mortar/Prime & Coat"].includes(system)&&val("cove"+i)==="Yes"){let size=val("coveSize"+i),lf=num("coveLF"+i),cov=size==="4"?25:20;addMaterial(materials,"Cove Base Mortar Kit",kitsNeededNoWaste(lf,cov),COSTS.coveMortar);sell+=size==="4"?Math.ceil(lf/25)*250:Math.ceil(lf/20)*300;}
-  let importedArea=pendingMeasurementExport?.areas?.[i-1]||{},optionData=floorOptionData(i,system);
-  let mat=materialTotal(materials);totalSell+=sell;totalMat+=mat;floors.push({i,area_name:importedArea.area_name||'',area_type:importedArea.area_type||'',field_measurement_id:pendingMeasurementExport?.id||'',field_measurement_area_id:importedArea.id||importedArea.field_measurement_area_id||'',system,sqft,options:optionData.options,option_details:optionData.details,materials,mat,sell,notes});
+  }
+  let importedArea=pendingMeasurementExport?.areas?.[i-1]||{};
+  let mat=materialTotal(materials);totalSell+=sell;totalMat+=mat;floors.push({i,area_name:importedArea.area_name||'',area_type:importedArea.area_type||'',field_measurement_id:pendingMeasurementExport?.id||'',field_measurement_area_id:importedArea.id||importedArea.field_measurement_area_id||'',system,sqft,options:optionData.options,option_details:optionData.details,materials,mat,sell,notes,recipe_snapshot:sharedFloor?.recipe_snapshot||null});
  }
  let laborMen=num("jobMen"),laborDays=num("jobDays"),laborRate=num("jobLaborRate")||DEFAULT_LABOR_PER_DAY;
  if(!laborMen||!laborDays){alert("Enter total job men and days.");return;}
@@ -805,8 +820,7 @@ overscroll-behavior:none;
 
 </head><body><div class="app">${lastQuoteHTML}</div></body></html>`;let a=document.createElement("a");a.href=URL.createObjectURL(new Blob([full],{type:"text/html"}));a.download=cleanName(lastData.customer.name)+"_SEFS_Estimate.html";a.click();}
 initQuoteAutoResize();
-renderRecentQuotes();
-setTimeout(consumeMeasurementExport,50);
+loadSharedQuoteRecipes().finally(()=>{renderRecentQuotes();setTimeout(consumeMeasurementExport,50);});
 </script>
 </body>
 </html>
