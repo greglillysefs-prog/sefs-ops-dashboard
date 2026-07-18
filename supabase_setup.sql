@@ -136,6 +136,11 @@ alter table inventory_items add column if not exists qty numeric default 0;
 alter table inventory_items add column if not exists min_qty numeric default 0;
 alter table inventory_items add column if not exists cost numeric default 0;
 alter table inventory_items add column if not exists notes text;
+alter table inventory_items add column if not exists vendor_name text;
+alter table inventory_items add column if not exists vendor_phone text;
+alter table inventory_items add column if not exists vendor_address text;
+alter table inventory_items add column if not exists vendor_contact text;
+alter table inventory_items add column if not exists vendor_email text;
 alter table inventory_items add column if not exists created_at timestamptz default now();
 
 create table if not exists equipment_items (id uuid primary key default gen_random_uuid(), name text not null, category text, status text not null default 'Available', assigned_to text, job_id uuid, due_back date, notes text, created_at timestamptz default now());
