@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-type AdminAction = "login_options" | "job_crew_options" | "save_group_time_entries" | "pto_list" | "pto_request" | "pto_decision" | "verify_pin" | "list" | "upsert" | "deactivate" | "remove_employee" | "update_time_entry";
+type AdminAction = "login_options" | "job_crew_options" | "save_group_time_entries" | "pto_list" | "pto_request" | "pto_decision" | "verify_pin" | "assign_job_crew_lead" | "list" | "upsert" | "deactivate" | "remove_employee" | "update_time_entry";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -460,6 +460,54 @@ Deno.serve(async (req) => {
       if (actorProfile?.active && actorProfile.role === "admin") {
         adminActorUserId = authData.user.id;
       }
+    }
+
+    if (action === "assign_job_crew_lead") {
+      const jobId = cleanText(payload.job_id);
+      const employeeId = cleanText(payload.employee_id);
+      const crewName = cleanText(payload.crew_name);
+      if (!jobId || !employeeId) return json({ error: "Job and crew lead are required." }, 400);
+
+      const [{ data: employee, error: employeeError }, { data: profile, error: profileError }] = await Promise.all([
+        supa.from("employees").select("id, name, active").eq("id", employeeId).maybeSingle(),
+        supa.from("profiles").select("id, employee_id, role, full_name, active").eq("employee_id", employeeId).maybeSingle(),
+      ]);
+      if (employeeError) throw employeeError;
+      if (profileError) throw profileError;
+      if (!employee?.active || !profile?.active) return json({ error: "Choose an active crew lead profile." }, 400);
+      if (!["crew_lead", "manager", "admin"].includes(String(profile.role))) {
+        return json({ error: "Selected employee is not a crew lead, manager, or admin." }, 400);
+      }
+
+      const { error: deleteError } = await supa
+        .from("employee_job_assignments")
+        .delete()
+        .eq("job_id", jobId)
+        .eq("assigned_role", "crew_lead")
+        .neq("employee_id", employeeId);
+      if (deleteError) throw deleteError;
+
+      const { data: assignment, error: assignmentError } = await supa
+        .from("employee_job_assignments")
+        .upsert(
+          {
+            employee_id: employeeId,
+            job_id: jobId,
+            assigned_role: "crew_lead",
+            assigned_by: adminActorUserId,
+            assigned_at: new Date().toISOString(),
+          },
+          { onConflict: "employee_id,job_id" },
+        )
+        .select()
+        .single();
+      if (assignmentError) throw assignmentError;
+
+      const displayName = crewName || profile.full_name || employee.name || "Crew Lead";
+      const { error: jobError } = await supa.from("jobs").update({ crew: displayName }).eq("id", jobId);
+      if (jobError) throw jobError;
+
+      return json({ ok: true, assignment });
     }
 
     if (action === "list") {
