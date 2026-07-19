@@ -146,6 +146,13 @@ button.danger{background:#c21d17}
 .hidden{display:none!important}
 .floorCard{border-left:5px solid var(--orange)}
 .small{font-size:12px;color:var(--muted)}
+.customerPicker{position:relative}
+.customerMatches{position:absolute;z-index:30;left:0;right:0;top:100%;margin-top:6px;background:#070707;border:1px solid rgba(255,106,0,.45);border-radius:8px;box-shadow:0 16px 40px rgba(0,0,0,.55);max-height:260px;overflow:auto}
+.customerMatch{display:flex;justify-content:space-between;gap:14px;width:100%;text-align:left;background:#101010;border:0;border-bottom:1px solid rgba(255,255,255,.1);border-radius:0;color:#fff;text-transform:none;padding:12px}
+.customerMatch:hover,.customerMatch:focus{background:#1d1d1d}
+.customerMatch strong{display:block;color:#fff}
+.customerMatch small{display:block;color:var(--muted);margin-top:3px}
+.linkedCustomer{margin-top:8px;color:#22c55e;font-weight:800}
 .summaryLine{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid rgba(255,255,255,.14);padding:8px 0}
 .price{color:var(--orange);font-weight:950}
 .systemList{display:grid;grid-template-columns:1fr;gap:8px}
@@ -274,9 +281,9 @@ overscroll-behavior:none;
     <div class="stepTitle"><span class="bubble">1</span> Customer Info</div>
     <h2>New Quote</h2>
     <div class="grid two">
-      <div><label>Customer / Job Name</label><input id="customerName" type="text"></div>
-      <div><label>Phone Number</label><input id="customerPhone" type="tel" inputmode="tel"></div>
-      <div><label>Job Address</label><input id="customerAddress" type="text"></div>
+      <div class="customerPicker"><label>Customer / Job Name</label><input id="customerName" type="text" autocomplete="off" oninput="clearSelectedCustomer();updateCustomerMatches()" onfocus="updateCustomerMatches()" onblur="hideCustomerMatchesSoon()"><div id="customerMatches" class="customerMatches hidden"></div><div id="customerMatchStatus" class="small"></div></div>
+      <div><label>Phone Number</label><input id="customerPhone" type="tel" inputmode="tel" oninput="clearSelectedCustomer();updateCustomerMatches()" onfocus="updateCustomerMatches()" onblur="hideCustomerMatchesSoon()"></div>
+      <div><label>Job Address</label><input id="customerAddress" type="text" oninput="clearSelectedCustomer();updateCustomerMatches()" onfocus="updateCustomerMatches()" onblur="hideCustomerMatchesSoon()"></div>
       <div><label>Number of Floor Types</label><input id="floorCount" type="number" inputmode="numeric" min="1"></div>
     </div>
     <div id="measurementImportNotice"></div>
@@ -341,10 +348,20 @@ const SB_URL='https://wjfewzutxvjbbnnvbylo.supabase.co', SB_KEY='sb_publishable_
 const supa=window.supabase?.createClient(SB_URL,SB_KEY);
 let savedQuotesCache=[];
 let pendingMeasurementExport=null;
+let customerProfiles=[];
+let selectedCustomerId="";
 function qEsc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
 function syncParentDashboard(){try{parent.refresh?.()}catch(e){}}
 function resizeParentQuoteFrame(){try{parent.resizeQuoteFrame?.()}catch(e){}}
 function queueQuoteResize(){requestAnimationFrame(()=>{resizeParentQuoteFrame();setTimeout(resizeParentQuoteFrame,120);});}
+function customerText(c){return [c.name,c.phone,c.email,c.address,c.notes].filter(Boolean).join(" ").toLowerCase()}
+async function loadCustomerProfiles(){if(!supa)return;try{let r=await supa.from("customers").select("id,name,phone,email,address,status,notes").order("name",{ascending:true});if(r.error)throw new Error(r.error.message);customerProfiles=r.data||[];}catch(e){customerProfiles=[];console.warn("Customer profile lookup unavailable",e.message||String(e))}}
+function clearSelectedCustomer(){if(!selectedCustomerId)return;selectedCustomerId="";let s=$("customerMatchStatus");if(s)s.innerHTML=""}
+function hideCustomerMatches(){let box=$("customerMatches");if(box)box.classList.add("hidden")}
+function hideCustomerMatchesSoon(){setTimeout(hideCustomerMatches,160)}
+function selectedCustomerLabel(c){return `${qEsc(c.name||"Customer")}${c.phone?` - ${qEsc(c.phone)}`:""}${c.email?` - ${qEsc(c.email)}`:""}`}
+function selectCustomerProfile(id){let c=customerProfiles.find(x=>x.id===id);if(!c)return;selectedCustomerId=c.id;if($("customerName"))$("customerName").value=c.name||"";if($("customerPhone"))$("customerPhone").value=c.phone||"";if($("customerAddress"))$("customerAddress").value=c.address||"";let s=$("customerMatchStatus");if(s)s.innerHTML=`<div class="linkedCustomer">Linked to existing customer: ${selectedCustomerLabel(c)}</div>`;hideCustomerMatches();queueQuoteResize()}
+function updateCustomerMatches(){let box=$("customerMatches");if(!box)return;let raw=[val("customerName"),val("customerPhone"),val("customerAddress")].join(" ").trim(),digits=raw.replace(/\D/g,"");if(!raw||raw.length<2&&digits.length<3){box.classList.add("hidden");box.innerHTML="";return}let q=raw.toLowerCase(),matches=customerProfiles.filter(c=>customerText(c).includes(q)||digits&&String(c.phone||"").replace(/\D/g,"").includes(digits)).slice(0,6);if(!matches.length){box.innerHTML=`<div class="customerMatch"><div><strong>No existing customer found</strong><small>Continue typing to create a new customer on save.</small></div></div>`;box.classList.remove("hidden");queueQuoteResize();return}box.innerHTML=matches.map(c=>`<button type="button" class="customerMatch" onmousedown="event.preventDefault();selectCustomerProfile('${c.id}')"><div><strong>${qEsc(c.name||"Customer")}</strong><small>${[c.phone,c.email].filter(Boolean).map(qEsc).join(" - ")||"No contact saved"}</small><small>${qEsc(c.address||"")}</small></div><span class="price">Use</span></button>`).join("");box.classList.remove("hidden");queueQuoteResize()}
 function quoteBuilderContentHeight(){
   const content=[...document.querySelectorAll(".app > section")].filter(el=>{
     const style=getComputedStyle(el);
@@ -387,10 +404,13 @@ function measurementAreaDetails(area){
 function applyMeasurementExport(payload){
   if(!payload)return;
   pendingMeasurementExport=payload;
+  selectedCustomerId=payload.customer_id||"";
   goTo("setup");
   if($("customerName"))$("customerName").value=payload.customer||"";
   if($("customerPhone"))$("customerPhone").value=payload.phone||"";
   if($("customerAddress"))$("customerAddress").value=payload.address||"";
+  let linked=selectedCustomerId&&customerProfiles.find(c=>c.id===selectedCustomerId),status=$("customerMatchStatus");
+  if(status)status.innerHTML=linked?`<div class="linkedCustomer">Linked to existing customer: ${selectedCustomerLabel(linked)}</div>`:"";
   if($("floorCount"))$("floorCount").value=Math.max(1,(payload.areas||[]).length);
   renderMeasurementImportNotice();
   buildFloorForms();
@@ -477,6 +497,9 @@ function clearQuoteFields(){
   lastQuoteHTML = "";
   lastPlainText = "";
   lastData = null;
+  selectedCustomerId = "";
+  hideCustomerMatches();
+  if($("customerMatchStatus")) $("customerMatchStatus").innerHTML = "";
 
   goTo("setup", document.querySelectorAll(".nav button")[1]);
 }
@@ -502,6 +525,9 @@ function startNewQuote(){
   lastQuoteHTML = "";
   lastPlainText = "";
   lastData = null;
+  selectedCustomerId = "";
+  hideCustomerMatches();
+  if($("customerMatchStatus")) $("customerMatchStatus").innerHTML = "";
 
   goTo("setup", document.querySelectorAll(".nav button")[1]);
 }
@@ -570,7 +596,7 @@ function proposalText(system){
 
 function calculate(){
  const count=num("floorCount"); if(!count){alert("Start a quote first.");return;}
- const customer={name:val("customerName"),phone:val("customerPhone"),address:val("customerAddress"),date:dateStamp()};
+ const customer={customer_id:selectedCustomerId||pendingMeasurementExport?.customer_id||"",name:val("customerName"),phone:val("customerPhone"),address:val("customerAddress"),date:dateStamp()};
  let floors=[],totalSell=0,totalMat=0,totalLabor=0,totalAdmin=0,totalOut=0;
  for(let i=1;i<=count;i++){
   let system=val("system"+i),sqft=num("sqft"+i),materials=[],sell=0,notes=[];
@@ -824,7 +850,7 @@ overscroll-behavior:none;
 
 </head><body><div class="app">${lastQuoteHTML}</div></body></html>`;let a=document.createElement("a");a.href=URL.createObjectURL(new Blob([full],{type:"text/html"}));a.download=cleanName(lastData.customer.name)+"_SEFS_Estimate.html";a.click();}
 initQuoteAutoResize();
-loadSharedQuoteRecipes().finally(()=>{renderRecentQuotes();setTimeout(consumeMeasurementExport,50);});
+Promise.all([loadSharedQuoteRecipes(),loadCustomerProfiles()]).finally(()=>{renderRecentQuotes();setTimeout(consumeMeasurementExport,50);});
 </script>
 </body>
 </html>
