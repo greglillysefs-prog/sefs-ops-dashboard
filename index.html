@@ -146,7 +146,7 @@ const tabs=[['dashboard','📊 Dashboard'],['quotes','QUOTE BUILDER'],['leads','
 const workflowTabs=[['dashboard','Dashboard'],['quotes','Quote Builder'],['field_measure','Field Measure'],['customers','Customers'],['leads','Leads'],['jobs','Jobs'],['calculator','Pull Sheet'],['systems','Systems'],['inventory','Inventory'],['schedule','Schedule'],['equipment','Equipment'],['employees','Employees/PTO'],['quality','Quality/Warranty'],['vehicles','Vehicles'],['reports','Reports']];
 const navGroups=[['Command',['dashboard','quotes','field_measure']],['Sales',['customers','leads','jobs','schedule']],['Production',['calculator','systems','inventory','equipment']],['Back Office',['employees','quality','vehicles','reports']]];
 const $=id=>document.getElementById(id), today=()=>new Date().toISOString().slice(0,10), fmt=d=>d?new Date(d+'T00:00:00').toLocaleDateString():'', fmtTime=t=>cleanTime(t), fmtRange=j=>`${fmt(j.start_date)}${j.start_time?' '+fmtTime(j.start_time):''} - ${fmt(j.end_date||j.start_date)}${j.end_time?' '+fmtTime(j.end_time):''}`, money=n=>'$'+Number(n||0).toLocaleString(undefined,{maximumFractionDigits:0});
-function mobileJobUrl(id){let u=new URL('mobile-job.html',location.href);u.searchParams.set('job',id);return u.href}
+function mobileJobUrl(id){let u=new URL('mobile-job.html',location.href);u.searchParams.set('job',id);u.searchParams.set('crew','1');return u.href}
 function materialJobUrl(id){return mobileJobUrl(id)+'#materials'}
 function setStatus(t,c=''){ $('status').textContent=t; $('status').className=c; }
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
@@ -428,6 +428,7 @@ nav(); refresh();
 <script>
 (function(){
   function showTabV7(id){
+    if(typeof show==="function"){ show(id); return; }
     document.querySelectorAll("main section").forEach(s=>s.classList.remove("active"));
     const target=document.getElementById(id);
     if(target) target.classList.add("active");

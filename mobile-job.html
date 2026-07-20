@@ -5,13 +5,13 @@ const SB_URL='https://wjfewzutxvjbbnnvbylo.supabase.co', SB_KEY='sb_publishable_
 const SAFE_JOB_COLUMNS='id,customer,phone,address,job_name,system_type,square_feet,status,start_date,start_time,end_date,end_time,crew,notes,material_notes,material_list,floor_scopes,google_calendar_sync_status,google_calendar_sync_error';
 const PICKER_JOB_COLUMNS='id,customer,phone,address,job_name,system_type,square_feet,status,start_date,start_time,end_date,end_time,crew';
 const $=id=>document.getElementById(id), params=new URLSearchParams(location.search);
-let jobId=params.get('job'), crewOnly=params.get('crew')==='1'||params.get('mode')==='crew', job=null, photos=[];
+let jobId=params.get('job'), editable=params.get('edit')==='1'||params.get('mode')==='edit'||params.get('admin')==='1', crewOnly=!editable, job=null, photos=[];
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function setStatus(t,c=''){$('status').textContent=t;$('status').className=c}
 function val(id){return $(id)?.value||''}
 function cleanTime(t){return String(t||'').slice(0,5)}
 function fieldMeasureUrl(){let u=new URL('index.html',location.href);u.hash=`field_measure:job:${jobId}`;return u.href}
-function jobLink(id,hash=''){let u=new URL('mobile-job.html',location.href);u.searchParams.set('job',id);u.hash=hash;return u.href}
+function jobLink(id,hash=''){let u=new URL('mobile-job.html',location.href);u.searchParams.set('job',id);u.searchParams.set('crew','1');u.hash=hash;return u.href}
 function floorScopes(){let scopes=Array.isArray(job?.floor_scopes)?job.floor_scopes:[];return scopes.length?scopes:[{floor:'',area_name:'',system:job.system_type||'',sqft:job.square_feet||0,options:{},option_details:[],notes:[]}]}
 function hasSavedFloorScopes(){return Array.isArray(job?.floor_scopes)&&job.floor_scopes.length>1}
 function floorTotals(){let scopes=floorScopes();return {system_type:scopes.map(f=>f.system).filter(Boolean).join(', '),square_feet:scopes.reduce((sum,f)=>sum+(+f.sqft||0),0)}}
