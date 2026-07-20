@@ -252,7 +252,29 @@ Deno.serve(async (req) => {
         return json({ error: "Date, start time, and end time are required." }, 400);
       }
 
-      const rows = employeeIds.map((employeeId) => ({
+      let duplicateQuery = supa
+        .from("time_entries")
+        .select("id, employee_id, job_id, work_date, start_time, end_time, deleted_at")
+        .in("employee_id", employeeIds)
+        .eq("work_date", basePayload.work_date)
+        .is("deleted_at", null);
+      duplicateQuery = jobId ? duplicateQuery.eq("job_id", jobId) : duplicateQuery.is("job_id", null);
+      const { data: duplicateRows, error: duplicateError } = await duplicateQuery;
+      if (duplicateError) throw duplicateError;
+
+      const sameTime = (value: unknown, expected: string) => String(value || "").slice(0, 5) === expected.slice(0, 5);
+      const duplicateEmployeeIds = new Set(
+        (duplicateRows || [])
+          .filter((row) => sameTime(row.start_time, basePayload.start_time) && sameTime(row.end_time, basePayload.end_time))
+          .map((row) => row.employee_id),
+      );
+      const employeeIdsToSave = employeeIds.filter((employeeId) => !duplicateEmployeeIds.has(employeeId));
+
+      if (!employeeIdsToSave.length) {
+        return json({ ok: true, time_entries: [], skipped_duplicates: Array.from(duplicateEmployeeIds) });
+      }
+
+      const rows = employeeIdsToSave.map((employeeId) => ({
         ...basePayload,
         employee_id: employeeId,
         user_id: profileByEmployee.get(employeeId)?.id || null,
@@ -260,7 +282,7 @@ Deno.serve(async (req) => {
 
       const { data, error } = await supa.from("time_entries").insert(rows).select();
       if (error) throw error;
-      return json({ ok: true, time_entries: data || [] });
+      return json({ ok: true, time_entries: data || [], skipped_duplicates: Array.from(duplicateEmployeeIds) });
     }
 
     if (action === "pto_list") {

@@ -1148,6 +1148,7 @@
     let selectedPayPeriodStart = '';
     let crewOptions = [];
     let selectedCrewIds = new Set();
+    let timeSaveInFlight = false;
     let ptoEntries = [];
     let ptoBalance = { accrued: 0, ledger: 0, pending: 0, balance: 0, available: 0 };
     let payRatesColumnAvailable = true;
@@ -1171,6 +1172,15 @@
       const el = $(id);
       el.textContent = text || '';
       el.className = `notice ${isError ? 'error' : ''} ${text ? '' : 'hidden'}`;
+    }
+
+    function setTimeSaveBusy(isBusy) {
+      timeSaveInFlight = isBusy;
+      const saveButton = $('timeForm').querySelector('button[type="submit"]');
+      saveButton.disabled = isBusy;
+      $('submitNowBtn').disabled = isBusy;
+      saveButton.textContent = isBusy ? 'Saving...' : 'Save Draft';
+      $('submitNowBtn').textContent = isBusy ? 'Submitting...' : 'Submit Time';
     }
 
     function setAuthBusy(isBusy) {
@@ -1323,6 +1333,27 @@
         device_info: deviceInfo(),
         change_reason: status === 'submitted' ? 'Submitted from employee portal' : 'Saved from employee portal'
       };
+    }
+
+    function normalizeTimeForMatch(value) {
+      return String(value || '').slice(0, 5);
+    }
+
+    function normalizeJobForMatch(value) {
+      return value ? String(value) : '';
+    }
+
+    function duplicateTimeEntry(payload, employeeId) {
+      if (!employeeId || !payload.work_date || !payload.start_time || !payload.end_time) return null;
+      const matches = (entry) => (
+        String(entry.employee_id || '') === String(employeeId)
+        && normalizeJobForMatch(entry.job_id) === normalizeJobForMatch(payload.job_id)
+        && String(entry.work_date || '') === String(payload.work_date)
+        && normalizeTimeForMatch(entry.start_time) === normalizeTimeForMatch(payload.start_time)
+        && normalizeTimeForMatch(entry.end_time) === normalizeTimeForMatch(payload.end_time)
+        && !entry.deleted_at
+      );
+      return [...entries, ...managerEntries].find(matches) || null;
     }
 
     async function signIn(email, password) {
@@ -1599,7 +1630,7 @@
       const checkboxMarkup = availableEmployees.length
         ? `<div class="crew-check-list">${availableEmployees.map((employee) => `
             <label class="crew-check">
-              <input type="checkbox" ${selectedCrewIds.has(employee.id) ? 'checked' : ''} onchange="toggleCrewEmployee('${esc(employee.id)}', this.checked)">
+              <input type="checkbox" data-employee-id="${esc(employee.id)}" ${selectedCrewIds.has(employee.id) ? 'checked' : ''} onchange="toggleCrewEmployee('${esc(employee.id)}', this.checked)">
               <span>
                 <b>${esc(employee.name)}</b>
                 <span class="muted">${esc(employee.role || 'employee')}${employee.assignment_status === 'available' ? ' - available' : ''}</span>
@@ -2623,7 +2654,14 @@
 
     function selectedCrewEmployeeIds() {
       if (!canEnterCrewTime() || !selectedCrewIds.size) return [];
-      const ids = [profile?.employee_id, ...Array.from(selectedCrewIds)].filter(Boolean);
+      const availableIds = new Set(crewOptions.map((employee) => employee.id));
+      const checkedIds = Array.from(document.querySelectorAll('#crewTimeList input[data-employee-id]:checked'))
+        .map((input) => input.dataset.employeeId)
+        .filter((id) => id && availableIds.has(id));
+      const selectedIds = checkedIds.length
+        ? checkedIds
+        : Array.from(selectedCrewIds).filter((id) => availableIds.has(id));
+      const ids = [profile?.employee_id, ...selectedIds].filter(Boolean);
       return [...new Set(ids)];
     }
 
@@ -2641,8 +2679,8 @@
       renderCrewTimePanel();
     };
 
-    async function saveCrewTimeEntries(payload) {
-      const employeeIds = selectedCrewEmployeeIds();
+    async function saveCrewTimeEntries(payload, employeeIdsOverride = null) {
+      const employeeIds = Array.isArray(employeeIdsOverride) ? employeeIdsOverride : selectedCrewEmployeeIds();
       if (!employeeIds.length) return null;
       const response = await fetch(ADMIN_FUNCTION_URL, {
         method: 'POST',
@@ -2664,21 +2702,35 @@
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result.error) throw new Error(result.error || `Crew time save failed (${response.status})`);
-      return result.time_entries || [];
+      return result;
     }
 
     async function saveTime(status) {
+      if (timeSaveInFlight) return;
+      setTimeSaveBusy(true);
       try {
         const id = $('entryId').value;
         const payload = timePayload(status);
         let result;
         let savedEntry;
+        let skippedDuplicates = [];
         let photoStatus = '';
         
         const crewEmployeeIds = selectedCrewEmployeeIds();
         if (!id && crewEmployeeIds.length) {
-          const savedEntries = await saveCrewTimeEntries(payload);
+          const duplicateEmployees = crewEmployeeIds.filter((employeeId) => duplicateTimeEntry(payload, employeeId));
+          const employeeIdsToSave = crewEmployeeIds.filter((employeeId) => !duplicateEmployees.includes(employeeId));
+          if (!employeeIdsToSave.length) {
+            throw new Error('Time already submitted for this employee/group and time.');
+          }
+          selectedCrewIds = new Set(employeeIdsToSave.filter((employeeId) => employeeId !== profile?.employee_id));
+          const saveResult = await saveCrewTimeEntries(payload, employeeIdsToSave);
+          const savedEntries = saveResult.time_entries || [];
+          skippedDuplicates = [...duplicateEmployees, ...(saveResult.skipped_duplicates || [])];
           savedEntry = savedEntries[0];
+          if (!savedEntry && skippedDuplicates.length) {
+            throw new Error('Time already submitted for this employee/group and time.');
+          }
           if (!savedEntry) throw new Error('No crew time entries were saved.');
           photoStatus = await uploadTimePhotos(savedEntry, savedEntry.job_id);
         } else if (id) {
@@ -2687,6 +2739,9 @@
           savedEntry = result.data;
           photoStatus = await uploadTimePhotos(savedEntry, savedEntry.job_id);
         } else {
+          if (duplicateTimeEntry(payload, profile.employee_id)) {
+            throw new Error('Time already submitted for this employee and time.');
+          }
           result = await supa.from('time_entries').insert(payload).select().single();
           if (result.error) throw result.error;
           savedEntry = result.data;
@@ -2694,10 +2749,16 @@
         }
         resetForm();
         await refresh();
-        if (photoStatus) setMessage('appMessage', photoStatus);
+        const savedMessage = status === 'submitted' ? 'Time submitted.' : 'Time entry saved.';
+        const duplicateMessage = skippedDuplicates.length
+          ? ` Skipped ${new Set(skippedDuplicates).size} duplicate employee time entr${new Set(skippedDuplicates).size === 1 ? 'y' : 'ies'}.`
+          : '';
+        setMessage('appMessage', `${savedMessage}${duplicateMessage}${photoStatus ? ` ${photoStatus}` : ''}`);
         setActiveTab('entries');
       } catch (error) {
         setMessage('appMessage', error.message, true);
+      } finally {
+        setTimeSaveBusy(false);
       }
     }
 
