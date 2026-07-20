@@ -616,7 +616,7 @@
     function renderAdminShell() {
       $('adminAuth').classList.add('hidden');
       $('adminApp').classList.remove('hidden');
-      $('adminSignOutBtn').classList.toggle('hidden', !adminSession);
+      $('adminSignOutBtn').classList.add('hidden');
     }
 
     async function callAdmin(action, extra = {}) {
@@ -714,7 +714,7 @@
                 ${user.last_sign_in_at ? `<span>Last sign in: ${esc(new Date(user.last_sign_in_at).toLocaleDateString())}</span>` : ''}
               </div>
             </div>
-            ${adminProfile?.role === 'admin' ? `<button class="danger" type="button" onclick="startRemoveEmployee('${esc(employee.id)}','${esc(profile.id)}','${esc(profile.full_name || employee.name || user.email || 'Employee')}')">Remove Employee</button>` : ''}
+            ${employee.id ? `<button class="danger" type="button" onclick="startRemoveEmployee('${esc(employee.id)}','${esc(profile.id)}','${esc(profile.full_name || employee.name || user.email || 'Employee')}')">Remove Employee</button>` : ''}
           </article>
         `;
       }).join('');
@@ -828,7 +828,7 @@
         await callAdmin('remove_employee', {
           employee_id: pendingRemoval.employeeId,
           user_id: pendingRemoval.userId,
-          reason: `Employee ${pendingRemoval.name} removed from Employee Admin by ${adminProfile?.full_name || adminSession?.user?.email || 'PIN admin'}`,
+          reason: `Employee ${pendingRemoval.name} removed from Employee Admin by PIN admin`,
           device_info: navigator.userAgent || 'Employee Admin'
         });
         pendingRemoval = null;
