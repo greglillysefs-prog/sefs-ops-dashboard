@@ -601,9 +601,10 @@ function calculate(){
  for(let i=1;i<=count;i++){
   let system=val("system"+i),sqft=num("sqft"+i),materials=[],sell=0,notes=[];
   if(!system||!sqft)continue;
-  let optionData=floorOptionData(i,system),sharedFloor=calculateSharedRecipeFloor(system,sqft,optionData.options);
-  if(sharedFloor){materials=sharedFloor.materials;sell=sharedFloor.sell;notes.push(...sharedFloor.notes);}
+  let optionData=floorOptionData(i,system),sharedFloor=calculateSharedRecipeFloor(system,sqft,optionData.options),usedSharedRecipe=false;
+  if(sharedFloor&&sharedFloor.materials.length){materials=sharedFloor.materials;sell=sharedFloor.sell;notes.push(...sharedFloor.notes);usedSharedRecipe=true;}
   else{
+  if(sharedFloor)notes.push("Shared recipe has no applicable material lines, so fallback materials were used.");
   if(system==="Flake"){let size=val("flakeSize"+i),p=kitsNeeded(sqft,500);addMaterial(materials,"Primer 3G",p,COSTS.primer3g);if(size!=="1/16")addMaterial(materials,"Color Pod",p,COSTS.solidColorPod);addMaterial(materials,"Flake Box",kitsNeeded(sqft,280),COSTS.flakeBox);let pc=size==="1/16"?180:size==="1/4"?250:220;addMaterial(materials,"Poly 2G",kitsNeeded(sqft,pc),COSTS.poly2g);if(val("flakeExtra"+i)==="Yes"){if(val("flakeFinish"+i)==="Matte")addMaterial(materials,"WB Urethane 3G",kitsNeeded(sqft,2500),COSTS.wbUrethane3g);else addMaterial(materials,"Aliphatic Urethane",kitsNeeded(sqft,2000),COSTS.aliphatic);}sell=sqft*5;}
   if(system==="Metallic"){let p=kitsNeeded(sqft,300);addMaterial(materials,"Primer 3G",p,COSTS.primer3g);addMaterial(materials,"Color Pod",p,COSTS.solidColorPod);let xr=kitsNeeded(sqft,100);addMaterial(materials,"XR 3G",xr,COSTS.xr3g);addMaterial(materials,"Metallic Powder",Math.ceil(xr*.5),COSTS.metallicPowder);if(val("metalFinish"+i)==="Matte"){addMaterial(materials,"WB Urethane 3G",kitsNeeded(sqft,2500),COSTS.wbUrethane3g);sell=sqft*12}else{addMaterial(materials,"Aliphatic Urethane",kitsNeeded(sqft,2000),COSTS.aliphatic);sell=sqft*14}}
   if(system==="Wood/Stone Overlay"){let loc=val("woodLoc"+i),finish=val("woodFinish"+i);addMaterial(materials,"Primer 3G Base",kitsNeeded(sqft,500),COSTS.primer3g);addMaterial(materials,"Sand",kitsNeeded(sqft,200),COSTS.sand);addMaterial(materials,"Overlay",kitsNeeded(sqft,100),COSTS.overlay);addMaterial(materials,"Stain 32oz",kitsNeeded(sqft,500),COSTS.stain32);if(loc==="Interior"){addMaterial(materials,"Primer Flood Coat",kitsNeeded(sqft,300),COSTS.primer3g);if(finish==="Matte")addMaterial(materials,"WB Urethane 3G",kitsNeeded(sqft,2500),COSTS.wbUrethane3g);else addMaterial(materials,"Aliphatic Urethane",kitsNeeded(sqft,2000),COSTS.aliphatic);}else{if(finish==="Matte")addMaterial(materials,"Low Luster Acrylic",kitsNeeded(sqft,500),COSTS.lowLusterAcrylic);else addMaterial(materials,"Poly 2G",kitsNeeded(sqft,200),COSTS.poly2g);}sell=sqft*10;}
@@ -616,7 +617,7 @@ function calculate(){
   if(["Flake","Quartz","Mortar/Prime & Coat"].includes(system)&&val("cove"+i)==="Yes"){let size=val("coveSize"+i),lf=num("coveLF"+i),cov=size==="4"?25:20;addMaterial(materials,"Cove Base Mortar Kit",kitsNeededNoWaste(lf,cov),COSTS.coveMortar);sell+=size==="4"?Math.ceil(lf/25)*250:Math.ceil(lf/20)*300;}
   }
   let importedArea=pendingMeasurementExport?.areas?.[i-1]||{};
-  let mat=materialTotal(materials);totalSell+=sell;totalMat+=mat;floors.push({i,area_name:importedArea.area_name||'',area_type:importedArea.area_type||'',field_measurement_id:pendingMeasurementExport?.id||'',field_measurement_area_id:importedArea.id||importedArea.field_measurement_area_id||'',system,sqft,options:optionData.options,option_details:optionData.details,materials,mat,sell,notes,recipe_snapshot:sharedFloor?.recipe_snapshot||null});
+  let mat=materialTotal(materials);totalSell+=sell;totalMat+=mat;floors.push({i,area_name:importedArea.area_name||'',area_type:importedArea.area_type||'',field_measurement_id:pendingMeasurementExport?.id||'',field_measurement_area_id:importedArea.id||importedArea.field_measurement_area_id||'',system,sqft,options:optionData.options,option_details:optionData.details,materials,mat,sell,notes,recipe_snapshot:usedSharedRecipe?sharedFloor?.recipe_snapshot:null});
  }
  let laborMen=num("jobMen"),laborDays=num("jobDays"),laborRate=num("jobLaborRate")||DEFAULT_LABOR_PER_DAY;
  if(!laborMen||!laborDays){alert("Enter total job men and days.");return;}
