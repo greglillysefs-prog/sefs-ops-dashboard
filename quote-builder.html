@@ -556,10 +556,10 @@ function buildFloorForms(){
   goTo("floors");
 }
 
-function selectHTML(id,label,opts,onchange=""){return `<div><label>${label}</label><select id="${id}" ${onchange?`onchange="${onchange}"`:""}>${opts.map(o=>`<option>${qEsc(o)}</option>`).join("")}</select></div>`}
+function selectHTML(id,label,opts,onchange="",selected=""){return `<div><label>${label}</label><select id="${id}" ${onchange?`onchange="${onchange}"`:""}>${opts.map(o=>`<option ${selected&&String(o)===String(selected)?"selected":""}>${qEsc(o)}</option>`).join("")}</select></div>`}
 function renderOptions(i){
   let system=val("system"+i),h="";
-  if(system==="Flake"){h+=selectHTML(`flakeSize${i}`,"Flake Size",optionValuesFor(system,"flake_size",["1/4","1/8","1/16"]));h+=selectHTML(`flakeExtra${i}`,"Additional Sealer?",["No","Yes"],`toggleExtra(${i},'flake')`);h+=`<div id="flakeFinishBox${i}" class="hidden">${selectHTML(`flakeFinish${i}`,"Additional Sealer Finish",optionValuesFor(system,"additional_sealer_finish",["Matte","Gloss"]))}</div>`;}
+  if(system==="Flake"){h+=selectHTML(`flakeSize${i}`,"Flake Size",optionValuesFor(system,"flake_size",["1/4","1/8","1/16"]),"","1/4");h+=selectHTML(`flakeExtra${i}`,"Additional Sealer?",["No","Yes"],`toggleExtra(${i},'flake')`);h+=`<div id="flakeFinishBox${i}" class="hidden">${selectHTML(`flakeFinish${i}`,"Additional Sealer Finish",optionValuesFor(system,"additional_sealer_finish",["Matte","Gloss"]))}</div>`;}
   if(system==="Metallic") h+=selectHTML(`metalFinish${i}`,"Finish",optionValuesFor(system,"finish",["Matte","Gloss"]));
   if(system==="Wood/Stone Overlay"){h+=selectHTML(`woodLoc${i}`,"Interior or Exterior",["Interior","Exterior"]);h+=selectHTML(`woodFinish${i}`,"Finish",optionValuesFor(system,"finish",["Matte","Gloss"]));}
   if(system==="Broom Overlay") h+=`<p class="small">No additional options.</p>`;
