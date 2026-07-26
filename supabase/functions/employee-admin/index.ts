@@ -795,8 +795,7 @@ Deno.serve(async (req) => {
         .eq("id", employeeId);
       if (employeeUpdateError) throw employeeUpdateError;
 
-      const { error: auditError } = await supa.from("time_entry_audit_logs").insert({
-        time_entry_id: null,
+      const removalAudit = {
         employee_id: employeeId,
         actor_user_id: adminActorUserId,
         action_type: "employee_removed",
@@ -814,8 +813,12 @@ Deno.serve(async (req) => {
         },
         device_info: cleanText(payload.device_info) || null,
         reason,
-      });
-      if (auditError) throw auditError;
+      };
+
+      const { error: auditError } = await supa.from("time_entry_audit_logs").insert(removalAudit);
+      if (auditError) {
+        console.warn("Employee removal audit log was skipped.", auditError.message);
+      }
 
       return json({ ok: true });
     }
