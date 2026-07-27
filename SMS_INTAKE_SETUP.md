@@ -3,6 +3,12 @@ SEFS SMS Intake Setup
 Webhook URL for Twilio:
 https://wjfewzutxvjbbnnvbylo.supabase.co/functions/v1/sms-intake
 
+Business contact/help phone:
++1 321-284-8168
+
+Parser texting number:
++1 931-404-9990
+
 Public SMS compliance URLs for Twilio:
 https://sefs-sms-compliance.pages.dev/privacy
 https://sefs-sms-compliance.pages.dev/terms

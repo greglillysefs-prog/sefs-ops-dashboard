@@ -346,7 +346,7 @@ Deno.serve(async (req) => {
 
   const upperBody = body.toUpperCase();
   if (upperBody === "HELP") {
-    return twiml("Southeast Flooring Solutions: Text job intake details here. Example: Mike 9315551212 600 sqft flake 123 Main St follow up in 3 days. Reply STOP to opt out.");
+    return twiml("Southeast Flooring Solutions: Text job intake details here. Example: Mike 9315551212 600 sqft flake 123 Main St follow up in 3 days. For help call 321-284-8168. Reply STOP to opt out.");
   }
   if (upperBody === "STOP" || upperBody === "STOPALL" || upperBody === "UNSUBSCRIBE" || upperBody === "CANCEL" || upperBody === "END" || upperBody === "QUIT") {
     return twiml("Southeast Flooring Solutions: You are opted out. Reply START to opt back in.");
