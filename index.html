@@ -102,12 +102,15 @@ img,iframe{max-width:100%}
   .dashboard-action-card{display:none!important}
   .dash-hero,.queue-grid,.metric-grid{grid-template-columns:1fr}
   .calendar-toolbar{display:grid;grid-template-columns:1fr;gap:8px}
-  #schedule{overflow-x:auto;-webkit-overflow-scrolling:touch}
-  .calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(96px,1fr));grid-template-rows:auto repeat(6,minmax(120px,auto));min-width:760px;overflow:hidden}
-  .calendar-head{display:block}
-  .calendar-day{display:block;min-height:120px;border-right:1px solid #333}
+  #schedule{overflow-x:hidden}
+  .calendar-grid{display:grid;width:100%;max-width:100%;min-width:0;grid-template-columns:repeat(7,minmax(0,1fr));grid-template-rows:auto repeat(6,minmax(82px,auto));overflow:hidden}
+  .calendar-head{display:block;padding:7px 2px;font-size:10px;text-align:center}
+  .calendar-day{display:block;min-height:82px;padding:4px 2px;border-right:1px solid #333;overflow:hidden}
   .calendar-day.other{display:block}
-  .calendar-event{font-size:11px}
+  .calendar-date{font-size:11px;margin-bottom:4px}
+  .calendar-event{margin:0 1px 3px;padding:4px 3px;border-left-width:2px;border-radius:4px;font-size:9px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;box-shadow:none}
+  .calendar-event b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .calendar-event small,.calendar-actions{display:none}
   table{display:block;width:100%;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap}
   th,td{min-width:115px}
   td:first-child,th:first-child{min-width:145px}
@@ -523,10 +526,11 @@ function allowJobDrop(e){e.preventDefault();e.currentTarget.classList.add('drag-
 function leaveJobDrop(e){e.currentTarget.classList.remove('drag-over')}
 function dropJobOnDate(e,date){e.preventDefault();e.currentTarget.classList.remove('drag-over');let id=e.dataTransfer.getData('text/plain');if(id)moveScheduledJob(id,date)}
 function calendarEvent(j,style=''){if(j.kind==='task')return `<div class=calendar-event style="${style};border-left-color:#2bb673" ondblclick="editScheduleTask('${j.id}')"><b>${esc(j.start_time?fmtTime(j.start_time)+' ':'' )}${esc(j.job_name||j.customer)}</b><small>Task - ${esc(j.crew||'Unassigned')} - ${esc(j.status||'')}</small><div class=calendar-actions><button onclick="event.stopPropagation();editScheduleTask('${j.id}')">Edit Task</button><button onclick="event.stopPropagation();completeTask('${j.id}')">Done</button></div></div>`;return `<div class=calendar-event style="${style}" draggable=true ondragstart="dragJob(event,'${j.id}')" ondblclick="editScheduleJob('${j.id}')"><b>${esc(j.start_time?fmtTime(j.start_time)+' ':'' )}${esc(j.job_name||j.customer)}</b><small>${esc(jobCrewLeadName(j))} - ${esc(j.status||'')} - ${esc(j.google_calendar_sync_status||'Not Synced')}</small><div class=calendar-actions><button onclick="event.stopPropagation();editScheduleJob('${j.id}')">Edit</button>${j.source_quote_id?`<button onclick="event.stopPropagation();openOriginalQuote('${j.source_quote_id}')">Quote</button>`:''}<button onclick="event.stopPropagation();window.open('${esc(materialJobUrl(j.id))}','_blank')">Material List</button></div></div>`}
+function compactCalendarLayout(){return window.matchMedia&&window.matchMedia('(max-width: 760px)').matches}
 function renderScheduleMonth(jobs){
  let y=scheduleUi.month.getFullYear(),m=scheduleUi.month.getMonth(),first=new Date(y,m,1),start=addDays(first,-first.getDay()),end=addDays(start,41),todayIso=today(),cells=[],bars=[],weekStacks=[0,0,0,0,0,0];
  for(let i=0;i<42;i++){let d=addDays(start,i),iso=isoDate(d),other=d.getMonth()!==m,w=Math.floor(i/7),col=d.getDay()+1;cells.push(`<div class="calendar-day ${other?'other':''} ${iso===todayIso?'today':''}" style="grid-column:${col};grid-row:${w+2};${col===7?'border-right:0':''}" ondragover="allowJobDrop(event)" ondragleave="leaveJobDrop(event)" ondrop="dropJobOnDate(event,'${iso}')"><div class=calendar-date>${d.getDate()}</div></div>`)}
- for(const j of jobs){let js=j.start_date,je=j.end_date||j.start_date;if(!js||je<isoDate(start)||js>isoDate(end))continue;for(let w=0;w<6;w++){let ws=isoDate(addDays(start,w*7)),we=isoDate(addDays(start,w*7+6)),ss=js>ws?js:ws,ee=je<we?je:we;if(ss>ee)continue;let col=dateObj(ss).getDay()+1,span=dateDiff(ss,ee)+1,stack=weekStacks[w]++,top=30+stack*64;bars.push(calendarEvent(j,`grid-column:${col}/span ${span};grid-row:${w+2};margin-top:${top}px`))}}
+ for(const j of jobs){let js=j.start_date,je=j.end_date||j.start_date;if(!js||je<isoDate(start)||js>isoDate(end))continue;for(let w=0;w<6;w++){let ws=isoDate(addDays(start,w*7)),we=isoDate(addDays(start,w*7+6)),ss=js>ws?js:ws,ee=je<we?je:we;if(ss>ee)continue;let col=dateObj(ss).getDay()+1,span=dateDiff(ss,ee)+1,stack=weekStacks[w]++,compact=compactCalendarLayout(),top=(compact?24:30)+stack*(compact?22:64);bars.push(calendarEvent(j,`grid-column:${col}/span ${span};grid-row:${w+2};margin-top:${top}px`))}}
  return `<div class=calendar-grid>${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((d,i)=>`<div class=calendar-head style="grid-column:${i+1}">${d}</div>`).join('')}${cells.join('')}${bars.join('')}</div>`;
 }
 function renderScheduleList(jobs){

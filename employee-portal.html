@@ -667,6 +667,50 @@
       margin-top: 6px;
     }
 
+    .mobile-timesheet {
+      display: none;
+    }
+
+    .mobile-week-day {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(0,0,0,.24);
+      padding: 10px;
+    }
+
+    .mobile-week-day + .mobile-week-day {
+      margin-top: 10px;
+    }
+
+    .mobile-week-day header,
+    .mobile-week-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: start;
+    }
+
+    .mobile-week-day header {
+      margin: 0 0 8px;
+      border-bottom: 1px solid rgba(255,255,255,.1);
+      padding-bottom: 8px;
+    }
+
+    .mobile-week-row {
+      padding: 7px 0;
+      border-bottom: 1px solid rgba(255,255,255,.08);
+    }
+
+    .mobile-week-row:last-child {
+      border-bottom: 0;
+    }
+
+    .mobile-week-notes {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255,255,255,.1);
+    }
+
     .weekly-tools {
       display: flex;
       justify-content: space-between;
@@ -830,26 +874,53 @@
         width: 100%;
       }
 
-      .timesheet-wrap {
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-      }
-
-      .timesheet {
-        min-width: 760px;
-      }
-
       .portal-calendar {
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
+        overflow-x: hidden;
       }
 
       .portal-calendar-grid {
-        min-width: 760px;
+        width: 100%;
+        min-width: 0;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+      }
+
+      .portal-calendar-head {
+        padding: 7px 2px;
+        font-size: 10px;
       }
 
       .portal-calendar-day {
-        min-height: 106px;
+        min-height: 76px;
+        padding: 4px 2px;
+        overflow: hidden;
+      }
+
+      .portal-calendar-date {
+        font-size: 11px;
+        margin-bottom: 4px;
+      }
+
+      .portal-calendar-event {
+        margin-top: 3px;
+        padding: 4px 3px;
+        border-radius: 4px;
+        font-size: 9px;
+        line-height: 1.1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .portal-calendar-event small {
+        display: none;
+      }
+
+      .weekly-print-target .timesheet-wrap {
+        display: none;
+      }
+
+      .mobile-timesheet {
+        display: block;
       }
 
     }
@@ -2120,6 +2191,39 @@
       for (const group of groupedNotes) {
         if (notesByDay[group.entry.work_date]) notesByDay[group.entry.work_date].push(group);
       }
+      const mobileWeek = days.map((day) => {
+        const dayRows = rows.filter((row) => row.dayHours[day.iso]);
+        return `
+          <section class="mobile-week-day">
+            <header>
+              <div>
+                <b>${esc(day.label)} ${esc(day.dateLabel)}</b>
+                <div class="muted">${esc(new Date(day.iso + 'T00:00:00').toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' }))}</div>
+              </div>
+              <span class="status approved">${(dayTotals[day.iso] || 0).toFixed(2)} hrs</span>
+            </header>
+            ${dayRows.length ? dayRows.map((row) => `
+              <div class="mobile-week-row">
+                <div>
+                  <b>${esc(row.name)}</b>
+                  <div class="muted">Approved time</div>
+                </div>
+                <strong>${(row.dayHours[day.iso] || 0).toFixed(2)}</strong>
+              </div>
+            `).join('') : '<p class="muted">No approved hours.</p>'}
+            <div class="mobile-week-notes">
+              <b>Notes</b>
+              ${notesByDay[day.iso].length ? notesByDay[day.iso].map((group) => `
+                <div class="timesheet-note">
+                  <b>${esc(groupLabel(group))}</b><br>
+                  <span class="muted">${esc(jobName(group.entry.job_id))} - ${esc(formatTime(group.entry.start_time))} to ${esc(formatTime(group.entry.end_time))}</span><br>
+                  ${esc(group.entry.notes)}
+                </div>
+              `).join('') : '<div class="muted">No notes.</div>'}
+            </div>
+          </section>
+        `;
+      }).join('');
 
       return `
         <article class="entry-card weekly-print-target">
@@ -2133,6 +2237,7 @@
           </header>
           <button class="ghost no-print" type="button" onclick="printWeeklyTimesheet()">Share / Save PDF</button>
           </div>
+          <div class="mobile-timesheet">${mobileWeek}</div>
           <div class="timesheet-wrap">
             <table class="timesheet">
               <thead>
