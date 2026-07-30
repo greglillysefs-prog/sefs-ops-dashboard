@@ -963,14 +963,18 @@
         <label for="mobileTabSelect">Go To</label>
         <select id="mobileTabSelect" aria-label="Employee portal section">
           <option value="schedule">Schedule</option>
-          <option value="time">Time</option>
+          <option value="time">Add Time</option>
           <option value="entries">Entries</option>
+          <option value="pto">PTO</option>
+          <option value="pay_periods">Pay Periods</option>
+          <option value="review">Time Review</option>
+          <option value="pay_rates">Pay Rates</option>
         </select>
       </div>
 
       <div class="tabs">
         <button class="primary" type="button" data-tab="schedule">Schedule</button>
-        <button type="button" data-tab="time">Time</button>
+        <button type="button" data-tab="time">Add Time</button>
         <button type="button" data-tab="entries">Entries</button>
       </div>
 
@@ -1044,7 +1048,7 @@
 
       <div class="grid">
         <section id="schedulePanel" class="mobile-panel">
-          <div class="card">
+          <div id="scheduleCard" class="card mobile-panel">
             <div class="schedule-card-head">
               <h2>My Schedule</h2>
               <div class="schedule-nav">
@@ -1057,7 +1061,7 @@
             <div id="scheduleList" class="job-list"></div>
           </div>
 
-          <div class="card">
+          <div id="entriesPanel" class="card mobile-panel">
             <h2>My Time Entries</h2>
             <div id="totals" class="totals"></div>
             <div id="entryMode" class="actions"></div>
@@ -1066,7 +1070,7 @@
         </section>
 
         <aside id="timePanel" class="mobile-panel">
-          <div class="card">
+          <div id="timeEntryPanel" class="card mobile-panel">
             <h2 id="formTitle">Add Time</h2>
             <form id="timeForm" class="form-grid">
               <input id="entryId" type="hidden">
@@ -1109,7 +1113,7 @@
               </div>
             </form>
           </div>
-          <div class="card">
+          <div id="ptoPanel" class="card mobile-panel">
             <h2>PTO</h2>
             <form id="ptoForm" class="form-grid">
               <div>
@@ -2450,6 +2454,7 @@
       renderPayRates();
       renderPto();
       calculateHours();
+      setActiveTab($('mobileTabSelect')?.value || 'schedule');
     }
 
     function resetForm() {
@@ -2778,18 +2783,26 @@
     }
 
     function setActiveTab(tab) {
+      if (tab === 'review' && !canReviewTime()) tab = 'schedule';
+      if (tab === 'pay_rates' && !canReviewTime()) tab = 'time';
       document.querySelectorAll('[data-tab]').forEach((button) => {
-        button.classList.toggle('primary', button.dataset.tab === tab);
+        button.classList.toggle('primary', button.dataset.tab === tab || (button.dataset.tab === 'entries' && ['pto', 'pay_periods', 'review', 'pay_rates'].includes(tab)));
       });
       if ($('mobileTabSelect')) $('mobileTabSelect').value = tab;
-      $('schedulePanel').classList.toggle('hidden-mobile', tab === 'time');
-      $('timePanel').classList.toggle('hidden-mobile', tab !== 'time');
-      $('payPeriodsPanel').classList.toggle('hidden-mobile', !canReviewTime() && tab !== 'time');
-      if (tab === 'entries') {
-        $('schedulePanel').classList.remove('hidden-mobile');
-        $('timePanel').classList.add('hidden-mobile');
-        $('payPeriodsPanel').classList.toggle('hidden-mobile', !canReviewTime());
-      }
+      const show = (id, shouldShow) => $(id)?.classList.toggle('hidden-mobile', !shouldShow);
+      const usesScheduleColumn = ['schedule', 'entries'].includes(tab);
+      const usesTimeColumn = ['time', 'pto', 'pay_rates'].includes(tab);
+      $('managerTopPanel').classList.toggle('hidden-mobile', !['review', 'pay_periods'].includes(tab));
+      show('managerReviewCard', tab === 'review' && canReviewTime());
+      show('payPeriodsPanel', tab === 'pay_periods');
+      show('schedulePanel', usesScheduleColumn);
+      show('scheduleCard', tab === 'schedule');
+      show('entriesPanel', tab === 'entries');
+      show('timePanel', usesTimeColumn);
+      show('timeEntryPanel', tab === 'time');
+      show('ptoPanel', tab === 'pto');
+      show('payRatesCard', tab === 'pay_rates' && canReviewTime());
+      if (tab === 'pay_rates' && canReviewTime()) $('payRatesCard').classList.remove('hidden');
     }
 
     async function requestPto() {
