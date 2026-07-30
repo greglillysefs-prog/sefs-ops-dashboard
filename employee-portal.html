@@ -930,7 +930,7 @@
 
       .mobile-week-day {
         min-width: 0;
-        min-height: 148px;
+        min-height: 132px;
         margin: 0;
         border: 0;
         border-right: 1px solid rgba(255,255,255,.12);
@@ -975,7 +975,14 @@
 
       .mobile-week-row {
         display: block;
+        padding: 6px 0;
+        font-size: 10px;
+        line-height: 1.15;
+      }
+
+      .mobile-week-empty {
         padding: 5px 0;
+        color: var(--muted);
         font-size: 10px;
         line-height: 1.15;
       }
@@ -993,12 +1000,14 @@
       .mobile-week-notes {
         margin-top: 6px;
         padding-top: 6px;
+        border-top-color: rgba(255,122,0,.18);
       }
 
       .mobile-week-notes > b {
         display: block;
         font-size: 9px;
         text-transform: uppercase;
+        margin-bottom: 4px;
       }
 
       .mobile-week-notes .muted {
@@ -1006,9 +1015,18 @@
       }
 
       .mobile-timesheet .timesheet-note {
+        margin-top: 6px;
+        border-top: 1px solid rgba(255,255,255,.12);
+        padding-top: 6px;
         font-size: 9px;
         line-height: 1.2;
         overflow-wrap: anywhere;
+      }
+
+      .mobile-timesheet .timesheet-note b,
+      .mobile-timesheet .timesheet-note span {
+        display: block;
+        margin-bottom: 2px;
       }
 
     }
@@ -2298,14 +2316,14 @@
                 </div>
                 <strong>${(row.dayHours[day.iso] || 0).toFixed(2)}</strong>
               </div>
-            `).join('') : '<p class="muted">No approved hours.</p>'}
+            `).join('') : '<div class="mobile-week-empty">-</div>'}
             <div class="mobile-week-notes">
               <b>Notes</b>
               ${notesByDay[day.iso].length ? notesByDay[day.iso].map((group) => `
                 <div class="timesheet-note">
-                  <b>${esc(groupLabel(group))}</b><br>
-                  <span class="muted">${esc(jobName(group.entry.job_id))} - ${esc(formatTime(group.entry.start_time))} to ${esc(formatTime(group.entry.end_time))}</span><br>
-                  ${esc(group.entry.notes)}
+                  <b>${esc(groupLabel(group))}</b>
+                  <span class="muted">${esc(jobName(group.entry.job_id))} - ${esc(formatTime(group.entry.start_time))} to ${esc(formatTime(group.entry.end_time))}</span>
+                  <div>${esc(group.entry.notes)}</div>
                 </div>
               `).join('') : '<div class="muted">No notes.</div>'}
             </div>
