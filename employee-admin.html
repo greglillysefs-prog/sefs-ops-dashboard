@@ -652,9 +652,6 @@
         'Content-Type': 'application/json',
         'x-sefs-admin-pin': pin
       };
-      if (adminSession?.access_token) {
-        headers.Authorization = `Bearer ${adminSession.access_token}`;
-      }
 
       let response;
       try {
