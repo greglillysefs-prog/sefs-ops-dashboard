@@ -448,7 +448,8 @@ overscroll-behavior:none;
 
 <div class="nav noPrint">
   <div class="navInner">
-    <button data-step="dashboard" onclick="goTo('dashboard', this)" class="active">Dashboard</button>
+    <button type="button" onclick="backToDashboard()">Back to Dashboard</button>
+    <button data-step="dashboard" onclick="goTo('dashboard', this)" class="active">Quote Home</button>
     <button data-step="setup" onclick="goTo('setup', this)">Customer</button>
     <button data-step="floors" onclick="goTo('floors', this)">Floors</button>
     <button data-step="summaryControls" onclick="goTo('summaryControls', this)">Summary</button>
@@ -466,6 +467,16 @@ let customerProfiles=[];
 let selectedCustomerId="";
 function qEsc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
 function syncParentDashboard(){try{parent.refresh?.()}catch(e){}}
+function backToDashboard(){
+  try{
+    if(window.parent&&window.parent!==window&&typeof window.parent.show==="function"){
+      window.parent.show("dashboard");
+      window.parent.scrollTo?.(0,0);
+      return;
+    }
+  }catch(e){}
+  window.location.href="index.html";
+}
 function resizeParentQuoteFrame(){try{parent.resizeQuoteFrame?.()}catch(e){}}
 function queueQuoteResize(){requestAnimationFrame(()=>{resizeParentQuoteFrame();setTimeout(resizeParentQuoteFrame,120);});}
 if(window.parent!==window)document.body.classList.add("embedded-quote");
