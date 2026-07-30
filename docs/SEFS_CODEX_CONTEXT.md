@@ -5,7 +5,8 @@ Read this file first when working on the SEFS Ops Dashboard from any PC or Codex
 ## Current Branch
 
 - Primary working branch: `sefs-ui-workflow-revamp`
-- Main project folder: `C:\Users\Greg\Desktop\SEFS_CLEAN\sefs-ops-dashboard`
+- Main project folder on this PC: `C:\Users\Aiden\sefs-ops-dashboard`
+- Older/other PC path that may appear in notes: `C:\Users\Greg\Desktop\SEFS_CLEAN\sefs-ops-dashboard`
 - The project is a static dashboard with Supabase as the cloud backend.
 - Do not assume local browser storage is the source of truth. Supabase should hold shared business data.
 
@@ -123,6 +124,16 @@ Do not allow Google Calendar to overwrite:
 
 Calendar event descriptions should not expose quote pricing or quote access. Calendar links should open the limited mobile job page only.
 
+Current Google OAuth test note:
+
+- If Google Calendar sync shows `Error 400: origin_mismatch`, the dashboard URL being used is missing from the Google OAuth Client's Authorized JavaScript origins.
+- For local testing, the OAuth client should include exact origins such as:
+  - `http://127.0.0.1:4173`
+  - `http://localhost:4173`
+  - `http://192.168.68.131:4173`
+- If using older dev ports, also include matching `5173` / `5174` origins.
+- Origins must match exactly, including `http` and port.
+
 ## Field Measure
 
 Field Measure is mobile-friendly and should:
@@ -181,6 +192,13 @@ Current approach:
 - Main business contact number should be `3212848168`.
 - Parser Twilio number is separate and should not be presented as the public Southeast Flooring Solutions contact number.
 
+Current Twilio/A2P status from latest user screenshot:
+
+- Twilio account appears active.
+- A2P Brand `SEFS` shows `Approved`.
+- A2P 10DLC campaign badge still appeared `In review` in the screenshot, so verify campaign approval before assuming production SMS is fully live.
+- Messaging Service exists and was created July 26, 2026 at 05:22 UTC.
+
 ## SMS Compliance
 
 Compliance pages exist for Twilio registration:
@@ -198,7 +216,11 @@ The dashboard and portals should work on phones and PCs.
 Recent mobile navigation update:
 
 - Dashboard phone navigation uses a `Go To` dropdown instead of many top buttons.
-- Employee portal phone navigation uses a `Go To` dropdown for Schedule, Time, Entries.
+- Dashboard mobile dropdown includes dashboard tabs, quick actions (`New Lead`, `New Task`, `New Job`), and portal links.
+- Dashboard mobile hides the large `Start Work` button card; quick actions should live in the dropdown on phones.
+- Employee portal phone navigation uses a `Go To` dropdown. Current target sections are Schedule, Add Time, Entries, PTO, Pay Periods, Time Review, and Pay Rates.
+- Employee portal dropdown choices should show one focused panel at a time on phones. Avoid reintroducing duplicate mobile tiles/buttons for these same destinations.
+- Employee Portal/Admin links from mobile dropdown should use same-tab navigation (`location.assign`) instead of `window.open`, because mobile browsers can block dropdown-triggered popups.
 - Desktop navigation should remain full/sidebar-oriented.
 
 ## Development Rules for Codex
