@@ -31,6 +31,8 @@ main{overflow:visible}
 .nav-quote-primary{background:linear-gradient(90deg,#1f1306,#151515)!important}
 .nav-dashboard{border-color:#555!important}
 .side .sync-note{margin-top:8px;line-height:1.35}
+.mobile-nav-wrap{display:none}
+.mobile-nav-select{width:100%;min-height:46px;border-color:var(--o);font-weight:900}
 @media(max-width:900px){.nav-section-title{display:none}.nav-stack{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}}
 .dash-hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,360px);gap:18px;margin-bottom:18px;align-items:stretch}
 .dash-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
@@ -87,7 +89,9 @@ img,iframe{max-width:100%}
   .logo{width:min(210px,76vw);max-width:76vw}
   #status{width:100%;text-align:center}
   .app{display:block;min-height:0}
-  nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:10px;border-right:0;border-bottom:1px solid #333;max-height:none;overflow:visible}
+  nav{display:block;padding:10px;border-right:0;border-bottom:1px solid #333;max-height:none;overflow:visible}
+  .mobile-nav-wrap{display:block}
+  .nav-section-title,.nav-stack,.side{display:none!important}
   .nav{margin:0;padding:11px 9px;text-align:center;border-radius:8px;font-size:13px}
   .side{grid-column:1/-1;margin-top:4px;padding:10px}
   main{padding:12px;overflow:visible}
@@ -161,8 +165,9 @@ function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&l
 function normMaterialName(s){return String(s||'').toLowerCase().replace(/&/g,'and').replace(/\b(kit|box|bag|pail|bucket|case|part|parta|partb)\b/g,'').replace(/polyaspartic/g,'poly').replace(/[^a-z0-9]/g,'')}
 function materialNameKeys(s){let n=normMaterialName(s),keys=[n];if(n.includes('primer3g'))keys.push('primer3g');if(n.includes('poly2g'))keys.push('poly2g');if(n.includes('flake'))keys.push('flake');if(n.includes('cove')&&n.includes('mortar'))keys.push('covemortar');if(n.includes('colorpod'))keys.push('colorpod');return [...new Set(keys.filter(Boolean))]}
 function materialNamesMatch(a,b){let aa=materialNameKeys(a),bb=materialNameKeys(b);return aa.some(x=>bb.includes(x)||(x.length>4&&bb.some(y=>y.length>4&&(x.includes(y)||y.includes(x)))))}
-function nav(){let tabMap=Object.fromEntries(workflowTabs); let btn=(id)=>`<button class="nav ${id==='dashboard'?'active nav-dashboard':''} ${id==='quotes'?'quote-nav-force nav-quote-primary':''}" data-tab="${id}">${tabMap[id]}</button>`; $('nav').innerHTML=navGroups.map(g=>`<div class=nav-section-title>${g[0]}</div><div class=nav-stack>${g[1].map(btn).join('')}</div>`).join('')+`<div class=side><div class=muted>System</div><b>SEFS OPS</b><div class="muted sync-note">Supabase connected<br>Static Cloudflare-ready files</div><button class="secondary" onclick="window.open('employee-admin.html','_blank')">Employee Admin</button><button class="secondary" onclick="window.open('employee-portal.html','_blank')">Employee Portal</button></div>`; $('main').innerHTML=workflowTabs.map((x,i)=>`<section id="${x[0]}" class="${i?'':'active'}"></section>`).join(''); document.querySelectorAll('.nav').forEach(b=>b.onclick=()=>show(b.dataset.tab)); renderQuotes();}
-function show(id){let target=$(id); if(!target)return; document.querySelectorAll('section').forEach(s=>s.classList.remove('active')); target.classList.add('active');document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.tab===id)); if(id==='quotes')setTimeout(resizeQuoteFrame,120);}
+function nav(){let tabMap=Object.fromEntries(workflowTabs), mobileOptions=navGroups.map(g=>`<optgroup label="${g[0]}">${g[1].map(id=>`<option value="${id}">${tabMap[id]}</option>`).join('')}</optgroup>`).join('')+`<optgroup label="Portals"><option value="__employee_admin">Employee Admin</option><option value="__employee_portal">Employee Portal</option></optgroup>`; let btn=(id)=>`<button class="nav ${id==='dashboard'?'active nav-dashboard':''} ${id==='quotes'?'quote-nav-force nav-quote-primary':''}" data-tab="${id}">${tabMap[id]}</button>`; $('nav').innerHTML=`<div class=mobile-nav-wrap><label for=mobileNavSelect>Go To</label><select id=mobileNavSelect class=mobile-nav-select onchange="mobileNavGo(this.value)">${mobileOptions}</select></div>`+navGroups.map(g=>`<div class=nav-section-title>${g[0]}</div><div class=nav-stack>${g[1].map(btn).join('')}</div>`).join('')+`<div class=side><div class=muted>System</div><b>SEFS OPS</b><div class="muted sync-note">Supabase connected<br>Static Cloudflare-ready files</div><button class="secondary" onclick="window.open('employee-admin.html','_blank')">Employee Admin</button><button class="secondary" onclick="window.open('employee-portal.html','_blank')">Employee Portal</button></div>`; $('main').innerHTML=workflowTabs.map((x,i)=>`<section id="${x[0]}" class="${i?'':'active'}"></section>`).join(''); document.querySelectorAll('.nav').forEach(b=>b.onclick=()=>show(b.dataset.tab)); renderQuotes();}
+function mobileNavGo(value){if(value==='__employee_admin')return window.open('employee-admin.html','_blank'); if(value==='__employee_portal')return window.open('employee-portal.html','_blank'); show(value)}
+function show(id){let target=$(id); if(!target)return; document.querySelectorAll('section').forEach(s=>s.classList.remove('active')); target.classList.add('active');document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.tab===id)); let mobileSelect=$('mobileNavSelect'); if(mobileSelect)mobileSelect.value=id; if(id==='quotes')setTimeout(resizeQuoteFrame,120);}
 async function loadTable(t){ const r=await supa.from(t).select('*').order('created_at',{ascending:false}); if(r.error){errors[t]=r.error.message; state[t]=[]} else {delete errors[t]; state[t]=r.data||[];} }
 async function refresh(){setStatus('Syncing...'); await Promise.all(tables.map(t=>loadTable(t))); const bad=Object.keys(errors).length; setStatus(bad?`Loaded with ${bad} table issue(s)`:'Cloud connected', bad?'bad':'ok'); renderAll(); handleInitialRoute();}
 function err(t){return errors[t]?`<div class=err><b>${t}</b>: ${esc(errors[t])}</div>`:''}

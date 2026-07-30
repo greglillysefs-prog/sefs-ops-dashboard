@@ -719,6 +719,17 @@
       margin-bottom: 12px;
     }
 
+    .mobile-tab-select-wrap {
+      display: none;
+      margin-bottom: 12px;
+    }
+
+    .mobile-tab-select-wrap select {
+      border-color: var(--orange);
+      font-weight: 900;
+      min-height: 46px;
+    }
+
     .hidden { display: none !important; }
 
     @media (max-width: 1200px) {
@@ -742,8 +753,8 @@
         grid-template-columns: 1fr;
       }
 
-      .tabs {
-        display: grid;
+      .mobile-tab-select-wrap {
+        display: block;
       }
 
       .mobile-panel.hidden-mobile {
@@ -780,17 +791,12 @@
         flex: 1 1 auto;
       }
 
-      .tabs {
+      .mobile-tab-select-wrap {
         position: sticky;
         top: 0;
         z-index: 5;
         background: rgba(5,5,5,.94);
         padding: 6px 0;
-      }
-
-      .tabs button {
-        padding: 9px 8px;
-        min-height: 42px;
       }
 
       .card {
@@ -952,6 +958,15 @@
 
     <main id="app" class="hidden">
       <div id="appMessage" class="notice hidden"></div>
+
+      <div class="mobile-tab-select-wrap">
+        <label for="mobileTabSelect">Go To</label>
+        <select id="mobileTabSelect" aria-label="Employee portal section">
+          <option value="schedule">Schedule</option>
+          <option value="time">Time</option>
+          <option value="entries">Entries</option>
+        </select>
+      </div>
 
       <div class="tabs">
         <button class="primary" type="button" data-tab="schedule">Schedule</button>
@@ -2766,6 +2781,7 @@
       document.querySelectorAll('[data-tab]').forEach((button) => {
         button.classList.toggle('primary', button.dataset.tab === tab);
       });
+      if ($('mobileTabSelect')) $('mobileTabSelect').value = tab;
       $('schedulePanel').classList.toggle('hidden-mobile', tab === 'time');
       $('timePanel').classList.toggle('hidden-mobile', tab !== 'time');
       $('payPeriodsPanel').classList.toggle('hidden-mobile', !canReviewTime() && tab !== 'time');
@@ -2922,6 +2938,7 @@
       $(id).addEventListener('change', () => snapTimeInput(id));
       $(id).addEventListener('blur', () => snapTimeInput(id));
     });
+    $('mobileTabSelect').addEventListener('change', (event) => setActiveTab(event.target.value));
     document.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => setActiveTab(button.dataset.tab)));
 
     supa.auth.onAuthStateChange((_event, nextSession) => {
