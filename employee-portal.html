@@ -1360,6 +1360,7 @@
     const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
     const money = (value) => `$${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const moneylessJobName = (job) => [job.customer, job.system_type].filter(Boolean).join(' - ') || job.job_name || 'Scheduled job';
+    const isSalaryRole = (role) => ['manager', 'admin'].includes(String(role || ''));
     const canEnterCrewTime = () => ['crew_lead', 'manager', 'admin'].includes(profile?.role);
     const canReviewTime = () => ['manager', 'admin'].includes(profile?.role);
 
@@ -1654,6 +1655,10 @@
 
     async function loadEntries() {
       requireProfile();
+      if (isSalaryRole(profile?.role)) {
+        entries = [];
+        return;
+      }
       const result = await supa
         .from('time_entries')
         .select('*')
@@ -1735,9 +1740,9 @@
           .order('name');
       }
       if (employeeResult.error) throw employeeResult.error;
-      managerEntries = timeData || [];
       managerProfiles = profileData || [];
       managerEmployees = employeeResult.data || [];
+      managerEntries = (timeData || []).filter((entry) => employeeIsActiveForPayroll(entry.employee_id));
     }
 
     async function loadCrewOptionsForJob(jobId) {
@@ -2495,6 +2500,7 @@
     }
 
     function renderPto() {
+      $('ptoForm').classList.toggle('hidden', isSalaryRole(profile?.role));
       const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       $('ptoDate').min = tomorrow;
       if (!$('ptoDate').value || $('ptoDate').value < tomorrow) $('ptoDate').value = tomorrow;
@@ -2878,7 +2884,8 @@
       const selectedIds = checkedIds.length
         ? checkedIds
         : Array.from(selectedCrewIds).filter((id) => availableIds.has(id));
-      const ids = [profile?.employee_id, ...selectedIds].filter(Boolean);
+      const selfId = isSalaryRole(profile?.role) ? null : profile?.employee_id;
+      const ids = [selfId, ...selectedIds].filter(Boolean);
       return [...new Set(ids)];
     }
 

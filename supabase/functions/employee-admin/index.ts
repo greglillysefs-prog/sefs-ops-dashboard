@@ -60,6 +60,11 @@ function ptoBalance(employee: Record<string, unknown> | undefined, ledgerEntries
 
 const elevatedRoles = ["crew_lead", "manager", "admin"];
 const reviewRoles = ["manager", "admin"];
+const salaryRoles = ["manager", "admin"];
+
+function isSalaryRole(role: unknown) {
+  return salaryRoles.includes(String(role || ""));
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -178,16 +183,18 @@ Deno.serve(async (req) => {
       if (profilesError) throw profilesError;
 
       const profileByEmployee = new Map((profiles || []).map((profile) => [profile.employee_id, profile]));
-      const crew = (employees || []).map((employee) => {
-        const profile = profileByEmployee.get(employee.id);
-        return {
-          id: employee.id,
-          name: profile?.full_name || employee.name,
-          role: profile?.role || "employee",
-          is_self: employee.id === actor.profile.employee_id,
-          assignment_status: hasAssignments ? "assigned" : "available",
-        };
-      });
+      const crew = (employees || [])
+        .map((employee) => {
+          const profile = profileByEmployee.get(employee.id);
+          return {
+            id: employee.id,
+            name: profile?.full_name || employee.name,
+            role: profile?.role || "employee",
+            is_self: employee.id === actor.profile.employee_id,
+            assignment_status: hasAssignments ? "assigned" : "available",
+          };
+        })
+        .filter((employee) => !isSalaryRole(employee.role));
 
       return json({ employees: crew });
     }
@@ -234,11 +241,15 @@ Deno.serve(async (req) => {
 
       const { data: profiles, error: profilesError } = await supa
         .from("profiles")
-        .select("id, employee_id, active")
+        .select("id, employee_id, role, active")
         .in("employee_id", employeeIds)
         .eq("active", true);
       if (profilesError) throw profilesError;
       const profileByEmployee = new Map((profiles || []).map((profile) => [profile.employee_id, profile]));
+      const salaryIds = employeeIds.filter((id) => isSalaryRole(profileByEmployee.get(id)?.role));
+      if (salaryIds.length) {
+        return json({ error: "Managers and admins are salary and cannot be added to hourly time entries." }, 400);
+      }
 
       const basePayload = {
         job_id: jobId || null,
@@ -302,15 +313,24 @@ Deno.serve(async (req) => {
         .limit(200);
       if (!canReviewPto) query = query.eq("employee_id", actor.profile.employee_id);
 
-      const [{ data: requests, error: requestsError }, { data: employees, error: employeesError }] = await Promise.all([
+      const [
+        { data: requests, error: requestsError },
+        { data: employees, error: employeesError },
+        { data: profiles, error: profilesError },
+      ] = await Promise.all([
         query,
         supa.from("employees").select("id, name, start_date").order("name"),
+        supa.from("profiles").select("employee_id, role, active").eq("active", true),
       ]);
       if (requestsError) throw requestsError;
       if (employeesError) throw employeesError;
+      if (profilesError) throw profilesError;
 
+      const profileByEmployee = new Map((profiles || []).map((profile) => [profile.employee_id, profile]));
+      const hourlyEmployees = (employees || []).filter((employee) => !isSalaryRole(profileByEmployee.get(employee.id)?.role));
+      const visibleRequests = (requests || []).filter((request) => !isSalaryRole(profileByEmployee.get(request.employee_id)?.role));
       const employeesById = new Map((employees || []).map((employee) => [employee.id, employee]));
-      const employeeIds = [...new Set((canReviewPto ? employees || [] : (employees || []).filter((employee) => employee.id === actor.profile.employee_id)).map((employee) => employee.id).filter(Boolean))];
+      const employeeIds = [...new Set((canReviewPto ? hourlyEmployees : hourlyEmployees.filter((employee) => employee.id === actor.profile.employee_id)).map((employee) => employee.id).filter(Boolean))];
       const { data: ledgerEntries, error: ledgerError } = employeeIds.length
         ? await supa
             .from("personal_time_entries")
@@ -322,10 +342,10 @@ Deno.serve(async (req) => {
       const balanceByEmployee = new Map(employeeIds.map((employeeId) => {
         const employee = employeesById.get(employeeId);
         const employeeLedger = (ledgerEntries || []).filter((entry) => entry.employee_id === employeeId);
-        const employeeRequests = (requests || []).filter((request) => request.employee_id === employeeId);
+        const employeeRequests = visibleRequests.filter((request) => request.employee_id === employeeId);
         return [employeeId, ptoBalance(employee, employeeLedger, employeeRequests)];
       }));
-      const rows = (requests || []).map((request) => ({
+      const rows = visibleRequests.map((request) => ({
         ...request,
         employee_name: employeesById.get(request.employee_id)?.name || "Employee",
       }));
@@ -339,6 +359,9 @@ Deno.serve(async (req) => {
     if (action === "pto_request") {
       const actor = await getPortalActor();
       if (actor.error) return actor.error;
+      if (isSalaryRole(actor.profile.role)) {
+        return json({ error: "Managers and admins are salary and do not use PTO requests in the employee portal." }, 400);
+      }
 
       const requestDate = cleanText(payload.request_date);
       const hours = Number(payload.hours || 0);
@@ -407,6 +430,16 @@ Deno.serve(async (req) => {
       if (requestError) throw requestError;
       if (request.status === "approved" && status === "rejected") {
         return json({ error: "Approved PTO has already been added to the PTO ledger." }, 400);
+      }
+      const { data: requestProfile, error: requestProfileError } = await supa
+        .from("profiles")
+        .select("role")
+        .eq("employee_id", request.employee_id)
+        .eq("active", true)
+        .maybeSingle();
+      if (requestProfileError) throw requestProfileError;
+      if (isSalaryRole(requestProfile?.role)) {
+        return json({ error: "Managers and admins are salary and do not use PTO requests in the employee portal." }, 400);
       }
 
       let personalTimeEntryId = request.personal_time_entry_id || null;
