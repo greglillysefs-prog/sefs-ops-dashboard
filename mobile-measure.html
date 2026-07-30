@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>SEFS Mobile Measure</title>
+  <link rel="icon" type="image/jpeg" href="assets/sefs-icon.jpeg">
+  <link rel="apple-touch-icon" href="assets/sefs-icon.jpeg">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root{--o:#ff7900;--g:#2bb673;--r:#d84242;--bg:#050505;--p:#151515;--l:#383838;--m:#aaa}
+    *{box-sizing:border-box}
+    body{margin:0;background:#050505;color:#eee;font-family:Arial,Helvetica,sans-serif}
+    header{position:sticky;top:0;z-index:2;background:#000;border-bottom:1px solid #333;padding:14px 16px}
+    h1{font-size:21px;margin:0;color:#fff}
+    h2{margin:0 0 12px}
+    .sub{color:#aaa;font-size:13px;margin-top:4px}
+    main{padding:14px;max-width:760px;margin:0 auto}
+    .card{background:#121212;border:1px solid #333;border-radius:10px;padding:14px;margin-bottom:12px;min-width:0}
+    label{display:block;margin:12px 0 6px;color:#bbb;font-size:12px;font-weight:900;text-transform:uppercase}
+    input,select,textarea{width:100%;background:#090909;color:#eee;border:1px solid #444;border-radius:8px;padding:12px;font-size:16px}
+    input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(55%) sepia(96%) saturate(1900%) hue-rotate(1deg) brightness(104%) contrast(104%);opacity:1}
+    textarea{min-height:96px}
+    .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .primary,.secondary,.danger{width:100%;border-radius:9px;padding:13px;margin-top:12px;font-weight:900}
+    .primary{border:0;background:linear-gradient(90deg,var(--o),#ff9b28);color:#000}
+    .secondary{background:#181818;border:1px solid var(--o);color:var(--o)}
+    .danger{background:#1b0909;border:1px solid var(--r);color:#ff9999}
+    a.secondary{display:block;text-align:center;text-decoration:none}
+    #status{border:1px solid #444;border-radius:99px;padding:8px 10px;color:#aaa;font-size:13px;margin-top:10px}
+    #status.ok{border-color:var(--g);color:var(--g)}
+    #status.bad{border-color:var(--r);color:#ff9999}
+    .muted{color:#aaa;font-size:13px}
+    .pill{display:inline-block;border:1px solid #555;border-radius:99px;padding:5px 9px;color:#aaa;font-size:12px}
+    .area-card{border:1px solid #333;border-radius:10px;background:#0b0b0b;padding:12px;margin-top:12px}
+    .area-head{display:flex;justify-content:space-between;gap:10px;align-items:center}
+    .area-head b{color:#fff}
+    .area-head button{width:auto;min-width:92px;margin:0;padding:9px 10px}
+    .quick{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}
+    .quick button{margin:0}
+    .total{font-size:38px;font-weight:900;color:var(--o);line-height:1}
+    .summary{display:grid;gap:8px}
+    .summary-item{border:1px solid #333;border-radius:8px;background:#0b0b0b;padding:10px}
+    .area-flash{position:fixed;left:12px;right:12px;bottom:12px;z-index:5;border:1px solid var(--o);border-radius:10px;background:#1a1007;color:#fff;padding:12px 14px;font-weight:900;text-align:center;box-shadow:0 12px 30px rgba(0,0,0,.45)}
+    .hidden{display:none!important}
+    @media(max-width:520px){main{padding:10px}.two,.quick{grid-template-columns:1fr}header{padding:12px}}
+  </style>
+</head>
+<body>
+  <header>
+    <h1 id="title">Mobile Field Measure</h1>
+    <div class="sub" id="subtitle">Measure a lead or job from your phone</div>
+    <div id="status">Loading...</div>
+  </header>
+  <main><div id="app"></div></main>
+  <script>
+    const SB_URL='https://wjfewzutxvjbbnnvbylo.supabase.co', SB_KEY='sb_publishable_YWRQJz8q1lDdSz_304AUyA_YskIiTBT', supa=supabase.createClient(SB_URL,SB_KEY);
+    const $=id=>document.getElementById(id), params=new URLSearchParams(location.search);
+    const AREA_TYPES=['Garage','Patio','Basement','Pool Deck','Porch','Driveway','Room','Other'];
+    let targetType=params.get('type')||params.get('entity')||'lead', targetId=params.get('id')||params.get('lead')||params.get('job')||'', leads=[], jobs=[], target=null, areas=[];
+    function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+    function setStatus(t,c=''){$('status').textContent=t;$('status').className=c}
+    function val(id){return $(id)?.value||''}
+    function num(id){return parseFloat(val(id))||0}
+    function today(){return new Date().toISOString().slice(0,10)}
+    function targetName(item){return item?.customer||item?.job_name||'Untitled'}
+    function targetAddress(item){return item?.address||''}
+    function targetPhone(item){return item?.phone||''}
+    function recordOptions(){
+      const list=targetType==='job'?jobs:leads;
+      return list.map(item=>`<option value="${esc(item.id)}" ${item.id===targetId?'selected':''}>${esc(targetName(item))}${targetAddress(item)?' - '+esc(targetAddress(item)):''}</option>`).join('');
+    }
+    function selectedList(){return targetType==='job'?jobs:leads}
+    function setTargetFromLists(){target=selectedList().find(item=>item.id===targetId)||null}
+    async function loadData(){
+      setStatus('Loading records...');
+      let [lr,jr]=await Promise.all([
+        supa.from('leads').select('id,customer,phone,address,stage,created_at').order('created_at',{ascending:false}).limit(200),
+        supa.from('jobs').select('id,customer,phone,address,job_name,status,start_date,system_type,square_feet').order('start_date',{ascending:true,nullsFirst:false}).limit(200)
+      ]);
+      if(lr.error){setStatus(lr.error.message,'bad');return}
+      if(jr.error){setStatus(jr.error.message,'bad');return}
+      leads=lr.data||[];
+      jobs=jr.data||[];
+      if(!targetId){
+        const list=selectedList();
+        targetId=list[0]?.id||'';
+      }
+      setTargetFromLists();
+      render();
+      setStatus(target?'Ready':'Choose a record','ok');
+    }
+    function totalSqft(){return areas.reduce((sum,a)=>sum+(+a.square_feet||0),0)}
+    function calcArea(i){
+      const area=areas[i];
+      if(!area)return;
+      const l=+area.length||0,w=+area.width||0;
+      if(l&&w)area.square_feet=Math.round(l*w*100)/100;
+    }
+    function captureArea(i){
+      const area=areas[i];
+      if(!area)return;
+      area.area_name=val(`area_name_${i}`);
+      area.area_type=val(`area_type_${i}`);
+      area.length=num(`length_${i}`);
+      area.width=num(`width_${i}`);
+      area.square_feet=num(`sqft_${i}`);
+      area.floor_condition=val(`condition_${i}`);
+      area.cracks_spalls_joints_notes=val(`cracks_${i}`);
+      area.moisture_notes=val(`moisture_${i}`);
+      area.notes=val(`notes_${i}`);
+    }
+    function captureAll(){areas.forEach((_,i)=>captureArea(i))}
+    function updateTotal(){captureAll();$('totalSqft').textContent=totalSqft().toLocaleString(undefined,{maximumFractionDigits:2})}
+    function areaCard(area,i){
+      return `<div class=area-card id="area_card_${i}">
+        <div class=area-head><b>Area ${i+1}</b><button class=danger type=button onclick="removeArea(${i})">Remove</button></div>
+        <label>Area Name</label><input id="area_name_${i}" value="${esc(area.area_name||'')}" oninput="captureArea(${i})">
+        <label>Area Type</label><select id="area_type_${i}" onchange="captureArea(${i})">${AREA_TYPES.map(t=>`<option ${area.area_type===t?'selected':''}>${esc(t)}</option>`).join('')}</select>
+        <div class=two>
+          <div><label>Length</label><input id="length_${i}" type=number inputmode=decimal value="${esc(area.length||'')}" oninput="captureArea(${i});calcArea(${i});renderAreasOnly()"></div>
+          <div><label>Width</label><input id="width_${i}" type=number inputmode=decimal value="${esc(area.width||'')}" oninput="captureArea(${i});calcArea(${i});renderAreasOnly()"></div>
+        </div>
+        <label>Square Footage</label><input id="sqft_${i}" type=number inputmode=decimal value="${esc(area.square_feet||'')}" oninput="captureArea(${i});updateTotal()">
+        <label>Floor Condition</label><select id="condition_${i}" onchange="captureArea(${i})"><option></option>${['Good','Fair','Poor','Needs Prep','Needs Repair','Moisture Concern'].map(t=>`<option ${area.floor_condition===t?'selected':''}>${esc(t)}</option>`).join('')}</select>
+        <label>Cracks / Spalls / Joints</label><textarea id="cracks_${i}" oninput="captureArea(${i})">${esc(area.cracks_spalls_joints_notes||'')}</textarea>
+        <label>Moisture Notes</label><textarea id="moisture_${i}" oninput="captureArea(${i})">${esc(area.moisture_notes||'')}</textarea>
+        <label>Area Notes</label><textarea id="notes_${i}" oninput="captureArea(${i})">${esc(area.notes||'')}</textarea>
+        <label>Photos</label><input id="files_${i}" type=file accept="image/*" multiple>
+        <div class=muted>Choose Photo Library / Gallery for multiple saved photos, or Camera to take a new photo.</div>
+      </div>`;
+    }
+    function renderAreasOnly(){
+      const active=document.activeElement?.id;
+      const pos=document.activeElement?.selectionStart;
+      $('areas').innerHTML=areas.map(areaCard).join('')||'<div class=muted>Add an area to start measuring.</div>';
+      $('totalSqft').textContent=totalSqft().toLocaleString(undefined,{maximumFractionDigits:2});
+      if(active&&$(active)){ $(active).focus(); try{ if(pos!=null)$(active).setSelectionRange(pos,pos); }catch(e){} }
+    }
+    function showAreaAdded(type,index){
+      let toast=$('areaToast');
+      if(!toast){
+        toast=document.createElement('div');
+        toast.id='areaToast';
+        toast.className='area-flash';
+        document.body.appendChild(toast);
+      }
+      toast.textContent=`Added ${type} area (${areas.length} total)`;
+      toast.classList.remove('hidden');
+      clearTimeout(window.__areaToastTimer);
+      window.__areaToastTimer=setTimeout(()=>toast.classList.add('hidden'),1800);
+    }
+    function addArea(type='Room'){
+      captureAll();
+      areas.push({area_name:type,area_type:type,length:'',width:'',square_feet:'',notes:''});
+      renderAreasOnly();
+      setStatus(`Added ${type} area (${areas.length} total).`,'ok');
+      setTimeout(()=>showAreaAdded(type,areas.length-1),50);
+    }
+    function removeArea(i){
+      captureAll();
+      areas.splice(i,1);
+      renderAreasOnly();
+    }
+    function render(){
+      if(!targetId){
+        const list=selectedList();
+        targetId=list[0]?.id||'';
+      }
+      setTargetFromLists();
+      document.title='SEFS Mobile Measure';
+      $('title').textContent='Mobile Field Measure';
+      $('subtitle').textContent=target?`${targetType.toUpperCase()} - ${targetName(target)}`:'Choose a lead or job';
+      $('app').innerHTML=`<div class=card>
+        <h2>Measure For</h2>
+        <label>Type</label><select id=targetType onchange="targetType=this.value;targetId='';target=null;render()"><option value=lead ${targetType==='lead'?'selected':''}>Lead</option><option value=job ${targetType==='job'?'selected':''}>Job</option></select>
+        <label>Select ${targetType==='job'?'Job':'Lead'}</label><select id=targetId onchange="targetId=this.value;setTargetFromLists();render()">${recordOptions()}</select>
+        ${target?`<div class=summary-item><b>${esc(targetName(target))}</b><br><span class=muted>${esc(targetPhone(target))}${targetPhone(target)&&targetAddress(target)?' - ':''}${esc(targetAddress(target))}</span><br><span class=pill>${esc(target.stage||target.status||'')}</span></div>`:'<div class=muted>No records found for this type.</div>'}
+      </div>
+      <div class=card>
+        <h2>Measurement</h2>
+        <label>Customer</label><input id=customer value="${esc(targetName(target))}">
+        <label>Phone</label><input id=phone type=tel value="${esc(targetPhone(target))}">
+        <label>Address</label><textarea id=address>${esc(targetAddress(target))}</textarea>
+        <label>Measurement Notes</label><textarea id=measureNotes></textarea>
+        <div class=quick>${AREA_TYPES.slice(0,6).map(t=>`<button class=secondary type=button onclick="addArea('${esc(t)}')">${esc(t)}</button>`).join('')}</div>
+        <button class=secondary type=button onclick="addArea('Room')">Add Blank Area</button>
+      </div>
+      <div class=card>
+        <div class=muted>Total Square Footage</div>
+        <div class=total><span id=totalSqft>${totalSqft().toLocaleString(undefined,{maximumFractionDigits:2})}</span></div>
+        <div class=muted>${areas.length} measured area(s)</div>
+        <div id=areas>${areas.map(areaCard).join('')||'<div class=muted>Add an area to start measuring.</div>'}</div>
+        <button class=primary type=button onclick="saveMeasurement()">Save Measurement</button>
+        ${targetType==='job'&&targetId?`<a class=secondary href="mobile-job.html?job=${encodeURIComponent(targetId)}">Back to Job</a>`:''}
+      </div>`;
+    }
+    async function uploadAreaPhotos(measurementId,areaId,i,area){
+      const input=$(`files_${i}`);
+      if(!input||!input.files.length)return;
+      for(const file of input.files){
+        const clean=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+        const path=`${targetType}/${targetId}/measurements/${areaId}/${Date.now()}_${clean}`;
+        const up=await supa.storage.from('sefs-photos').upload(path,file,{upsert:false});
+        if(up.error)throw new Error(up.error.message);
+        const pub=supa.storage.from('sefs-photos').getPublicUrl(path).data.publicUrl;
+        const saved=await supa.from('photo_attachments').insert({entity_type:targetType,entity_id:targetId,file_name:file.name,storage_path:path,public_url:pub,caption:`${area.area_name||'Measured area'} - ${area.area_type||'Area'}`,category:area.area_type||'Area',field_measurement_id:measurementId,field_measurement_area_id:areaId,uploaded_by:'mobile-measure'});
+        if(saved.error)throw new Error(saved.error.message);
+      }
+    }
+    async function saveMeasurement(){
+      try{
+        if(!targetId||!target)throw new Error('Choose a lead or job first.');
+        captureAll();
+        areas=areas.filter(a=>(+a.square_feet||0)>0||a.area_name||a.notes);
+        if(!areas.length)throw new Error('Add at least one measured area.');
+        const total=totalSqft();
+        if(total<=0)throw new Error('Enter square footage or length and width for at least one area.');
+        setStatus('Saving measurement...');
+        const measurePayload={customer:val('customer'),phone:val('phone'),address:val('address'),notes:val('measureNotes'),total_square_feet:total,status:'Complete',source:'mobile'};
+        measurePayload[targetType==='job'?'job_id':'lead_id']=targetId;
+        const m=await supa.from('field_measurements').insert(measurePayload).select().single();
+        if(m.error)throw new Error(m.error.message);
+        for(let i=0;i<areas.length;i++){
+          const a=areas[i];
+          const areaPayload={field_measurement_id:m.data.id,area_name:a.area_name||a.area_type||`Area ${i+1}`,area_type:a.area_type||'',length:+a.length||0,width:+a.width||0,square_feet:+a.square_feet||0,notes:a.notes||'',floor_condition:a.floor_condition||'',cracks_spalls_joints_notes:a.cracks_spalls_joints_notes||'',moisture_notes:a.moisture_notes||'',sort_order:i};
+          areaPayload[targetType==='job'?'job_id':'lead_id']=targetId;
+          const ar=await supa.from('field_measurement_areas').insert(areaPayload).select().single();
+          if(ar.error)throw new Error(ar.error.message);
+          await uploadAreaPhotos(m.data.id,ar.data.id,i,a);
+        }
+        areas=[];
+        render();
+        setStatus(`Saved ${total.toLocaleString(undefined,{maximumFractionDigits:1})} sq ft measurement.`,'ok');
+      }catch(e){
+        setStatus(e.message||String(e),'bad');
+      }
+    }
+    loadData();
+  </script>
+</body>
+</html>

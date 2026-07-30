@@ -149,6 +149,13 @@ button.danger{background:#c21d17}
 .hidden{display:none!important}
 .floorCard{border-left:5px solid var(--orange)}
 .small{font-size:12px;color:var(--muted)}
+.customerPicker{position:relative}
+.customerMatches{position:absolute;z-index:30;left:0;right:0;top:100%;margin-top:6px;background:#070707;border:1px solid rgba(255,106,0,.45);border-radius:8px;box-shadow:0 16px 40px rgba(0,0,0,.55);max-height:260px;overflow:auto}
+.customerMatch{display:flex;justify-content:space-between;gap:14px;width:100%;text-align:left;background:#101010;border:0;border-bottom:1px solid rgba(255,255,255,.1);border-radius:0;color:#fff;text-transform:none;padding:12px}
+.customerMatch:hover,.customerMatch:focus{background:#1d1d1d}
+.customerMatch strong{display:block;color:#fff}
+.customerMatch small{display:block;color:var(--muted);margin-top:3px}
+.linkedCustomer{margin-top:8px;color:#22c55e;font-weight:800}
 .summaryLine{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid rgba(255,255,255,.14);padding:8px 0}
 .price{color:var(--orange);font-weight:950}
 .systemList{display:grid;grid-template-columns:1fr;gap:8px}
@@ -388,9 +395,9 @@ overscroll-behavior:none;
     <div class="stepTitle"><span class="bubble">1</span> Customer Info</div>
     <h2>New Quote</h2>
     <div class="grid two">
-      <div><label>Customer / Job Name</label><input id="customerName" type="text"></div>
-      <div><label>Phone Number</label><input id="customerPhone" type="tel" inputmode="tel"></div>
-      <div><label>Job Address</label><input id="customerAddress" type="text"></div>
+      <div class="customerPicker"><label>Customer / Job Name</label><input id="customerName" type="text" autocomplete="off" oninput="clearSelectedCustomer();updateCustomerMatches()" onfocus="updateCustomerMatches()" onblur="hideCustomerMatchesSoon()"><div id="customerMatches" class="customerMatches hidden"></div><div id="customerMatchStatus" class="small"></div></div>
+      <div><label>Phone Number</label><input id="customerPhone" type="tel" inputmode="tel" oninput="clearSelectedCustomer();updateCustomerMatches()" onfocus="updateCustomerMatches()" onblur="hideCustomerMatchesSoon()"></div>
+      <div><label>Job Address</label><input id="customerAddress" type="text" oninput="clearSelectedCustomer();updateCustomerMatches()" onfocus="updateCustomerMatches()" onblur="hideCustomerMatchesSoon()"></div>
       <div><label>Number of Floor Types</label><input id="floorCount" type="number" inputmode="numeric" min="1"></div>
     </div>
     <div id="measurementImportNotice"></div>
@@ -431,7 +438,7 @@ overscroll-behavior:none;
   </section>
 
   <section class="featureFooter noPrint">
-    <div class="feature"><span class="fIcon">5%</span>Waste<br>Included</div>
+    <div class="feature"><span class="fIcon">0%</span>No Waste<br>Markup</div>
     <div class="feature"><span class="fIcon">DB</span>Saved In<br>Supabase</div>
     <div class="feature"><span class="fIcon">PDF</span>Export PDF,<br>Text & Share</div>
     <div class="feature"><span class="fIcon">JOB</span>Convert To<br>Lead Or Job</div>
@@ -455,11 +462,21 @@ const SB_URL='https://wjfewzutxvjbbnnvbylo.supabase.co', SB_KEY='sb_publishable_
 const supa=window.supabase?.createClient(SB_URL,SB_KEY);
 let savedQuotesCache=[];
 let pendingMeasurementExport=null;
+let customerProfiles=[];
+let selectedCustomerId="";
 function qEsc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
 function syncParentDashboard(){try{parent.refresh?.()}catch(e){}}
 function resizeParentQuoteFrame(){try{parent.resizeQuoteFrame?.()}catch(e){}}
 function queueQuoteResize(){requestAnimationFrame(()=>{resizeParentQuoteFrame();setTimeout(resizeParentQuoteFrame,120);});}
 if(window.parent!==window)document.body.classList.add("embedded-quote");
+function customerText(c){return [c.name,c.phone,c.email,c.address,c.notes].filter(Boolean).join(" ").toLowerCase()}
+async function loadCustomerProfiles(){if(!supa)return;try{let r=await supa.from("customers").select("id,name,phone,email,address,status,notes").order("name",{ascending:true});if(r.error)throw new Error(r.error.message);customerProfiles=r.data||[];}catch(e){customerProfiles=[];console.warn("Customer profile lookup unavailable",e.message||String(e))}}
+function clearSelectedCustomer(){if(!selectedCustomerId)return;selectedCustomerId="";let s=$("customerMatchStatus");if(s)s.innerHTML=""}
+function hideCustomerMatches(){let box=$("customerMatches");if(box)box.classList.add("hidden")}
+function hideCustomerMatchesSoon(){setTimeout(hideCustomerMatches,160)}
+function selectedCustomerLabel(c){return `${qEsc(c.name||"Customer")}${c.phone?` - ${qEsc(c.phone)}`:""}${c.email?` - ${qEsc(c.email)}`:""}`}
+function selectCustomerProfile(id){let c=customerProfiles.find(x=>x.id===id);if(!c)return;selectedCustomerId=c.id;if($("customerName"))$("customerName").value=c.name||"";if($("customerPhone"))$("customerPhone").value=c.phone||"";if($("customerAddress"))$("customerAddress").value=c.address||"";let s=$("customerMatchStatus");if(s)s.innerHTML=`<div class="linkedCustomer">Linked to existing customer: ${selectedCustomerLabel(c)}</div>`;hideCustomerMatches();queueQuoteResize()}
+function updateCustomerMatches(){let box=$("customerMatches");if(!box)return;let raw=[val("customerName"),val("customerPhone"),val("customerAddress")].join(" ").trim(),digits=raw.replace(/\D/g,"");if(!raw||raw.length<2&&digits.length<3){box.classList.add("hidden");box.innerHTML="";return}let q=raw.toLowerCase(),matches=customerProfiles.filter(c=>customerText(c).includes(q)||digits&&String(c.phone||"").replace(/\D/g,"").includes(digits)).slice(0,6);if(!matches.length){box.innerHTML=`<div class="customerMatch"><div><strong>No existing customer found</strong><small>Continue typing to create a new customer on save.</small></div></div>`;box.classList.remove("hidden");queueQuoteResize();return}box.innerHTML=matches.map(c=>`<button type="button" class="customerMatch" onmousedown="event.preventDefault();selectCustomerProfile('${c.id}')"><div><strong>${qEsc(c.name||"Customer")}</strong><small>${[c.phone,c.email].filter(Boolean).map(qEsc).join(" - ")||"No contact saved"}</small><small>${qEsc(c.address||"")}</small></div><span class="price">Use</span></button>`).join("");box.classList.remove("hidden");queueQuoteResize()}
 function quoteBuilderContentHeight(){
   const content=[...document.querySelectorAll(".app > section")].filter(el=>{
     const style=getComputedStyle(el);
@@ -511,10 +528,13 @@ function measurementAreaDetails(area){
 function applyMeasurementExport(payload){
   if(!payload)return;
   pendingMeasurementExport=payload;
+  selectedCustomerId=payload.customer_id||"";
   goTo("setup");
   if($("customerName"))$("customerName").value=payload.customer||"";
   if($("customerPhone"))$("customerPhone").value=payload.phone||"";
   if($("customerAddress"))$("customerAddress").value=payload.address||"";
+  let linked=selectedCustomerId&&customerProfiles.find(c=>c.id===selectedCustomerId),status=$("customerMatchStatus");
+  if(status)status.innerHTML=linked?`<div class="linkedCustomer">Linked to existing customer: ${selectedCustomerLabel(linked)}</div>`:"";
   if($("floorCount"))$("floorCount").value=Math.max(1,(payload.areas||[]).length);
   renderMeasurementImportNotice();
   buildFloorForms();
@@ -538,8 +558,10 @@ const COSTS = {
   wbEpoxy2g:145,flakeBox:175,quartzBag:20,metallicPowder:48,solidColorPod:35,
   aliphatic:305,coveMortar:55,lowLusterAcrylic:120,glossAcrylic:140
 };
-const WASTE_FACTOR=1.05, DEFAULT_LABOR_PER_DAY=250, ADMIN_PER_DAY=150, MIN_JOB_PRICE=1500, MIN_MARGIN_DOLLARS=200, OUT_TOWN=150;
+const WASTE_FACTOR=1, DEFAULT_LABOR_PER_DAY=250, ADMIN_PER_DAY=150, MIN_JOB_PRICE=1500, MIN_MARGIN_DOLLARS=200, OUT_TOWN=150;
 let lastQuoteHTML="", lastPlainText="", lastData=null;
+let sharedRecipes={recipes:[],items:[],inventory:[],loaded:false,error:""};
+const FALLBACK_SYSTEMS=["Flake","Metallic","Wood/Stone Overlay","Broom Overlay","Mortar/Prime & Coat","Quartz","Grind/Stain & Seal","Polish","Prep Only"];
 
 function $(id){return document.getElementById(id)}
 function val(id){return $(id)?.value||""}
@@ -551,6 +573,19 @@ function addMaterial(materials,name,qty,unitCost){ if(qty>0) materials.push({nam
 function materialTotal(materials){return materials.reduce((s,m)=>s+m.total,0)}
 function dateStamp(){return new Date().toLocaleString()}
 function cleanName(s){return String(s||"SEFS_Quote").replace(/[^a-z0-9]/gi,"_")}
+function normName(s){return String(s||"").toLowerCase().replace(/&/g,"and").replace(/[^a-z0-9]/g,"")}
+function normMaterialName(s){return String(s||"").toLowerCase().replace(/&/g,"and").replace(/\b(kit|box|bag|pail|bucket|case|part|parta|partb)\b/g,"").replace(/polyaspartic/g,"poly").replace(/[^a-z0-9]/g,"")}
+function materialNameKeys(s){let n=normMaterialName(s),keys=[n];if(n.includes("primer3g"))keys.push("primer3g");if(n.includes("poly2g"))keys.push("poly2g");if(n.includes("flake"))keys.push("flake");if(n.includes("cove")&&n.includes("mortar"))keys.push("covemortar");if(n.includes("colorpod"))keys.push("colorpod");return [...new Set(keys.filter(Boolean))]}
+function materialNamesMatch(a,b){let aa=materialNameKeys(a),bb=materialNameKeys(b);return aa.some(x=>bb.includes(x)||(x.length>4&&bb.some(y=>y.length>4&&(x.includes(y)||y.includes(x)))))}
+function recipeNameAliases(system){let n=normName(system),a=[n];if(n==="mortarprimeandcoat")a.push("mortar");if(n==="mortar")a.push("mortarprimeandcoat");if(n==="grindstainandseal")a.push("grindstainseal");if(n==="grindstainseal")a.push("grindstainandseal");return a}
+function sameSystemName(a,b){let aa=recipeNameAliases(a),bb=recipeNameAliases(b);return aa.some(x=>bb.includes(x))}
+function sharedRecipeForSystem(system,quoteOnly=false){let names=recipeNameAliases(system);return sharedRecipes.recipes.find(r=>r.active!==false&&(!quoteOnly||r.quote_enabled===true)&&names.includes(normName(r.name)))}
+function systemSelectOptions(){let names=[...FALLBACK_SYSTEMS];sharedRecipes.recipes.filter(r=>r.active!==false).sort((a,b)=>(+a.sort_order||0)-(+b.sort_order||0)||String(a.name).localeCompare(String(b.name))).forEach(r=>{if(!names.some(n=>sameSystemName(n,r.name)))names.push(r.name)});return names.map(n=>`<option>${qEsc(n)}</option>`).join("")}
+function optionValuesFor(system,key,fallbacks=[]){let recipe=sharedRecipeForSystem(system,false),vals=[...fallbacks];if(recipe){sharedRecipes.items.filter(it=>it.recipe_id===recipe.id&&it.active!==false&&String(it.option_key||"").toLowerCase()===key.toLowerCase()).forEach(it=>String(it.option_value||"").split(/[,|]/).map(v=>v.trim()).filter(Boolean).forEach(v=>{if(!vals.some(x=>x.toLowerCase()===v.toLowerCase()))vals.push(v)}))}return vals}
+function materialUnitCost(name,item={}){let inv=sharedRecipes.inventory.find(i=>i.id&&i.id===item.inventory_item_id)||sharedRecipes.inventory.find(i=>materialNamesMatch(name,i.name));if(inv&&+inv.cost)return +inv.cost;if(+item.unit_cost)return +item.unit_cost;let n=normName(name);let map=[["primer3g",COSTS.primer3g],["xr3g",COSTS.xr3g],["poly2g",COSTS.poly2g],["silicasand",COSTS.sand],["sand",COSTS.sand],["overlay",COSTS.overlay],["stain",COSTS.stain32],["wburethane",COSTS.wbUrethane3g],["wbepoxy",COSTS.wbEpoxy2g],["flakebox",COSTS.flakeBox],["quartz",COSTS.quartzBag],["metallicpowder",COSTS.metallicPowder],["colorpod",COSTS.solidColorPod],["aliphatic",COSTS.aliphatic],["cove",COSTS.coveMortar],["lowluster",COSTS.lowLusterAcrylic],["glossacrylic",COSTS.glossAcrylic]];return (map.find(([k])=>n.includes(k))||[])[1]||0}
+function optionMatches(item,options){let key=String(item.option_key||"").trim();if(!key)return true;let allowed=String(item.option_value||"").split(/[,|]/).map(v=>v.trim().toLowerCase()).filter(Boolean);if(!allowed.length)return true;let actual=String(options[key]??"").trim().toLowerCase();return allowed.includes(actual)}
+function calculateSharedRecipeFloor(system,sqft,options={}){let recipe=sharedRecipeForSystem(system,true);if(!recipe)return null;let materials=[];for(const it of sharedRecipes.items.filter(x=>x.recipe_id===recipe.id).sort((a,b)=>(+a.sort_order||0)-(+b.sort_order||0))){if(it.active===false||!optionMatches(it,options))continue;let basis=it.basis||"sqft",cov=+it.coverage_rate||0,fixed=+it.fixed_qty||0,qty=0;if(basis==="sqft")qty=cov?sqft/cov:fixed;else if(basis==="linear_feet")qty=cov?((+options.cove_linear_feet||+options.joint_linear_feet||0)/cov):fixed;else qty=fixed;if(qty>0){let name=it.material_name||(sharedRecipes.inventory.find(i=>i.id===it.inventory_item_id)?.name)||"Material";addMaterial(materials,name,Math.ceil(qty*100)/100,materialUnitCost(name,it))}}let notes=[];if(!materials.length)notes.push("Shared recipe is enabled, but no matching material lines applied.");return {materials,sell:sqft*(+recipe.default_price_per_sqft||0),notes,recipe_snapshot:{id:recipe.id,name:recipe.name,default_waste_percent:0,default_price_per_sqft:recipe.default_price_per_sqft}}}
+async function loadSharedQuoteRecipes(){if(!supa){sharedRecipes.error="Supabase unavailable";return}try{let [r,i,inv]=await Promise.all([supa.from("system_recipes").select("*"),supa.from("system_recipe_items").select("*"),supa.from("inventory_items").select("id,name,unit,cost")]);if(r.error||i.error||inv.error)throw new Error(r.error?.message||i.error?.message||inv.error?.message);sharedRecipes={recipes:r.data||[],items:i.data||[],inventory:inv.data||[],loaded:true,error:""};}catch(e){sharedRecipes={recipes:[],items:[],inventory:[],loaded:false,error:e.message||String(e)};console.warn("Shared quote recipes unavailable",sharedRecipes.error)}}
 
 function goTo(id, btn){
   ["dashboard","setup","floors","summaryControls","history"].forEach(x=>$(x)?.classList.add("hidden"));
@@ -589,6 +624,9 @@ function clearQuoteFields(){
   lastQuoteHTML = "";
   lastPlainText = "";
   lastData = null;
+  selectedCustomerId = "";
+  hideCustomerMatches();
+  if($("customerMatchStatus")) $("customerMatchStatus").innerHTML = "";
 
   goTo("setup", document.querySelectorAll(".nav button")[1]);
 }
@@ -614,6 +652,9 @@ function startNewQuote(){
   lastQuoteHTML = "";
   lastPlainText = "";
   lastData = null;
+  selectedCustomerId = "";
+  hideCustomerMatches();
+  if($("customerMatchStatus")) $("customerMatchStatus").innerHTML = "";
 
   goTo("setup", document.querySelectorAll(".nav button")[1]);
 }
@@ -629,8 +670,7 @@ function buildFloorForms(){
       ${measurementAreaDetails(importedArea)}
       <div class="grid two">
         <div><label>System</label><select id="system${i}" onchange="renderOptions(${i})">
-          <option value="">Select System</option>
-          <option>Flake</option><option>Metallic</option><option>Wood/Stone Overlay</option><option>Broom Overlay</option><option>Mortar/Prime & Coat</option><option>Quartz</option><option>Grind/Stain & Seal</option><option>Polish</option><option>Prep Only</option>
+          <option value="">Select System</option>${systemSelectOptions()}
         </select></div>
         <div><label>Square Feet</label><input id="sqft${i}" type="number" inputmode="decimal"></div>
       </div>
@@ -643,16 +683,16 @@ function buildFloorForms(){
   goTo("floors");
 }
 
-function selectHTML(id,label,opts,onchange=""){return `<div><label>${label}</label><select id="${id}" ${onchange?`onchange="${onchange}"`:""}>${opts.map(o=>`<option>${o}</option>`).join("")}</select></div>`}
+function selectHTML(id,label,opts,onchange="",selected=""){return `<div><label>${label}</label><select id="${id}" ${onchange?`onchange="${onchange}"`:""}>${opts.map(o=>`<option ${selected&&String(o)===String(selected)?"selected":""}>${qEsc(o)}</option>`).join("")}</select></div>`}
 function renderOptions(i){
   let system=val("system"+i),h="";
-  if(system==="Flake"){h+=selectHTML(`flakeSize${i}`,"Flake Size",["1/4","1/8","1/16"]);h+=selectHTML(`flakeExtra${i}`,"Additional Sealer?",["No","Yes"],`toggleExtra(${i},'flake')`);h+=`<div id="flakeFinishBox${i}" class="hidden">${selectHTML(`flakeFinish${i}`,"Additional Sealer Finish",["Matte","Gloss"])}</div>`;}
-  if(system==="Metallic") h+=selectHTML(`metalFinish${i}`,"Finish",["Matte","Gloss"]);
-  if(system==="Wood/Stone Overlay"){h+=selectHTML(`woodLoc${i}`,"Interior or Exterior",["Interior","Exterior"]);h+=selectHTML(`woodFinish${i}`,"Finish",["Matte","Gloss"]);}
+  if(system==="Flake"){h+=selectHTML(`flakeSize${i}`,"Flake Size",optionValuesFor(system,"flake_size",["1/4","1/8","1/16"]),"","1/4");h+=selectHTML(`flakeExtra${i}`,"Additional Sealer?",["No","Yes"],`toggleExtra(${i},'flake')`);h+=`<div id="flakeFinishBox${i}" class="hidden">${selectHTML(`flakeFinish${i}`,"Additional Sealer Finish",optionValuesFor(system,"additional_sealer_finish",["Matte","Gloss"]))}</div>`;}
+  if(system==="Metallic") h+=selectHTML(`metalFinish${i}`,"Finish",optionValuesFor(system,"finish",["Matte","Gloss"]));
+  if(system==="Wood/Stone Overlay"){h+=selectHTML(`woodLoc${i}`,"Interior or Exterior",["Interior","Exterior"]);h+=selectHTML(`woodFinish${i}`,"Finish",optionValuesFor(system,"finish",["Matte","Gloss"]));}
   if(system==="Broom Overlay") h+=`<p class="small">No additional options.</p>`;
-  if(system==="Mortar/Prime & Coat"){h+=selectHTML(`mortarType${i}`,"Mortar or Prime & Coat?",["Mortar","Prime & Coat"]);h+=selectHTML(`mortarCondition${i}`,"Floor Condition",["Rough","Smooth"]);h+=selectHTML(`mortarFill${i}`,"Fill Joints?",["No","Yes"],`toggleJoint(${i})`);h+=`<div id="jointBox${i}" class="hidden"><label>Linear Feet of Joints</label><input id="jointLF${i}" type="number" inputmode="decimal"></div>`;h+=selectHTML(`mortarExtra${i}`,"Additional Sealer?",["No","Yes"],`toggleExtra(${i},'mortar')`);h+=`<div id="mortarFinishBox${i}" class="hidden">${selectHTML(`mortarFinish${i}`,"Additional Sealer Finish",["Matte","Gloss"])}</div>`;}
-  if(system==="Quartz"){h+=selectHTML(`quartzLoc${i}`,"Interior or Exterior",["Interior","Exterior"]);h+=selectHTML(`quartzExtra${i}`,"Additional Sealer?",["No","Yes"],`toggleExtra(${i},'quartz')`);h+=`<div id="quartzFinishBox${i}" class="hidden">${selectHTML(`quartzFinish${i}`,"Additional Sealer Finish",["Matte","Gloss"])}</div>`;}
-  if(system==="Grind/Stain & Seal"){h+=selectHTML(`gssStain${i}`,"Stain?",["Yes","No"]);h+=selectHTML(`gssLoc${i}`,"Interior or Exterior",["Interior","Exterior"]);h+=selectHTML(`gssFinish${i}`,"Finish",["Matte","Gloss"]);}
+  if(system==="Mortar/Prime & Coat"){h+=selectHTML(`mortarType${i}`,"Mortar or Prime & Coat?",["Mortar","Prime & Coat"]);h+=selectHTML(`mortarCondition${i}`,"Floor Condition",["Rough","Smooth"]);h+=selectHTML(`mortarFill${i}`,"Fill Joints?",["No","Yes"],`toggleJoint(${i})`);h+=`<div id="jointBox${i}" class="hidden"><label>Linear Feet of Joints</label><input id="jointLF${i}" type="number" inputmode="decimal"></div>`;h+=selectHTML(`mortarExtra${i}`,"Additional Sealer?",["No","Yes"],`toggleExtra(${i},'mortar')`);h+=`<div id="mortarFinishBox${i}" class="hidden">${selectHTML(`mortarFinish${i}`,"Additional Sealer Finish",optionValuesFor(system,"additional_sealer_finish",["Matte","Gloss"]))}</div>`;}
+  if(system==="Quartz"){h+=selectHTML(`quartzLoc${i}`,"Interior or Exterior",["Interior","Exterior"]);h+=selectHTML(`quartzExtra${i}`,"Additional Sealer?",["No","Yes"],`toggleExtra(${i},'quartz')`);h+=`<div id="quartzFinishBox${i}" class="hidden">${selectHTML(`quartzFinish${i}`,"Additional Sealer Finish",optionValuesFor(system,"additional_sealer_finish",["Matte","Gloss"]))}</div>`;}
+  if(system==="Grind/Stain & Seal"){h+=selectHTML(`gssStain${i}`,"Stain?",["Yes","No"]);h+=selectHTML(`gssLoc${i}`,"Interior or Exterior",["Interior","Exterior"]);h+=selectHTML(`gssFinish${i}`,"Finish",optionValuesFor(system,"finish",["Matte","Gloss"]));}
   if(system==="Prep Only") h+=selectHTML(`prepType${i}`,"Blast or Grind",["Blast","Grind"]);
   if(["Flake","Quartz","Mortar/Prime & Coat"].includes(system)){h+=selectHTML(`cove${i}`,"Add Cove Base?",["No","Yes"],`toggleCove(${i})`);h+=`<div id="coveBox${i}" class="hidden">${selectHTML(`coveSize${i}`,"Cove Size",["4","6"])}<label>Linear Feet of Cove</label><input id="coveLF${i}" type="number" inputmode="decimal"></div>`;}
   $("options"+i).innerHTML=h;
@@ -683,11 +723,15 @@ function proposalText(system){
 
 function calculate(){
  const count=num("floorCount"); if(!count){alert("Start a quote first.");return;}
- const customer={name:val("customerName"),phone:val("customerPhone"),address:val("customerAddress"),date:dateStamp()};
+ const customer={customer_id:selectedCustomerId||pendingMeasurementExport?.customer_id||"",name:val("customerName"),phone:val("customerPhone"),address:val("customerAddress"),date:dateStamp()};
  let floors=[],totalSell=0,totalMat=0,totalLabor=0,totalAdmin=0,totalOut=0;
  for(let i=1;i<=count;i++){
   let system=val("system"+i),sqft=num("sqft"+i),materials=[],sell=0,notes=[];
   if(!system||!sqft)continue;
+  let optionData=floorOptionData(i,system),sharedFloor=calculateSharedRecipeFloor(system,sqft,optionData.options),usedSharedRecipe=false;
+  if(sharedFloor&&sharedFloor.materials.length){materials=sharedFloor.materials;sell=sharedFloor.sell;notes.push(...sharedFloor.notes);usedSharedRecipe=true;}
+  else{
+  if(sharedFloor)notes.push("Shared recipe has no applicable material lines, so fallback materials were used.");
   if(system==="Flake"){let size=val("flakeSize"+i),p=kitsNeeded(sqft,500);addMaterial(materials,"Primer 3G",p,COSTS.primer3g);if(size!=="1/16")addMaterial(materials,"Color Pod",p,COSTS.solidColorPod);addMaterial(materials,"Flake Box",kitsNeeded(sqft,280),COSTS.flakeBox);let pc=size==="1/16"?180:size==="1/4"?250:220;addMaterial(materials,"Poly 2G",kitsNeeded(sqft,pc),COSTS.poly2g);if(val("flakeExtra"+i)==="Yes"){if(val("flakeFinish"+i)==="Matte")addMaterial(materials,"WB Urethane 3G",kitsNeeded(sqft,2500),COSTS.wbUrethane3g);else addMaterial(materials,"Aliphatic Urethane",kitsNeeded(sqft,2000),COSTS.aliphatic);}sell=sqft*5;}
   if(system==="Metallic"){let p=kitsNeeded(sqft,300);addMaterial(materials,"Primer 3G",p,COSTS.primer3g);addMaterial(materials,"Color Pod",p,COSTS.solidColorPod);let xr=kitsNeeded(sqft,100);addMaterial(materials,"XR 3G",xr,COSTS.xr3g);addMaterial(materials,"Metallic Powder",Math.ceil(xr*.5),COSTS.metallicPowder);if(val("metalFinish"+i)==="Matte"){addMaterial(materials,"WB Urethane 3G",kitsNeeded(sqft,2500),COSTS.wbUrethane3g);sell=sqft*12}else{addMaterial(materials,"Aliphatic Urethane",kitsNeeded(sqft,2000),COSTS.aliphatic);sell=sqft*14}}
   if(system==="Wood/Stone Overlay"){let loc=val("woodLoc"+i),finish=val("woodFinish"+i);addMaterial(materials,"Primer 3G Base",kitsNeeded(sqft,500),COSTS.primer3g);addMaterial(materials,"Sand",kitsNeeded(sqft,200),COSTS.sand);addMaterial(materials,"Overlay",kitsNeeded(sqft,100),COSTS.overlay);addMaterial(materials,"Stain 32oz",kitsNeeded(sqft,500),COSTS.stain32);if(loc==="Interior"){addMaterial(materials,"Primer Flood Coat",kitsNeeded(sqft,300),COSTS.primer3g);if(finish==="Matte")addMaterial(materials,"WB Urethane 3G",kitsNeeded(sqft,2500),COSTS.wbUrethane3g);else addMaterial(materials,"Aliphatic Urethane",kitsNeeded(sqft,2000),COSTS.aliphatic);}else{if(finish==="Matte")addMaterial(materials,"Low Luster Acrylic",kitsNeeded(sqft,500),COSTS.lowLusterAcrylic);else addMaterial(materials,"Poly 2G",kitsNeeded(sqft,200),COSTS.poly2g);}sell=sqft*10;}
@@ -698,8 +742,9 @@ function calculate(){
   if(system==="Polish"){sell=sqft*4;notes.push("Polish materials: densifier and guard/seal as needed.")}
   if(system==="Prep Only"){let prep=val("prepType"+i);sell=sqft*(prep==="Blast"?.40:1.00);notes.push(prep==="Blast"?"Blast prep estimated around 7,000 sq ft per day.":"Grind prep estimated around 2,000 sq ft per day.");notes.push("No coating materials required for prep-only scope.")}
   if(["Flake","Quartz","Mortar/Prime & Coat"].includes(system)&&val("cove"+i)==="Yes"){let size=val("coveSize"+i),lf=num("coveLF"+i),cov=size==="4"?25:20;addMaterial(materials,"Cove Base Mortar Kit",kitsNeededNoWaste(lf,cov),COSTS.coveMortar);sell+=size==="4"?Math.ceil(lf/25)*250:Math.ceil(lf/20)*300;}
-  let importedArea=pendingMeasurementExport?.areas?.[i-1]||{},optionData=floorOptionData(i,system);
-  let mat=materialTotal(materials);totalSell+=sell;totalMat+=mat;floors.push({i,area_name:importedArea.area_name||'',area_type:importedArea.area_type||'',field_measurement_id:pendingMeasurementExport?.id||'',field_measurement_area_id:importedArea.id||importedArea.field_measurement_area_id||'',system,sqft,options:optionData.options,option_details:optionData.details,materials,mat,sell,notes});
+  }
+  let importedArea=pendingMeasurementExport?.areas?.[i-1]||{};
+  let mat=materialTotal(materials);totalSell+=sell;totalMat+=mat;floors.push({i,area_name:importedArea.area_name||'',area_type:importedArea.area_type||'',field_measurement_id:pendingMeasurementExport?.id||'',field_measurement_area_id:importedArea.id||importedArea.field_measurement_area_id||'',system,sqft,options:optionData.options,option_details:optionData.details,materials,mat,sell,notes,recipe_snapshot:usedSharedRecipe?sharedFloor?.recipe_snapshot:null});
  }
  let laborMen=num("jobMen"),laborDays=num("jobDays"),laborRate=num("jobLaborRate")||DEFAULT_LABOR_PER_DAY;
  if(!laborMen||!laborDays){alert("Enter total job men and days.");return;}
@@ -754,6 +799,7 @@ function quotePayload(){
  const systemType=floors.map(f=>f.system).filter(Boolean).join(", ");
  const quoteName=`${customer.name||"SEFS Quote"} - ${customer.date||dateStamp()}`;
  const payload={
+  customer_id:customer.customer_id||lastData?.source_measurement?.customer_id||null,
   customer:customer.name||"",
   phone:customer.phone||"",
   email:customer.email||"",
@@ -773,6 +819,7 @@ function quotePayload(){
  const sourceMeasurement=lastData?.source_measurement||{};
  if(sourceMeasurement.lead_id)payload.lead_id=sourceMeasurement.lead_id;
  if(sourceMeasurement.job_id)payload.job_id=sourceMeasurement.job_id;
+ if(sourceMeasurement.customer_id)payload.customer_id=sourceMeasurement.customer_id;
  return payload;
 }
 async function saveQuote(options={}){
@@ -842,6 +889,7 @@ async function createLeadFromQuote(id){
  const quote=await loadQuote(id);if(!quote)return;
  if(quote.lead_id&&!confirm("This quote already has a lead. Create another lead anyway?"))return;
  const payload={
+  customer_id:quote.customer_id||quote.quote_json?.source_measurement?.customer_id||null,
   customer:quote.customer||quote.quote_name||"Quote Lead",
   phone:quote.phone||"",
   email:quote.email||"",
@@ -855,7 +903,7 @@ async function createLeadFromQuote(id){
  if(result.error){alert("Lead creation failed: "+result.error.message);return;}
  await copyPhotosByEntity("quote",quote.id,"lead",result.data.id);
  await copyQuoteSourcePhotosToTarget("lead",result.data.id,quote);
- const update=await supa.from("quotes").update({lead_id:result.data.id,status:"Lead"}).eq("id",quote.id);
+ const update=await supa.from("quotes").update({lead_id:result.data.id,status:"Lead",customer_id:payload.customer_id}).eq("id",quote.id);
  if(update.error){alert("Lead created, but quote link update failed: "+update.error.message);return;}
  alert("Lead created from quote.");
  renderHistory();renderRecentQuotes();syncParentDashboard();
@@ -871,6 +919,7 @@ async function createJobFromQuote(id){
  const squareFeet=floorScopes.reduce((sum,f)=>sum+(+f.sqft||0),0)||quote.square_feet||0;
  const materialList=qFloors.flatMap(f=>(f.materials||[]).map(m=>({floor:f.i,area_name:f.area_name||'',system:f.system,sqft:f.sqft,options:f.options||{},option_details:f.option_details||[],name:m.name,qty:m.qty})));
  const payload={
+  customer_id:quote.customer_id||quote.quote_json?.source_measurement?.customer_id||null,
   customer:quote.customer||quote.quote_name||"Quote Job",
   phone:quote.phone||"",
   job_name:quote.quote_name||quote.customer||"Quote Job",
@@ -899,9 +948,9 @@ async function createJobFromQuote(id){
  linkOk=await copyQuoteSourcePhotosToTarget("job",result.data.id,quote)&&linkOk;
  linkOk=await linkMeasurementToJob(quote,result.data.id)&&linkOk;
  try{await parent.syncJobToCalendar?.(result.data,{interactive:false})}catch(e){}
- const update=await supa.from("quotes").update({job_id:result.data.id,status:"Job"}).eq("id",quote.id);
+ const update=await supa.from("quotes").update({job_id:result.data.id,status:"Job",customer_id:payload.customer_id}).eq("id",quote.id);
  if(update.error){alert("Job created, but quote link update failed: "+update.error.message);return;}
- if(linkedLeadId)await supa.from("leads").update({stage:"Won",converted_job_id:result.data.id,converted_quote_id:quote.id}).eq("id",linkedLeadId);
+ if(linkedLeadId)await supa.from("leads").update({stage:"Won",converted_job_id:result.data.id,converted_quote_id:quote.id,customer_id:payload.customer_id}).eq("id",linkedLeadId);
  alert(linkOk?"Job created from quote.":"Job created from quote, but measurement/photo links need review. Try refreshing; if they are missing, use the job photo upload or relink the measurement.");
  renderHistory();renderRecentQuotes();syncParentDashboard();
 }
@@ -972,8 +1021,7 @@ window.printQuotePDF=printQuotePDF;
 window.quoteDocumentHTML=quoteDocumentHTML;
 initQuoteAutoResize();
 initEmbeddedQuoteScrollBridge();
-renderRecentQuotes();
-setTimeout(consumeMeasurementExport,50);
+Promise.all([loadSharedQuoteRecipes(),loadCustomerProfiles()]).finally(()=>{renderRecentQuotes();setTimeout(consumeMeasurementExport,50);});
 </script>
 </body>
 </html>

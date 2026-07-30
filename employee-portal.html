@@ -379,6 +379,155 @@
       font-size: 16px;
     }
 
+    .schedule-card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+
+    .schedule-card-head h2 {
+      margin: 0;
+    }
+
+    .schedule-nav {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .schedule-nav button {
+      min-height: 38px;
+      padding: 8px 12px;
+    }
+
+    .schedule-month {
+      color: #fff;
+      font-weight: 900;
+      min-width: 150px;
+      text-align: center;
+    }
+
+    .portal-calendar {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: rgba(0,0,0,.24);
+    }
+
+    .portal-calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+    }
+
+    .portal-calendar-head {
+      background: rgba(255,122,0,.16);
+      border-right: 1px solid var(--line);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 900;
+      padding: 8px 6px;
+      text-align: center;
+      text-transform: uppercase;
+    }
+
+    .portal-calendar-head:nth-child(7) {
+      border-right: 0;
+    }
+
+    .portal-calendar-day {
+      min-height: 112px;
+      border-top: 1px solid var(--line);
+      border-right: 1px solid var(--line);
+      padding: 8px;
+      background: rgba(255,255,255,.018);
+    }
+
+    .portal-calendar-day:nth-child(7n) {
+      border-right: 0;
+    }
+
+    .portal-calendar-day.other-month {
+      opacity: .42;
+    }
+
+    .portal-calendar-day.today {
+      box-shadow: inset 0 0 0 2px rgba(255,122,0,.65);
+    }
+
+    .portal-calendar-date {
+      color: #fff;
+      font-size: 12px;
+      font-weight: 900;
+      margin-bottom: 6px;
+    }
+
+    .portal-calendar-event {
+      display: block;
+      width: 100%;
+      min-height: 0;
+      margin: 5px 0 0;
+      padding: 7px;
+      border-color: rgba(255,122,0,.5);
+      background: linear-gradient(180deg, rgba(255,122,0,.2), rgba(255,122,0,.07));
+      color: #fff;
+      border-radius: 6px;
+      text-align: left;
+      font-size: 12px;
+      line-height: 1.25;
+      text-transform: none;
+    }
+
+    .portal-calendar-event.active {
+      background: var(--orange);
+      color: #111;
+    }
+
+    .portal-calendar-event small {
+      display: block;
+      margin-top: 3px;
+      color: inherit;
+      opacity: .78;
+      font-weight: 700;
+    }
+
+    .portal-schedule-detail {
+      margin-top: 12px;
+    }
+
+    .schedule-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .button-link {
+      border: 1px solid var(--orange);
+      background: linear-gradient(180deg, #222, #141414);
+      color: var(--text);
+      border-radius: 8px;
+      min-height: 44px;
+      padding: 10px 14px;
+      font-weight: 800;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+    }
+
+    .schedule-update-form {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 10px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(255,255,255,.1);
+    }
+
     .facts {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -570,6 +719,17 @@
       margin-bottom: 12px;
     }
 
+    .mobile-tab-select-wrap {
+      display: none;
+      margin-bottom: 12px;
+    }
+
+    .mobile-tab-select-wrap select {
+      border-color: var(--orange);
+      font-weight: 900;
+      min-height: 46px;
+    }
+
     .hidden { display: none !important; }
 
     @media (max-width: 1200px) {
@@ -593,8 +753,8 @@
         grid-template-columns: 1fr;
       }
 
-      .tabs {
-        display: grid;
+      .mobile-tab-select-wrap {
+        display: block;
       }
 
       .mobile-panel.hidden-mobile {
@@ -631,17 +791,12 @@
         flex: 1 1 auto;
       }
 
-      .tabs {
+      .mobile-tab-select-wrap {
         position: sticky;
         top: 0;
         z-index: 5;
         background: rgba(5,5,5,.94);
         padding: 6px 0;
-      }
-
-      .tabs button {
-        padding: 9px 8px;
-        min-height: 42px;
       }
 
       .card {
@@ -650,9 +805,21 @@
 
       .job-card header,
       .entry-card header,
-      .card-head {
+      .card-head,
+      .schedule-card-head {
         display: grid;
         grid-template-columns: 1fr;
+      }
+
+      .schedule-nav {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .schedule-month {
+        grid-column: 1 / -1;
+        order: -1;
+        text-align: left;
       }
 
       .password-control {
@@ -670,6 +837,19 @@
 
       .timesheet {
         min-width: 760px;
+      }
+
+      .portal-calendar {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .portal-calendar-grid {
+        min-width: 760px;
+      }
+
+      .portal-calendar-day {
+        min-height: 106px;
       }
 
     }
@@ -779,6 +959,15 @@
     <main id="app" class="hidden">
       <div id="appMessage" class="notice hidden"></div>
 
+      <div class="mobile-tab-select-wrap">
+        <label for="mobileTabSelect">Go To</label>
+        <select id="mobileTabSelect" aria-label="Employee portal section">
+          <option value="schedule">Schedule</option>
+          <option value="time">Time</option>
+          <option value="entries">Entries</option>
+        </select>
+      </div>
+
       <div class="tabs">
         <button class="primary" type="button" data-tab="schedule">Schedule</button>
         <button type="button" data-tab="time">Time</button>
@@ -856,7 +1045,15 @@
       <div class="grid">
         <section id="schedulePanel" class="mobile-panel">
           <div class="card">
-            <h2>My Schedule</h2>
+            <div class="schedule-card-head">
+              <h2>My Schedule</h2>
+              <div class="schedule-nav">
+                <button type="button" onclick="shiftScheduleCalendar(-1)">Previous</button>
+                <div id="scheduleMonthLabel" class="schedule-month"></div>
+                <button type="button" onclick="goToScheduleToday()">Today</button>
+                <button type="button" onclick="shiftScheduleCalendar(1)">Next</button>
+              </div>
+            </div>
             <div id="scheduleList" class="job-list"></div>
           </div>
 
@@ -953,6 +1150,9 @@
     let profile = null;
     let jobs = [];
     let scheduleJobs = [];
+    let scheduleCalendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    let scheduleCalendarInitialized = false;
+    let selectedScheduleJobId = '';
     let entries = [];
     let entryAuditLogs = [];
     let managerEntries = [];
@@ -963,6 +1163,7 @@
     let selectedPayPeriodStart = '';
     let crewOptions = [];
     let selectedCrewIds = new Set();
+    let timeSaveInFlight = false;
     let ptoEntries = [];
     let ptoBalance = { accrued: 0, ledger: 0, pending: 0, balance: 0, available: 0 };
     let payRatesColumnAvailable = true;
@@ -986,6 +1187,15 @@
       const el = $(id);
       el.textContent = text || '';
       el.className = `notice ${isError ? 'error' : ''} ${text ? '' : 'hidden'}`;
+    }
+
+    function setTimeSaveBusy(isBusy) {
+      timeSaveInFlight = isBusy;
+      const saveButton = $('timeForm').querySelector('button[type="submit"]');
+      saveButton.disabled = isBusy;
+      $('submitNowBtn').disabled = isBusy;
+      saveButton.textContent = isBusy ? 'Saving...' : 'Save Draft';
+      $('submitNowBtn').textContent = isBusy ? 'Submitting...' : 'Submit Time';
     }
 
     function setAuthBusy(isBusy) {
@@ -1060,6 +1270,38 @@
       return `${start}${end}${times ? `, ${times}` : ''}`;
     }
 
+    function scheduleIsoDate(date) {
+      const copy = new Date(date);
+      copy.setMinutes(copy.getMinutes() - copy.getTimezoneOffset());
+      return copy.toISOString().slice(0, 10);
+    }
+
+    function scheduleDate(value) {
+      if (!value) return null;
+      const date = new Date(`${value}T00:00:00`);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    function scheduleMonthName(date) {
+      return date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    }
+
+    function jobAppearsOnDate(job, iso) {
+      const target = scheduleDate(iso);
+      const start = scheduleDate(job.start_date);
+      const end = scheduleDate(job.end_date || job.start_date);
+      if (!target || !start) return false;
+      return target >= start && target <= (end || start);
+    }
+
+    function scheduleJobUrl(job, hash = '') {
+      const url = new URL('mobile-job.html', location.href);
+      url.searchParams.set('job', job.id);
+      url.searchParams.set('crew', '1');
+      if (hash) url.hash = hash;
+      return url.href;
+    }
+
     function statusClass(status) {
       return String(status || 'draft').toLowerCase();
     }
@@ -1106,6 +1348,27 @@
         device_info: deviceInfo(),
         change_reason: status === 'submitted' ? 'Submitted from employee portal' : 'Saved from employee portal'
       };
+    }
+
+    function normalizeTimeForMatch(value) {
+      return String(value || '').slice(0, 5);
+    }
+
+    function normalizeJobForMatch(value) {
+      return value ? String(value) : '';
+    }
+
+    function duplicateTimeEntry(payload, employeeId) {
+      if (!employeeId || !payload.work_date || !payload.start_time || !payload.end_time) return null;
+      const matches = (entry) => (
+        String(entry.employee_id || '') === String(employeeId)
+        && normalizeJobForMatch(entry.job_id) === normalizeJobForMatch(payload.job_id)
+        && String(entry.work_date || '') === String(payload.work_date)
+        && normalizeTimeForMatch(entry.start_time) === normalizeTimeForMatch(payload.start_time)
+        && normalizeTimeForMatch(entry.end_time) === normalizeTimeForMatch(payload.end_time)
+        && !entry.deleted_at
+      );
+      return [...entries, ...managerEntries].find(matches) || null;
     }
 
     async function signIn(email, password) {
@@ -1210,6 +1473,16 @@
         .order('start_time', { ascending: true });
       if (result.error) throw result.error;
       scheduleJobs = (result.data || []).filter((job) => !['Complete', 'Lost', 'Canceled'].includes(job.status));
+      if (!scheduleCalendarInitialized && scheduleJobs.length) {
+        const firstScheduled = scheduleJobs.find((job) => job.start_date) || scheduleJobs[0];
+        const firstDate = scheduleDate(firstScheduled.start_date) || new Date();
+        scheduleCalendarMonth = new Date(firstDate.getFullYear(), firstDate.getMonth(), 1);
+        selectedScheduleJobId = firstScheduled.id;
+        scheduleCalendarInitialized = true;
+      }
+      if (selectedScheduleJobId && !scheduleJobs.some((job) => job.id === selectedScheduleJobId)) {
+        selectedScheduleJobId = scheduleJobs[0]?.id || '';
+      }
     }
 
     async function loadEntries() {
@@ -1372,7 +1645,7 @@
       const checkboxMarkup = availableEmployees.length
         ? `<div class="crew-check-list">${availableEmployees.map((employee) => `
             <label class="crew-check">
-              <input type="checkbox" ${selectedCrewIds.has(employee.id) ? 'checked' : ''} onchange="toggleCrewEmployee('${esc(employee.id)}', this.checked)">
+              <input type="checkbox" data-employee-id="${esc(employee.id)}" ${selectedCrewIds.has(employee.id) ? 'checked' : ''} onchange="toggleCrewEmployee('${esc(employee.id)}', this.checked)">
               <span>
                 <b>${esc(employee.name)}</b>
                 <span class="muted">${esc(employee.role || 'employee')}${employee.assignment_status === 'available' ? ' - available' : ''}</span>
@@ -1398,28 +1671,98 @@
     }
 
     function renderSchedule() {
+      $('scheduleMonthLabel').textContent = scheduleMonthName(scheduleCalendarMonth);
       if (!scheduleJobs.length) {
-        $('scheduleList').innerHTML = '<div class="muted">No jobs assigned to you yet. Time can still be entered below as Other / No job or against an active job.</div>';
+        $('scheduleList').innerHTML = `
+          <div class="muted">No jobs assigned to you yet. Time can still be entered below as Other / No job or against an active job.</div>
+        `;
         return;
       }
 
-      $('scheduleList').innerHTML = scheduleJobs.map((job) => `
-        <article class="job-card">
+      if (!selectedScheduleJobId || !scheduleJobs.some((job) => job.id === selectedScheduleJobId)) {
+        selectedScheduleJobId = scheduleJobs[0].id;
+      }
+
+      const firstOfMonth = new Date(scheduleCalendarMonth.getFullYear(), scheduleCalendarMonth.getMonth(), 1);
+      const calendarStart = addDays(firstOfMonth, -firstOfMonth.getDay());
+      const todayIso = today();
+      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const heads = dayNames.map((day) => `<div class="portal-calendar-head">${day}</div>`).join('');
+      const days = Array.from({ length: 42 }, (_, index) => {
+        const date = addDays(calendarStart, index);
+        const iso = scheduleIsoDate(date);
+        const dayJobs = scheduleJobs.filter((job) => jobAppearsOnDate(job, iso));
+        const classes = [
+          'portal-calendar-day',
+          date.getMonth() === scheduleCalendarMonth.getMonth() ? '' : 'other-month',
+          iso === todayIso ? 'today' : ''
+        ].filter(Boolean).join(' ');
+        return `
+          <div class="${classes}">
+            <div class="portal-calendar-date">${date.getDate()}</div>
+            ${dayJobs.map((job) => `
+              <button
+                type="button"
+                class="portal-calendar-event ${job.id === selectedScheduleJobId ? 'active' : ''}"
+                onclick="selectScheduleJob('${esc(job.id)}')">
+                ${esc(moneylessJobName(job))}
+                <small>${esc([formatTime(job.start_time), job.address].filter(Boolean).join(' - ') || job.status || 'Scheduled')}</small>
+              </button>
+            `).join('')}
+          </div>
+        `;
+      }).join('');
+
+      const selectedJob = scheduleJobs.find((job) => job.id === selectedScheduleJobId) || scheduleJobs[0];
+      $('scheduleList').innerHTML = `
+        <div class="portal-calendar" aria-label="Assigned job calendar">
+          <div class="portal-calendar-grid">${heads}${days}</div>
+        </div>
+        <article class="job-card portal-schedule-detail">
           <header>
-            <h3>${esc(moneylessJobName(job))}</h3>
-            <span class="status">${esc(job.status || 'Scheduled')}</span>
+            <h3>${esc(moneylessJobName(selectedJob))}</h3>
+            <span class="status">${esc(selectedJob.status || 'Scheduled')}</span>
           </header>
           <div class="facts">
-            <div class="fact"><b>When</b>${esc(formatRange(job))}</div>
-            <div class="fact"><b>Address</b>${esc(job.address || '-')}</div>
-            <div class="fact"><b>Square Feet</b>${Number(job.square_feet || 0).toLocaleString()}</div>
-            <div class="fact"><b>Crew</b>${esc(job.crew || '-')}</div>
+            <div class="fact"><b>When</b>${esc(formatRange(selectedJob))}</div>
+            <div class="fact"><b>Address</b>${esc(selectedJob.address || '-')}</div>
+            <div class="fact"><b>Square Feet</b>${Number(selectedJob.square_feet || 0).toLocaleString()}</div>
+            <div class="fact"><b>Crew</b>${esc(selectedJob.crew || '-')}</div>
           </div>
-          ${job.notes ? `<p class="muted">${esc(job.notes)}</p>` : ''}
-          ${job.material_notes ? `<p class="muted">${esc(job.material_notes)}</p>` : ''}
+          ${selectedJob.notes ? `<p class="muted">${esc(selectedJob.notes)}</p>` : ''}
+          ${selectedJob.material_notes ? `<p class="muted">${esc(selectedJob.material_notes)}</p>` : ''}
+          <div class="schedule-actions">
+            <a class="button-link" href="${esc(scheduleJobUrl(selectedJob, 'materials'))}" target="_blank" rel="noopener">Material List</a>
+          </div>
+          <div class="schedule-update-form">
+            <label for="scheduleNote_${esc(selectedJob.id)}">Add Job Note</label>
+            <textarea id="scheduleNote_${esc(selectedJob.id)}" placeholder="Crew notes, job progress, prep concerns, or anything the office should know."></textarea>
+            <label for="schedulePhotos_${esc(selectedJob.id)}">Add Job Photos</label>
+            <input id="schedulePhotos_${esc(selectedJob.id)}" type="file" accept="image/*" multiple>
+            <div class="actions">
+              <button class="primary" type="button" onclick="saveScheduleJobUpdate('${esc(selectedJob.id)}')">Save Note / Photos</button>
+            </div>
+            <p class="muted">Schedule dates and job details are read-only in the employee portal.</p>
+          </div>
         </article>
-      `).join('');
+      `;
     }
+
+    window.shiftScheduleCalendar = function shiftScheduleCalendar(months) {
+      scheduleCalendarMonth = new Date(scheduleCalendarMonth.getFullYear(), scheduleCalendarMonth.getMonth() + months, 1);
+      renderSchedule();
+    };
+
+    window.goToScheduleToday = function goToScheduleToday() {
+      const date = new Date();
+      scheduleCalendarMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+      renderSchedule();
+    };
+
+    window.selectScheduleJob = function selectScheduleJob(jobId) {
+      selectedScheduleJobId = jobId;
+      renderSchedule();
+    };
 
     function renderTotals() {
       const submitted = entries.filter((entry) => entry.status === 'submitted').reduce((sum, entry) => sum + Number(entry.total_hours || 0), 0);
@@ -2264,9 +2607,76 @@
       return `${files.length} photo${files.length === 1 ? '' : 's'} uploaded${jobId ? ' and attached to the job' : ' to the time entry'}.`;
     }
 
+    async function uploadScheduleJobPhotos(jobId) {
+      const input = $(`schedulePhotos_${jobId}`);
+      if (!input?.files?.length) return '';
+
+      const files = Array.from(input.files);
+      const safeName = (name) => name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const uploadedBy = profile?.full_name || session?.user?.email || 'employee-portal';
+
+      for (const file of files) {
+        const path = `job/${jobId}/employee-portal/${Date.now()}_${safeName(file.name)}`;
+        const upload = await supa.storage.from('sefs-photos').upload(path, file, { upsert: false });
+        if (upload.error) throw new Error(upload.error.message);
+
+        const publicUrl = supa.storage.from('sefs-photos').getPublicUrl(path).data.publicUrl;
+        const saved = await supa.from('photo_attachments').insert({
+          entity_type: 'job',
+          entity_id: jobId,
+          file_name: file.name,
+          storage_path: path,
+          public_url: publicUrl,
+          caption: `Employee portal photo - ${formatDate(today())}`,
+          category: 'employee-portal',
+          uploaded_by: uploadedBy
+        });
+        if (saved.error) throw new Error(saved.error.message);
+      }
+
+      return `${files.length} photo${files.length === 1 ? '' : 's'} uploaded and attached to the job.`;
+    }
+
+    window.saveScheduleJobUpdate = async function saveScheduleJobUpdate(jobId) {
+      try {
+        const job = scheduleJobs.find((item) => item.id === jobId);
+        if (!job) throw new Error('Select a scheduled job first.');
+
+        const noteInput = $(`scheduleNote_${jobId}`);
+        const note = noteInput?.value.trim() || '';
+        const photoInput = $(`schedulePhotos_${jobId}`);
+        if (!note && !photoInput?.files?.length) {
+          setMessage('appMessage', 'Add a job note or choose photos first.', true);
+          return;
+        }
+
+        if (note) {
+          const author = profile?.full_name || session?.user?.email || 'employee';
+          const stamp = new Date().toLocaleString();
+          const addition = `Employee portal note - ${stamp} - ${author}: ${note}`;
+          const updatedNotes = [job.notes, addition].filter(Boolean).join('\n');
+          const saved = await supa.from('jobs').update({ notes: updatedNotes }).eq('id', jobId);
+          if (saved.error) throw saved.error;
+        }
+
+        const photoStatus = await uploadScheduleJobPhotos(jobId);
+        await refresh();
+        setMessage('appMessage', photoStatus || 'Job note saved.');
+      } catch (error) {
+        setMessage('appMessage', error.message, true);
+      }
+    };
+
     function selectedCrewEmployeeIds() {
       if (!canEnterCrewTime() || !selectedCrewIds.size) return [];
-      const ids = [profile?.employee_id, ...Array.from(selectedCrewIds)].filter(Boolean);
+      const availableIds = new Set(crewOptions.map((employee) => employee.id));
+      const checkedIds = Array.from(document.querySelectorAll('#crewTimeList input[data-employee-id]:checked'))
+        .map((input) => input.dataset.employeeId)
+        .filter((id) => id && availableIds.has(id));
+      const selectedIds = checkedIds.length
+        ? checkedIds
+        : Array.from(selectedCrewIds).filter((id) => availableIds.has(id));
+      const ids = [profile?.employee_id, ...selectedIds].filter(Boolean);
       return [...new Set(ids)];
     }
 
@@ -2284,8 +2694,8 @@
       renderCrewTimePanel();
     };
 
-    async function saveCrewTimeEntries(payload) {
-      const employeeIds = selectedCrewEmployeeIds();
+    async function saveCrewTimeEntries(payload, employeeIdsOverride = null) {
+      const employeeIds = Array.isArray(employeeIdsOverride) ? employeeIdsOverride : selectedCrewEmployeeIds();
       if (!employeeIds.length) return null;
       const response = await fetch(ADMIN_FUNCTION_URL, {
         method: 'POST',
@@ -2307,21 +2717,35 @@
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result.error) throw new Error(result.error || `Crew time save failed (${response.status})`);
-      return result.time_entries || [];
+      return result;
     }
 
     async function saveTime(status) {
+      if (timeSaveInFlight) return;
+      setTimeSaveBusy(true);
       try {
         const id = $('entryId').value;
         const payload = timePayload(status);
         let result;
         let savedEntry;
+        let skippedDuplicates = [];
         let photoStatus = '';
         
         const crewEmployeeIds = selectedCrewEmployeeIds();
         if (!id && crewEmployeeIds.length) {
-          const savedEntries = await saveCrewTimeEntries(payload);
+          const duplicateEmployees = crewEmployeeIds.filter((employeeId) => duplicateTimeEntry(payload, employeeId));
+          const employeeIdsToSave = crewEmployeeIds.filter((employeeId) => !duplicateEmployees.includes(employeeId));
+          if (!employeeIdsToSave.length) {
+            throw new Error('Time already submitted for this employee/group and time.');
+          }
+          selectedCrewIds = new Set(employeeIdsToSave.filter((employeeId) => employeeId !== profile?.employee_id));
+          const saveResult = await saveCrewTimeEntries(payload, employeeIdsToSave);
+          const savedEntries = saveResult.time_entries || [];
+          skippedDuplicates = [...duplicateEmployees, ...(saveResult.skipped_duplicates || [])];
           savedEntry = savedEntries[0];
+          if (!savedEntry && skippedDuplicates.length) {
+            throw new Error('Time already submitted for this employee/group and time.');
+          }
           if (!savedEntry) throw new Error('No crew time entries were saved.');
           photoStatus = await uploadTimePhotos(savedEntry, savedEntry.job_id);
         } else if (id) {
@@ -2330,6 +2754,9 @@
           savedEntry = result.data;
           photoStatus = await uploadTimePhotos(savedEntry, savedEntry.job_id);
         } else {
+          if (duplicateTimeEntry(payload, profile.employee_id)) {
+            throw new Error('Time already submitted for this employee and time.');
+          }
           result = await supa.from('time_entries').insert(payload).select().single();
           if (result.error) throw result.error;
           savedEntry = result.data;
@@ -2337,10 +2764,16 @@
         }
         resetForm();
         await refresh();
-        if (photoStatus) setMessage('appMessage', photoStatus);
+        const savedMessage = status === 'submitted' ? 'Time submitted.' : 'Time entry saved.';
+        const duplicateMessage = skippedDuplicates.length
+          ? ` Skipped ${new Set(skippedDuplicates).size} duplicate employee time entr${new Set(skippedDuplicates).size === 1 ? 'y' : 'ies'}.`
+          : '';
+        setMessage('appMessage', `${savedMessage}${duplicateMessage}${photoStatus ? ` ${photoStatus}` : ''}`);
         setActiveTab('entries');
       } catch (error) {
         setMessage('appMessage', error.message, true);
+      } finally {
+        setTimeSaveBusy(false);
       }
     }
 
@@ -2348,6 +2781,7 @@
       document.querySelectorAll('[data-tab]').forEach((button) => {
         button.classList.toggle('primary', button.dataset.tab === tab);
       });
+      if ($('mobileTabSelect')) $('mobileTabSelect').value = tab;
       $('schedulePanel').classList.toggle('hidden-mobile', tab === 'time');
       $('timePanel').classList.toggle('hidden-mobile', tab !== 'time');
       $('payPeriodsPanel').classList.toggle('hidden-mobile', !canReviewTime() && tab !== 'time');
@@ -2504,6 +2938,7 @@
       $(id).addEventListener('change', () => snapTimeInput(id));
       $(id).addEventListener('blur', () => snapTimeInput(id));
     });
+    $('mobileTabSelect').addEventListener('change', (event) => setActiveTab(event.target.value));
     document.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => setActiveTab(button.dataset.tab)));
 
     supa.auth.onAuthStateChange((_event, nextSession) => {

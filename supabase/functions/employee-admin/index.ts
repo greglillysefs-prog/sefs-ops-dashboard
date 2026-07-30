@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-type AdminAction = "login_options" | "job_crew_options" | "save_group_time_entries" | "pto_list" | "pto_request" | "pto_decision" | "verify_pin" | "list" | "upsert" | "deactivate" | "remove_employee" | "update_time_entry";
+type AdminAction = "login_options" | "job_crew_options" | "save_group_time_entries" | "pto_list" | "pto_request" | "pto_decision" | "verify_pin" | "assign_job_crew_lead" | "list" | "upsert" | "deactivate" | "remove_employee" | "update_time_entry";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -252,7 +252,29 @@ Deno.serve(async (req) => {
         return json({ error: "Date, start time, and end time are required." }, 400);
       }
 
-      const rows = employeeIds.map((employeeId) => ({
+      let duplicateQuery = supa
+        .from("time_entries")
+        .select("id, employee_id, job_id, work_date, start_time, end_time, deleted_at")
+        .in("employee_id", employeeIds)
+        .eq("work_date", basePayload.work_date)
+        .is("deleted_at", null);
+      duplicateQuery = jobId ? duplicateQuery.eq("job_id", jobId) : duplicateQuery.is("job_id", null);
+      const { data: duplicateRows, error: duplicateError } = await duplicateQuery;
+      if (duplicateError) throw duplicateError;
+
+      const sameTime = (value: unknown, expected: string) => String(value || "").slice(0, 5) === expected.slice(0, 5);
+      const duplicateEmployeeIds = new Set(
+        (duplicateRows || [])
+          .filter((row) => sameTime(row.start_time, basePayload.start_time) && sameTime(row.end_time, basePayload.end_time))
+          .map((row) => row.employee_id),
+      );
+      const employeeIdsToSave = employeeIds.filter((employeeId) => !duplicateEmployeeIds.has(employeeId));
+
+      if (!employeeIdsToSave.length) {
+        return json({ ok: true, time_entries: [], skipped_duplicates: Array.from(duplicateEmployeeIds) });
+      }
+
+      const rows = employeeIdsToSave.map((employeeId) => ({
         ...basePayload,
         employee_id: employeeId,
         user_id: profileByEmployee.get(employeeId)?.id || null,
@@ -260,7 +282,7 @@ Deno.serve(async (req) => {
 
       const { data, error } = await supa.from("time_entries").insert(rows).select();
       if (error) throw error;
-      return json({ ok: true, time_entries: data || [] });
+      return json({ ok: true, time_entries: data || [], skipped_duplicates: Array.from(duplicateEmployeeIds) });
     }
 
     if (action === "pto_list") {
@@ -460,6 +482,54 @@ Deno.serve(async (req) => {
       if (actorProfile?.active && actorProfile.role === "admin") {
         adminActorUserId = authData.user.id;
       }
+    }
+
+    if (action === "assign_job_crew_lead") {
+      const jobId = cleanText(payload.job_id);
+      const employeeId = cleanText(payload.employee_id);
+      const crewName = cleanText(payload.crew_name);
+      if (!jobId || !employeeId) return json({ error: "Job and crew lead are required." }, 400);
+
+      const [{ data: employee, error: employeeError }, { data: profile, error: profileError }] = await Promise.all([
+        supa.from("employees").select("id, name, active").eq("id", employeeId).maybeSingle(),
+        supa.from("profiles").select("id, employee_id, role, full_name, active").eq("employee_id", employeeId).maybeSingle(),
+      ]);
+      if (employeeError) throw employeeError;
+      if (profileError) throw profileError;
+      if (!employee?.active || !profile?.active) return json({ error: "Choose an active crew lead profile." }, 400);
+      if (!["crew_lead", "manager", "admin"].includes(String(profile.role))) {
+        return json({ error: "Selected employee is not a crew lead, manager, or admin." }, 400);
+      }
+
+      const { error: deleteError } = await supa
+        .from("employee_job_assignments")
+        .delete()
+        .eq("job_id", jobId)
+        .eq("assigned_role", "crew_lead")
+        .neq("employee_id", employeeId);
+      if (deleteError) throw deleteError;
+
+      const { data: assignment, error: assignmentError } = await supa
+        .from("employee_job_assignments")
+        .upsert(
+          {
+            employee_id: employeeId,
+            job_id: jobId,
+            assigned_role: "crew_lead",
+            assigned_by: adminActorUserId,
+            assigned_at: new Date().toISOString(),
+          },
+          { onConflict: "employee_id,job_id" },
+        )
+        .select()
+        .single();
+      if (assignmentError) throw assignmentError;
+
+      const displayName = crewName || profile.full_name || employee.name || "Crew Lead";
+      const { error: jobError } = await supa.from("jobs").update({ crew: displayName }).eq("id", jobId);
+      if (jobError) throw jobError;
+
+      return json({ ok: true, assignment });
     }
 
     if (action === "list") {
@@ -725,8 +795,7 @@ Deno.serve(async (req) => {
         .eq("id", employeeId);
       if (employeeUpdateError) throw employeeUpdateError;
 
-      const { error: auditError } = await supa.from("time_entry_audit_logs").insert({
-        time_entry_id: null,
+      const removalAudit = {
         employee_id: employeeId,
         actor_user_id: adminActorUserId,
         action_type: "employee_removed",
@@ -744,8 +813,12 @@ Deno.serve(async (req) => {
         },
         device_info: cleanText(payload.device_info) || null,
         reason,
-      });
-      if (auditError) throw auditError;
+      };
+
+      const { error: auditError } = await supa.from("time_entry_audit_logs").insert(removalAudit);
+      if (auditError) {
+        console.warn("Employee removal audit log was skipped.", auditError.message);
+      }
 
       return json({ ok: true });
     }
