@@ -533,7 +533,7 @@ Deno.serve(async (req) => {
       ]);
       if (employeeError) throw employeeError;
       if (profileError) throw profileError;
-      if (!employee?.active || !profile?.active) return json({ error: "Choose an active employee portal user." }, 400);
+      if (!employee?.active) return json({ error: "Choose an active employee." }, 400);
 
       const { error: deleteError } = await supa
         .from("employee_job_assignments")
@@ -559,7 +559,7 @@ Deno.serve(async (req) => {
         .single();
       if (assignmentError) throw assignmentError;
 
-      const displayName = crewName || profile.full_name || employee.name || "Crew Lead";
+      const displayName = crewName || profile?.full_name || employee.name || "Crew Lead";
       const { error: jobError } = await supa.from("jobs").update({ crew: displayName }).eq("id", jobId);
       if (jobError) throw jobError;
 

@@ -199,7 +199,7 @@ async function addEmployeeWithPin(){if(await verifyEmployeeAdminPin())openModal(
 async function editEmployeeWithPin(id){if(await verifyEmployeeAdminPin())edit('employees',id)}
 async function deleteEmployeeWithPin(id){if(await verifyEmployeeAdminPin())del('employees',id)}
 function employeeActions(id){return `<div class=rowact><button class=secondary onclick="editEmployeeWithPin('${id}')">Edit</button><button class=danger onclick="deleteEmployeeWithPin('${id}')">Delete</button></div>`}
-function crewLeadProfiles(){return (state.profiles||[]).filter(p=>p.active!==false&&p.employee_id).map(p=>{let e=state.employees.find(x=>x.id===p.employee_id);return {...p,name:p.full_name||e?.name||'Employee',employee:e}}).filter(p=>p.employee&&p.employee.active!==false&&!removedEmployee(p.employee)).sort((a,b)=>String(a.name).localeCompare(String(b.name)))}
+function crewLeadProfiles(){return (state.employees||[]).filter(e=>e.active!==false&&!removedEmployee(e)).map(e=>{let p=(state.profiles||[]).find(x=>x.employee_id===e.id&&x.active!==false)||{};return {...p,employee_id:e.id,name:p.full_name||e.name||'Employee',role:p.role||'employee',employee:e}}).sort((a,b)=>String(a.name).localeCompare(String(b.name)))}
 function crewLeadByEmployeeId(id){return crewLeadProfiles().find(p=>p.employee_id===id)}
 function jobCrewLeadAssignment(jobId){return (state.employee_job_assignments||[]).find(a=>a.job_id===jobId&&a.assigned_role==='crew_lead')||(state.employee_job_assignments||[]).find(a=>a.job_id===jobId)}
 function jobCrewLeadName(j){let a=jobCrewLeadAssignment(j?.id),p=a&&crewLeadByEmployeeId(a.employee_id);return p?.name||j?.crew||'Unassigned'}
