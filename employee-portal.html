@@ -920,7 +920,95 @@
       }
 
       .mobile-timesheet {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+        background: rgba(0,0,0,.18);
+      }
+
+      .mobile-week-day {
+        min-width: 0;
+        min-height: 148px;
+        margin: 0;
+        border: 0;
+        border-right: 1px solid rgba(255,255,255,.12);
+        border-bottom: 1px solid rgba(255,255,255,.12);
+        border-radius: 0;
+        padding: 6px 3px;
+        background: rgba(255,255,255,.018);
+      }
+
+      .mobile-week-day:nth-child(7n) {
+        border-right: 0;
+      }
+
+      .mobile-week-day + .mobile-week-day {
+        margin-top: 0;
+      }
+
+      .mobile-week-day header {
         display: block;
+        margin: 0 0 6px;
+        padding-bottom: 5px;
+      }
+
+      .mobile-week-day header b {
+        display: block;
+        font-size: 10px;
+        line-height: 1.1;
+      }
+
+      .mobile-week-day header .muted {
+        display: none;
+      }
+
+      .mobile-week-day .status {
+        display: block;
+        margin-top: 5px;
+        padding: 4px 2px;
+        width: 100%;
+        text-align: center;
+        font-size: 9px;
+      }
+
+      .mobile-week-row {
+        display: block;
+        padding: 5px 0;
+        font-size: 10px;
+        line-height: 1.15;
+      }
+
+      .mobile-week-row .muted {
+        display: none;
+      }
+
+      .mobile-week-row strong {
+        display: block;
+        color: var(--orange2);
+        font-size: 11px;
+      }
+
+      .mobile-week-notes {
+        margin-top: 6px;
+        padding-top: 6px;
+      }
+
+      .mobile-week-notes > b {
+        display: block;
+        font-size: 9px;
+        text-transform: uppercase;
+      }
+
+      .mobile-week-notes .muted {
+        font-size: 9px;
+      }
+
+      .mobile-timesheet .timesheet-note {
+        font-size: 9px;
+        line-height: 1.2;
+        overflow-wrap: anywhere;
       }
 
     }
