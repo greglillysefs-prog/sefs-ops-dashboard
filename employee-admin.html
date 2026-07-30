@@ -441,8 +441,8 @@
             <input id="fullName" autocomplete="name" required>
           </div>
           <div>
-            <label>Email</label>
-            <input id="email" type="email" autocomplete="email" required>
+            <label>Email <span class="muted">(optional)</span></label>
+            <input id="email" type="email" autocomplete="email" placeholder="Optional">
           </div>
           <div>
             <label>Role</label>
@@ -698,6 +698,10 @@
       return row?.profile?.full_name || row?.auth_user?.email || 'User';
     }
 
+    function displayEmail(email) {
+      return String(email || '').endsWith('@sefs-portal.invalid') ? 'No email on file' : (email || 'No email on file');
+    }
+
     function jobName(jobId) {
       const job = jobs.find((item) => item.id === jobId);
       if (!job) return 'Job';
@@ -734,7 +738,7 @@
             <div>
               <h3>${esc(profile.full_name || employee.name || user.email || 'Employee')}</h3>
               <div class="facts">
-                <span>${esc(user.email || 'No login email')}</span>
+                <span>${esc(displayEmail(user.email))}</span>
                 <span class="pill">${esc(profile.role || 'No role')}</span>
                 <span class="pill ${active ? 'ok' : 'bad'}">${active ? 'Active' : 'Inactive'}</span>
                 ${user.last_sign_in_at ? `<span>Last sign in: ${esc(new Date(user.last_sign_in_at).toLocaleDateString())}</span>` : ''}

@@ -19,6 +19,10 @@ function cleanText(value: unknown) {
   return String(value ?? "").trim();
 }
 
+function portalEmailForEmployee(employeeId: string) {
+  return `employee-${employeeId}@sefs-portal.invalid`;
+}
+
 function ptoAccruedHours(startDate: unknown) {
   const startValue = cleanText(startDate) || "2026-07-01";
   const start = new Date(`${startValue}T00:00:00`);
@@ -593,13 +597,12 @@ Deno.serve(async (req) => {
 
     if (action === "upsert") {
       const fullName = cleanText(payload.full_name);
-      const email = cleanText(payload.email).toLowerCase();
+      let email = cleanText(payload.email).toLowerCase();
       const role = cleanText(payload.role) || "employee";
       const passwordFromRequest = cleanText(payload.password);
       let employeeId = cleanText(payload.employee_id);
 
       if (!fullName) return json({ error: "Employee name is required." }, 400);
-      if (!email) return json({ error: "Email is required." }, 400);
       if (!passwordFromRequest || passwordFromRequest.length < 6) {
         return json({ error: "Password is required and must be at least 6 characters." }, 400);
       }
@@ -634,6 +637,8 @@ Deno.serve(async (req) => {
           .eq("id", employeeId);
         if (employeeUpdateError) throw employeeUpdateError;
       }
+
+      if (!email) email = portalEmailForEmployee(employeeId);
 
       const users = await supa.auth.admin.listUsers({ page: 1, perPage: 1000 });
       if (users.error) throw users.error;
