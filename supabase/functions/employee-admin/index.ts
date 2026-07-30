@@ -525,7 +525,7 @@ Deno.serve(async (req) => {
       const jobId = cleanText(payload.job_id);
       const employeeId = cleanText(payload.employee_id);
       const crewName = cleanText(payload.crew_name);
-      if (!jobId || !employeeId) return json({ error: "Job and crew lead are required." }, 400);
+      if (!jobId || !employeeId) return json({ error: "Job and assigned employee are required." }, 400);
 
       const [{ data: employee, error: employeeError }, { data: profile, error: profileError }] = await Promise.all([
         supa.from("employees").select("id, name, active").eq("id", employeeId).maybeSingle(),
@@ -533,10 +533,7 @@ Deno.serve(async (req) => {
       ]);
       if (employeeError) throw employeeError;
       if (profileError) throw profileError;
-      if (!employee?.active || !profile?.active) return json({ error: "Choose an active crew lead profile." }, 400);
-      if (!["crew_lead", "manager", "admin"].includes(String(profile.role))) {
-        return json({ error: "Selected employee is not a crew lead, manager, or admin." }, 400);
-      }
+      if (!employee?.active || !profile?.active) return json({ error: "Choose an active employee portal user." }, 400);
 
       const { error: deleteError } = await supa
         .from("employee_job_assignments")
