@@ -143,6 +143,9 @@ button.danger{background:#c21d17}
 .textButton{background:transparent;border:0;color:var(--orange);padding:0;font-size:13px}
 .btnRow{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
 .btnRow button{flex:1;min-width:140px}
+.quoteActionRow button{background:linear-gradient(180deg,#2b2b2b,#171717);border:1px solid rgba(255,255,255,.16)}
+.quoteActionRow .createJobButton{background:linear-gradient(180deg,#ff8a18,#f05d00);border-color:rgba(255,106,0,.8)}
+.quoteActionRow a{flex:1;min-width:140px;border-radius:8px;background:linear-gradient(180deg,#2b2b2b,#171717);border:1px solid rgba(255,255,255,.16);color:#fff;font-weight:950;padding:14px 16px;text-align:center;text-decoration:none;text-transform:uppercase}
 .hidden{display:none!important}
 .floorCard{border-left:5px solid var(--orange)}
 .small{font-size:12px;color:var(--muted)}
@@ -221,6 +224,117 @@ button.danger{background:#c21d17}
   .outputWrap{border:0}
   .outputGrid{display:block}
   .paper{page-break-after:always;margin:0 0 20px;min-height:auto}
+}
+
+/* Embedded ops-dashboard layout */
+body.embedded-quote .app{max-width:none;padding:0 0 24px}
+body.embedded-quote:before,
+body.embedded-quote:after{display:none}
+body.embedded-quote .hero{
+  display:block;
+  min-height:0;
+}
+body.embedded-quote .hero > div:first-child{
+  display:none;
+}
+body.embedded-quote .dashboard,
+body.embedded-quote .card,
+body.embedded-quote .outputWrap{
+  box-shadow:none;
+  border-color:rgba(255,255,255,.18);
+  background:#101010;
+}
+body.embedded-quote .dashboard{
+  border-radius:0;
+  border-left:0;
+  border-right:0;
+}
+body.embedded-quote .dashTop{
+  display:none;
+}
+body.embedded-quote .dashBody{
+  padding:18px;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(270px,360px);
+  gap:16px;
+  align-items:start;
+}
+body.embedded-quote .dashBody h2{
+  font-size:22px;
+  margin-bottom:4px;
+}
+body.embedded-quote .dashBody > p{
+  margin:0 0 12px;
+  color:#aaa;
+}
+body.embedded-quote .dashGrid{
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  grid-column:1;
+}
+body.embedded-quote .dashTile{
+  min-height:76px;
+  padding:12px;
+  align-items:flex-start;
+  text-align:left;
+}
+body.embedded-quote .tileIcon{
+  margin:0 0 7px;
+  font-size:18px;
+}
+body.embedded-quote .dashTile small{
+  color:#aaa;
+}
+body.embedded-quote .recent{
+  grid-column:2;
+  grid-row:1 / span 3;
+  margin-top:0;
+  border:1px solid rgba(255,255,255,.14);
+  border-radius:8px;
+  padding:12px;
+  background:#0b0b0b;
+}
+body.embedded-quote .recentRow{
+  background:transparent;
+  padding:8px 0;
+}
+body.embedded-quote .featureFooter{
+  display:none;
+}
+body.embedded-quote .nav{
+  position:sticky;
+  top:0;
+  background:#050505;
+}
+body.embedded-quote .navInner{
+  padding:8px 18px;
+}
+body.embedded-quote .card{
+  margin:12px 0;
+}
+body.embedded-quote .outputWrap{
+  padding:12px;
+}
+body.embedded-quote .outputTitle{
+  text-align:left;
+  font-size:18px;
+  margin:0 0 12px;
+}
+body.embedded-quote .quoteActionRow{
+  position:sticky;
+  bottom:0;
+  z-index:30;
+  background:rgba(5,5,5,.96);
+  border:1px solid rgba(255,255,255,.18);
+  border-radius:8px;
+  padding:10px;
+}
+body.embedded-quote .paper{
+  min-height:0;
+}
+@media(max-width:860px){
+  body.embedded-quote .dashBody{grid-template-columns:1fr}
+  body.embedded-quote .dashGrid{grid-template-columns:1fr}
+  body.embedded-quote .recent{grid-column:auto;grid-row:auto}
 }
 </style>
 
@@ -345,6 +459,7 @@ function qEsc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&
 function syncParentDashboard(){try{parent.refresh?.()}catch(e){}}
 function resizeParentQuoteFrame(){try{parent.resizeQuoteFrame?.()}catch(e){}}
 function queueQuoteResize(){requestAnimationFrame(()=>{resizeParentQuoteFrame();setTimeout(resizeParentQuoteFrame,120);});}
+if(window.parent!==window)document.body.classList.add("embedded-quote");
 function quoteBuilderContentHeight(){
   const content=[...document.querySelectorAll(".app > section")].filter(el=>{
     const style=getComputedStyle(el);
@@ -366,6 +481,15 @@ function initQuoteAutoResize(){
   try{new MutationObserver(trigger).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:["class","style"]});}catch(e){}
   try{new ResizeObserver(trigger).observe(document.body);}catch(e){}
   trigger();
+}
+function initEmbeddedQuoteScrollBridge(){
+  if(window.__quoteScrollBridgeReady||window.parent===window)return;
+  window.__quoteScrollBridgeReady=true;
+  window.addEventListener("wheel",(event)=>{
+    try{
+      parent.scrollBy({top:event.deltaY,left:event.deltaX,behavior:"auto"});
+    }catch(e){}
+  },{passive:true});
 }
 function renderMeasurementImportNotice(){
   const box=$("measurementImportNotice");
@@ -610,7 +734,7 @@ function renderResults(data){
  let serviceFeeSummary=data.serviceFee>0?`<div class="notice"><strong>Service Fee Applied</strong><br>A service fee was added automatically because the original margin was below ${money(MIN_MARGIN_DOLLARS)}.</div><div class="summaryLine"><span>Base Customer Price</span><strong>${money(data.baseTotalSell)}</strong></div><div class="summaryLine"><span>Service Fee</span><strong>${money(data.serviceFee)}</strong></div>`:"";
  let summary=`<div class="paper summaryPaper"><div class="paperHeader"><img class="paperLogo" src="${LOGO_URI}"><div><strong>MANAGEMENT SUMMARY</strong><br><small>FULL COST BREAKDOWN</small></div></div><div class="paperBody"><h3>Management Summary</h3>${data.floors.map(f=>`<div class="summaryLine"><span>Floor ${f.i}: ${f.system}${f.option_details?.length?`<br><small>${f.option_details.map(qEsc).join("<br>")}</small>`:""}</span><strong>${f.sqft} SQ FT</strong></div>`).join("")}<div class="summaryLine"><span>Material Cost</span><strong>${money(data.totalMat)}</strong></div><div class="summaryLine"><span>Labor Cost</span><strong>${money(data.totalLabor)}</strong></div><div class="summaryLine"><span>Admin Cost</span><strong>${money(data.totalAdmin)}</strong></div><div class="summaryLine"><span>Out Of Town</span><strong>${money(data.totalOut)}</strong></div><div class="summaryLine"><span>Company Cost</span><strong>${money(data.companyCost)}</strong></div>${serviceFeeSummary}<div class="orangeBar"><span>CUSTOMER PRICE</span><span>${money(data.totalSell)}</span></div><div class="summaryLine"><span>Margin Dollars</span><strong>${money(data.marginDollars)}</strong></div><div class="summaryLine"><span>Margin Percent</span><strong>${data.marginPercent.toFixed(1)}%</strong></div><h3>Quote Labor</h3><p>${data.laborDetails.join("<br>")}</p></div></div>`;
 
- proposal += customer+installer+summary+`</div><div class="btnRow noPrint"><button onclick="saveQuote()">Save Quote</button><button class="secondary" onclick="createLeadFromCurrentQuote()">Create Lead</button><button class="secondary" onclick="createJobFromCurrentQuote()">Create Job</button><button onclick="window.print()">Print / Save PDF</button><button class="secondary" onclick="downloadHTML()">Download HTML</button></div></div>`;
+ proposal += customer+installer+summary+`</div><div class="btnRow quoteActionRow noPrint"><button onclick="saveQuote()">Save Quote</button><button onclick="createLeadFromCurrentQuote()">Create Lead</button><button class="createJobButton" onclick="createJobFromCurrentQuote()">Create Job</button><a href="quote-print.html" target="_blank" onclick="return prepareQuotePrint()">Print / Save PDF</a><button onclick="downloadHTML()">Download HTML</button></div></div>`;
  $("results").innerHTML=proposal; lastQuoteHTML=proposal; lastPlainText=dataToText(data); resizeParentQuoteFrame();
 }
 
@@ -788,6 +912,45 @@ async function jobStatusForQuote(quote){
  return result.data?.next_followup?"Awaiting Follow Up":"Awaiting Schedule";
 }
 function clearHistory(){renderHistory();}
+function quoteDocumentHTML(){
+ if(!lastQuoteHTML)return "";
+ return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>SEFS Quote</title>
+
+<link rel="apple-touch-icon" sizes="512x512" href="icon-512.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#000000">
+<style>${document.querySelector("style").innerHTML}</style>
+<style>
+html,body{
+overscroll-behavior:auto;
+-webkit-tap-highlight-color: transparent;
+}
+body{background:#fff;color:#111}
+.app{max-width:none;padding:0}
+.paper{box-shadow:none}
+</style>
+
+</head><body><div class="app">${lastQuoteHTML}</div></body></html>`;
+}
+function prepareQuotePrint(){
+ if(!lastQuoteHTML){alert("Generate a quote first.");return false;}
+ try{
+  localStorage.setItem("sefs_quote_print_html",quoteDocumentHTML());
+  localStorage.setItem("sefs_quote_print_name",cleanName(lastData?.customer?.name||"SEFS_Quote"));
+  return true;
+ }catch(e){
+  alert("Could not prepare the print page. Try Download HTML instead.");
+  return false;
+ }
+}
+function printQuotePDF(){
+ if(!lastQuoteHTML){alert("Generate a quote first.");return;}
+ prepareQuotePrint();
+ const printWindow=window.open("quote-print.html","_blank");
+ if(!printWindow){alert("Your browser blocked the print window. Use Download HTML, or allow pop-ups for this site and try again.");return;}
+}
 function downloadHTML(){if(!lastQuoteHTML)return;let full=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>SEFS Quote</title>
 
 <link rel="apple-touch-icon" sizes="512x512" href="icon-512.png">
@@ -804,7 +967,11 @@ overscroll-behavior:none;
 </style>
 
 </head><body><div class="app">${lastQuoteHTML}</div></body></html>`;let a=document.createElement("a");a.href=URL.createObjectURL(new Blob([full],{type:"text/html"}));a.download=cleanName(lastData.customer.name)+"_SEFS_Estimate.html";a.click();}
+window.prepareQuotePrint=prepareQuotePrint;
+window.printQuotePDF=printQuotePDF;
+window.quoteDocumentHTML=quoteDocumentHTML;
 initQuoteAutoResize();
+initEmbeddedQuoteScrollBridge();
 renderRecentQuotes();
 setTimeout(consumeMeasurementExport,50);
 </script>
