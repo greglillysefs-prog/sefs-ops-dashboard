@@ -496,6 +496,31 @@
         </div>
       </section>
 
+      <section id="passwordPanel" class="card wide hidden">
+        <h2>Change Employee Password</h2>
+        <p id="passwordSummary"></p>
+        <div class="form-grid">
+          <div>
+            <label>New Password</label>
+            <div class="password-control">
+              <input id="resetPassword" type="password" autocomplete="new-password" minlength="6">
+              <button class="danger" type="button" data-toggle-password="resetPassword">Show</button>
+            </div>
+          </div>
+          <div>
+            <label>Confirm New Password</label>
+            <div class="password-control">
+              <input id="resetConfirmPassword" type="password" autocomplete="new-password" minlength="6">
+              <button class="danger" type="button" data-toggle-password="resetConfirmPassword">Show</button>
+            </div>
+          </div>
+          <div class="actions">
+            <button id="confirmPasswordResetBtn" class="primary" type="button">Save New Password</button>
+            <button id="cancelPasswordResetBtn" type="button">Cancel</button>
+          </div>
+        </div>
+      </section>
+
       <section class="card wide">
         <h2>Time Review</h2>
         <form id="timeEntryForm" class="form-grid hidden">
@@ -581,6 +606,7 @@
     let jobs = [];
     let auditLogs = [];
     let pendingRemoval = null;
+    let pendingPasswordReset = null;
 
     function setMessage(text, type = '') {
       const message = $('message');
@@ -714,7 +740,10 @@
                 ${user.last_sign_in_at ? `<span>Last sign in: ${esc(new Date(user.last_sign_in_at).toLocaleDateString())}</span>` : ''}
               </div>
             </div>
-            ${employee.id ? `<button class="danger" type="button" onclick="startRemoveEmployee('${esc(employee.id)}','${esc(profile.id)}','${esc(profile.full_name || employee.name || user.email || 'Employee')}')">Remove Employee</button>` : ''}
+            <div class="actions">
+              ${user.id ? `<button type="button" onclick="startPasswordReset('${esc(user.id)}','${esc(profile.full_name || employee.name || user.email || 'Employee')}')">Change Password</button>` : ''}
+              ${employee.id ? `<button class="danger" type="button" onclick="startRemoveEmployee('${esc(employee.id)}','${esc(profile.id)}','${esc(profile.full_name || employee.name || user.email || 'Employee')}')">Remove Employee</button>` : ''}
+            </div>
           </article>
         `;
       }).join('');
@@ -818,6 +847,16 @@
       $('removePanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
 
+    window.startPasswordReset = function startPasswordReset(userId, name) {
+      pendingPasswordReset = { userId, name };
+      $('passwordSummary').textContent = `Set a new portal password for ${name}. This requires the admin PIN above.`;
+      $('resetPassword').value = '';
+      $('resetConfirmPassword').value = '';
+      $('passwordPanel').classList.remove('hidden');
+      $('passwordPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      $('resetPassword').focus();
+    };
+
     async function removePendingEmployee() {
       if (!pendingRemoval) return;
       if ($('removeConfirmText').value.trim() !== 'REMOVE') {
@@ -834,6 +873,36 @@
         pendingRemoval = null;
         $('removePanel').classList.add('hidden');
         setMessage('Employee removed. Their login/profile was deleted, employee info was scrubbed, and the change was logged.', 'good');
+        await refreshPeople();
+      } catch (error) {
+        setMessage(error.message, 'error');
+      }
+    }
+
+    async function resetPendingPassword() {
+      if (!pendingPasswordReset) return;
+      const password = $('resetPassword').value.trim();
+      const confirmPassword = $('resetConfirmPassword').value.trim();
+      if (!password || password.length < 6) {
+        setMessage('New password must be at least 6 characters.', 'error');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setMessage('New passwords do not match.', 'error');
+        return;
+      }
+      try {
+        await callAdmin('reset_password', {
+          user_id: pendingPasswordReset.userId,
+          password,
+          reason: `Password changed for ${pendingPasswordReset.name} from Employee Admin by PIN admin`,
+          device_info: navigator.userAgent || 'Employee Admin'
+        });
+        pendingPasswordReset = null;
+        $('passwordPanel').classList.add('hidden');
+        $('resetPassword').value = '';
+        $('resetConfirmPassword').value = '';
+        setMessage('Employee password changed.', 'good');
         await refreshPeople();
       } catch (error) {
         setMessage(error.message, 'error');
@@ -900,6 +969,13 @@
       pendingRemoval = null;
       $('removePanel').classList.add('hidden');
       $('removeConfirmText').value = '';
+    });
+    $('confirmPasswordResetBtn').addEventListener('click', resetPendingPassword);
+    $('cancelPasswordResetBtn').addEventListener('click', () => {
+      pendingPasswordReset = null;
+      $('passwordPanel').classList.add('hidden');
+      $('resetPassword').value = '';
+      $('resetConfirmPassword').value = '';
     });
 
     $('refreshBtn').addEventListener('click', async () => {

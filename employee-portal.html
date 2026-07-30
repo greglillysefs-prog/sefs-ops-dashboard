@@ -951,7 +951,6 @@
         </div>
         <div class="actions full">
           <button id="signInBtn" class="primary" type="submit">Sign In</button>
-          <button id="magicLinkBtn" class="ghost" type="button">Send Magic Link</button>
         </div>
       </form>
     </section>
@@ -1204,7 +1203,6 @@
 
     function setAuthBusy(isBusy) {
       $('signInBtn').disabled = isBusy;
-      $('magicLinkBtn').disabled = isBusy;
       $('signInBtn').textContent = isBusy ? 'Signing In...' : 'Sign In';
     }
 
@@ -1400,18 +1398,6 @@
       selectedCrewIds = new Set();
       resetForm();
       await refresh();
-    }
-
-    async function sendMagicLink(email) {
-      if (!email) throw new Error('Choose a login name.');
-      const result = await withTimeout(
-        supa.auth.signInWithOtp({
-          email,
-          options: { emailRedirectTo: window.location.href.split('#')[0] }
-        }),
-        'Magic link request timed out. Check the connection and try again.'
-      );
-      if (result.error) throw result.error;
     }
 
     async function loadLoginOptions() {
@@ -2867,19 +2853,6 @@
       try {
         await signIn($('loginEmail').value, $('password').value);
         setMessage('authMessage', '');
-      } catch (error) {
-        setMessage('authMessage', error.message, true);
-      } finally {
-        setAuthBusy(false);
-      }
-    });
-
-    $('magicLinkBtn').addEventListener('click', async () => {
-      setMessage('authMessage', 'Sending magic link...');
-      setAuthBusy(true);
-      try {
-        await sendMagicLink($('loginEmail').value);
-        setMessage('authMessage', 'Magic link sent. Check your email on this device.');
       } catch (error) {
         setMessage('authMessage', error.message, true);
       } finally {

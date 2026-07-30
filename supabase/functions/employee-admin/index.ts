@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-type AdminAction = "login_options" | "job_crew_options" | "save_group_time_entries" | "pto_list" | "pto_request" | "pto_decision" | "verify_pin" | "assign_job_crew_lead" | "list" | "upsert" | "deactivate" | "remove_employee" | "update_time_entry";
+type AdminAction = "login_options" | "job_crew_options" | "save_group_time_entries" | "pto_list" | "pto_request" | "pto_decision" | "verify_pin" | "assign_job_crew_lead" | "list" | "upsert" | "reset_password" | "deactivate" | "remove_employee" | "update_time_entry";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -678,6 +678,56 @@ Deno.serve(async (req) => {
         employee_id: employeeId,
         user_id: userId,
       });
+    }
+
+    if (action === "reset_password") {
+      const userId = cleanText(payload.user_id);
+      const passwordFromRequest = cleanText(payload.password);
+      const reason = cleanText(payload.reason) || "Password changed from Employee Admin";
+      if (!userId) return json({ error: "User id is required." }, 400);
+      if (!passwordFromRequest || passwordFromRequest.length < 6) {
+        return json({ error: "Password is required and must be at least 6 characters." }, 400);
+      }
+
+      const [{ data: profileBefore, error: profileFetchError }, userBeforeResult] = await Promise.all([
+        supa.from("profiles").select("*").eq("id", userId).maybeSingle(),
+        supa.auth.admin.getUserById(userId),
+      ]);
+      if (profileFetchError) throw profileFetchError;
+      if (userBeforeResult.error) throw userBeforeResult.error;
+      if (!userBeforeResult.data.user) return json({ error: "Auth user was not found." }, 404);
+
+      const { error: updateUserError } = await supa.auth.admin.updateUserById(userId, {
+        password: passwordFromRequest,
+      });
+      if (updateUserError) throw updateUserError;
+
+      const passwordAudit = {
+        employee_id: profileBefore?.employee_id || null,
+        actor_user_id: adminActorUserId,
+        action_type: "employee_password_reset",
+        previous_values: {
+          profile: profileBefore,
+          auth_user: {
+            id: userBeforeResult.data.user.id,
+            email: userBeforeResult.data.user.email,
+            last_sign_in_at: userBeforeResult.data.user.last_sign_in_at,
+          },
+        },
+        new_values: {
+          user_id: userId,
+          password_changed: true,
+        },
+        device_info: cleanText(payload.device_info) || null,
+        reason,
+      };
+
+      const { error: auditError } = await supa.from("time_entry_audit_logs").insert(passwordAudit);
+      if (auditError) {
+        console.warn("Password reset audit log was skipped.", auditError.message);
+      }
+
+      return json({ ok: true });
     }
 
     if (action === "update_time_entry") {
