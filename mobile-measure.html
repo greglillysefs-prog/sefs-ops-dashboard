@@ -181,7 +181,7 @@
         <h2>Measurement</h2>
         <label>Customer</label><input id=customer value="${esc(targetName(target))}">
         <label>Phone</label><input id=phone type=tel value="${esc(targetPhone(target))}">
-        <label>Address</label><textarea id=address>${esc(targetAddress(target))}</textarea>
+        <label>Address</label><textarea id=address autocomplete="street-address" rows="3">${esc(targetAddress(target))}</textarea>
         <label>Measurement Notes</label><textarea id=measureNotes></textarea>
         <div class=quick>${AREA_TYPES.slice(0,6).map(t=>`<button class=secondary type=button onclick="addArea('${esc(t)}')">${esc(t)}</button>`).join('')}</div>
         <button class=secondary type=button onclick="addArea('Room')">Add Blank Area</button>

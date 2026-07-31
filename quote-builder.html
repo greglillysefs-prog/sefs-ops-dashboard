@@ -124,7 +124,7 @@ input,select,textarea{
   font-size:16px;
   outline:none;
 }
-input:focus,select:focus{border-color:var(--orange);box-shadow:0 0 0 2px rgba(255,106,0,.23)}
+input:focus,select:focus,textarea:focus{border-color:var(--orange);box-shadow:0 0 0 2px rgba(255,106,0,.23)}
 select option,select optgroup{background:#101010;color:#fff}
 select option:checked{background:#ff6a00;color:#000}
 button{
@@ -397,7 +397,7 @@ overscroll-behavior:none;
     <div class="grid two">
       <div class="customerPicker"><label>Customer / Job Name</label><input id="customerName" type="text" autocomplete="off" oninput="clearSelectedCustomer();updateCustomerMatches()" onfocus="updateCustomerMatches()" onblur="hideCustomerMatchesSoon()"><div id="customerMatches" class="customerMatches hidden"></div><div id="customerMatchStatus" class="small"></div></div>
       <div><label>Phone Number</label><input id="customerPhone" type="tel" inputmode="tel" oninput="clearSelectedCustomer();updateCustomerMatches()" onfocus="updateCustomerMatches()" onblur="hideCustomerMatchesSoon()"></div>
-      <div><label>Job Address</label><input id="customerAddress" type="text" oninput="clearSelectedCustomer();updateCustomerMatches()" onfocus="updateCustomerMatches()" onblur="hideCustomerMatchesSoon()"></div>
+      <div><label>Job Address</label><textarea id="customerAddress" autocomplete="street-address" rows="3" oninput="clearSelectedCustomer();updateCustomerMatches()" onfocus="updateCustomerMatches()" onblur="hideCustomerMatchesSoon()"></textarea></div>
       <div><label>Number of Floor Types</label><input id="floorCount" type="number" inputmode="numeric" min="1"></div>
     </div>
     <div id="measurementImportNotice"></div>
