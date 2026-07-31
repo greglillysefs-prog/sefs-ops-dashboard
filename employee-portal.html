@@ -1363,6 +1363,9 @@
     const isSalaryRole = (role) => ['manager', 'admin'].includes(String(role || ''));
     const canEnterCrewTime = () => ['crew_lead', 'manager', 'admin'].includes(profile?.role);
     const canReviewTime = () => ['manager', 'admin'].includes(profile?.role);
+    const cleanName = (value) => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const currentEmployeeNames = () => [...new Set([profile?.full_name, session?.user?.email].map(cleanName).filter(Boolean))];
+    const jobMatchesCurrentEmployee = (job) => currentEmployeeNames().includes(cleanName(job?.crew));
 
     function setMessage(id, text, isError = false) {
       const el = $(id);
@@ -1639,8 +1642,12 @@
         .eq('assigned_employee_id', profile.employee_id)
         .order('start_date', { ascending: true, nullsFirst: false })
         .order('start_time', { ascending: true });
-      if (result.error) throw result.error;
-      scheduleJobs = (result.data || []).filter((job) => !['Complete', 'Lost', 'Canceled'].includes(job.status));
+      const assignedJobs = result.error ? [] : (result.data || []);
+      const crewFallbackJobs = jobs.filter(jobMatchesCurrentEmployee);
+      const byId = new Map([...assignedJobs, ...crewFallbackJobs].map((job) => [job.id, job]));
+      scheduleJobs = Array.from(byId.values())
+        .filter((job) => !['Complete', 'Lost', 'Canceled'].includes(job.status))
+        .sort((a, b) => String(a.start_date || '9999').localeCompare(String(b.start_date || '9999')) || String(a.start_time || '').localeCompare(String(b.start_time || '')));
       if (!scheduleCalendarInitialized && scheduleJobs.length) {
         const firstScheduled = scheduleJobs.find((job) => job.start_date) || scheduleJobs[0];
         const firstDate = scheduleDate(firstScheduled.start_date) || new Date();
@@ -1776,7 +1783,8 @@
       try {
         await loadProfile();
         if (profile?.active) {
-          await Promise.all([loadJobs(), loadScheduleJobs(), loadEntries(), loadPtoEntries()]);
+          await loadJobs();
+          await Promise.all([loadScheduleJobs(), loadEntries(), loadPtoEntries()]);
           await loadEntryAuditLogs();
           await loadManagerReviewData();
         }
