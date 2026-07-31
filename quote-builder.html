@@ -595,7 +595,7 @@ function materialNamesMatch(a,b){let aa=materialNameKeys(a),bb=materialNameKeys(
 function recipeNameAliases(system){let n=normName(system),a=[n];if(n==="mortarprimeandcoat")a.push("mortar");if(n==="mortar")a.push("mortarprimeandcoat");if(n==="grindstainandseal")a.push("grindstainseal");if(n==="grindstainseal")a.push("grindstainandseal");return a}
 function sameSystemName(a,b){let aa=recipeNameAliases(a),bb=recipeNameAliases(b);return aa.some(x=>bb.includes(x))}
 function sharedRecipeForSystem(system,quoteOnly=false){let names=recipeNameAliases(system);return sharedRecipes.recipes.find(r=>r.active!==false&&(!quoteOnly||r.quote_enabled===true)&&names.includes(normName(r.name)))}
-function systemSelectOptions(){let names=[...FALLBACK_SYSTEMS];sharedRecipes.recipes.filter(r=>r.active!==false).sort((a,b)=>(+a.sort_order||0)-(+b.sort_order||0)||String(a.name).localeCompare(String(b.name))).forEach(r=>{if(!names.some(n=>sameSystemName(n,r.name)))names.push(r.name)});return names.map(n=>`<option>${qEsc(n)}</option>`).join("")}
+function systemSelectOptions(){let names=[...FALLBACK_SYSTEMS];sharedRecipes.recipes.filter(r=>r.active!==false).sort((a,b)=>(+a.sort_order||0)-(+b.sort_order||0)||String(a.name).localeCompare(String(b.name))).forEach(r=>{if(!names.some(n=>sameSystemName(n,r.name)))names.push(r.name)});if(!names.includes("Other"))names.push("Other");return names.map(n=>`<option>${qEsc(n)}</option>`).join("")}
 function optionValuesFor(system,key,fallbacks=[]){let recipe=sharedRecipeForSystem(system,false),vals=[...fallbacks];if(recipe){sharedRecipes.items.filter(it=>it.recipe_id===recipe.id&&it.active!==false&&String(it.option_key||"").toLowerCase()===key.toLowerCase()).forEach(it=>String(it.option_value||"").split(/[,|]/).map(v=>v.trim()).filter(Boolean).forEach(v=>{if(!vals.some(x=>x.toLowerCase()===v.toLowerCase()))vals.push(v)}))}return vals}
 function materialUnitCost(name,item={}){let inv=sharedRecipes.inventory.find(i=>i.id&&i.id===item.inventory_item_id)||sharedRecipes.inventory.find(i=>materialNamesMatch(name,i.name));if(inv&&+inv.cost)return +inv.cost;if(+item.unit_cost)return +item.unit_cost;let n=normName(name);let map=[["primer3g",COSTS.primer3g],["xr3g",COSTS.xr3g],["poly2g",COSTS.poly2g],["silicasand",COSTS.sand],["sand",COSTS.sand],["overlay",COSTS.overlay],["stain",COSTS.stain32],["wburethane",COSTS.wbUrethane3g],["wbepoxy",COSTS.wbEpoxy2g],["flakebox",COSTS.flakeBox],["quartz",COSTS.quartzBag],["metallicpowder",COSTS.metallicPowder],["colorpod",COSTS.solidColorPod],["aliphatic",COSTS.aliphatic],["cove",COSTS.coveMortar],["lowluster",COSTS.lowLusterAcrylic],["glossacrylic",COSTS.glossAcrylic]];return (map.find(([k])=>n.includes(k))||[])[1]||0}
 function optionMatches(item,options){let key=String(item.option_key||"").trim();if(!key)return true;let allowed=String(item.option_value||"").split(/[,|]/).map(v=>v.trim().toLowerCase()).filter(Boolean);if(!allowed.length)return true;let actual=String(options[key]??"").trim().toLowerCase();return allowed.includes(actual)}
@@ -701,6 +701,7 @@ function buildFloorForms(){
 function selectHTML(id,label,opts,onchange="",selected=""){return `<div><label>${label}</label><select id="${id}" ${onchange?`onchange="${onchange}"`:""}>${opts.map(o=>`<option ${selected&&String(o)===String(selected)?"selected":""}>${qEsc(o)}</option>`).join("")}</select></div>`}
 function renderOptions(i){
   let system=val("system"+i),h="";
+  if(system==="Other"){h+=`<div><label>Custom System Label</label><input id="otherLabel${i}" type=text placeholder="Example: Satin finish, repair work, custom scope"></div>`;h+=selectHTML(`otherPriceMode${i}`,"Quote Pricing",["Price Per Sq Ft","Total Price"]);h+=`<div><label>Custom Price</label><input id="otherPrice${i}" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Enter price"></div><p class="small">Other systems do not pull a material recipe. Enter the quote price manually for this floor.</p>`;}
   if(system==="Flake"){h+=selectHTML(`flakeSize${i}`,"Flake Size",optionValuesFor(system,"flake_size",["1/4","1/8","1/16"]),"","1/4");h+=selectHTML(`flakeExtra${i}`,"Additional Sealer?",["No","Yes"],`toggleExtra(${i},'flake')`);h+=`<div id="flakeFinishBox${i}" class="hidden">${selectHTML(`flakeFinish${i}`,"Additional Sealer Finish",optionValuesFor(system,"additional_sealer_finish",["Matte","Gloss"]))}</div>`;}
   if(system==="Metallic") h+=selectHTML(`metalFinish${i}`,"Finish",optionValuesFor(system,"finish",["Matte","Gloss"]));
   if(system==="Wood/Stone Overlay"){h+=selectHTML(`woodLoc${i}`,"Interior or Exterior",["Interior","Exterior"]);h+=selectHTML(`woodFinish${i}`,"Finish",optionValuesFor(system,"finish",["Matte","Gloss"]));}
@@ -722,6 +723,7 @@ function toggleMargin(){$("marginBox").classList.toggle("hidden",val("useMargin"
 function floorOptionData(i,system){
  const options={},details=[];
  const add=(key,label,value)=>{if(value!==""&&value!=null){options[key]=value;details.push(`${label}: ${value}`)}};
+ if(system==="Other"){add("custom_system_label","Custom System Label",val("otherLabel"+i).trim()||"Other");add("custom_pricing_mode","Quote Pricing",val("otherPriceMode"+i));add("custom_price","Custom Price",num("otherPrice"+i));return {options,details};}
  if(system==="Flake"){add("flake_size","Flake Size",val("flakeSize"+i));add("additional_sealer","Additional Sealer",val("flakeExtra"+i));if(val("flakeExtra"+i)==="Yes")add("additional_sealer_finish","Additional Sealer Finish",val("flakeFinish"+i));}
  if(system==="Metallic")add("finish","Finish",val("metalFinish"+i));
  if(system==="Wood/Stone Overlay"){add("location","Interior or Exterior",val("woodLoc"+i));add("finish","Finish",val("woodFinish"+i));}
@@ -741,10 +743,11 @@ function calculate(){
  const customer={customer_id:selectedCustomerId||pendingMeasurementExport?.customer_id||"",name:val("customerName"),phone:val("customerPhone"),address:val("customerAddress"),date:dateStamp()};
  let floors=[],totalSell=0,totalMat=0,totalLabor=0,totalAdmin=0,totalOut=0;
  for(let i=1;i<=count;i++){
-  let system=val("system"+i),sqft=num("sqft"+i),materials=[],sell=0,notes=[];
-  if(!system||!sqft)continue;
-  let optionData=floorOptionData(i,system),sharedFloor=calculateSharedRecipeFloor(system,sqft,optionData.options),usedSharedRecipe=false;
-  if(sharedFloor&&sharedFloor.materials.length){materials=sharedFloor.materials;sell=sharedFloor.sell;notes.push(...sharedFloor.notes);usedSharedRecipe=true;}
+  let selectedSystem=val("system"+i),system=selectedSystem==="Other"?(val("otherLabel"+i).trim()||"Other"):selectedSystem,sqft=num("sqft"+i),materials=[],sell=0,notes=[];
+  if(!selectedSystem||!sqft)continue;
+  let optionData=floorOptionData(i,selectedSystem),sharedFloor=selectedSystem==="Other"?null:calculateSharedRecipeFloor(selectedSystem,sqft,optionData.options),usedSharedRecipe=false;
+  if(selectedSystem==="Other"){let price=num("otherPrice"+i),mode=val("otherPriceMode"+i)||"Price Per Sq Ft";sell=mode==="Total Price"?price:sqft*price;notes.push(`Custom other system quoted by ${mode.toLowerCase()}.`);if(!price)notes.push("No custom quote price was entered for this floor.");}
+  else if(sharedFloor&&sharedFloor.materials.length){materials=sharedFloor.materials;sell=sharedFloor.sell;notes.push(...sharedFloor.notes);usedSharedRecipe=true;}
   else{
   if(sharedFloor)notes.push("Shared recipe has no applicable material lines, so fallback materials were used.");
   if(system==="Flake"){let size=val("flakeSize"+i),p=kitsNeeded(sqft,500);addMaterial(materials,"Primer 3G",p,COSTS.primer3g);if(size!=="1/16")addMaterial(materials,"Color Pod",p,COSTS.solidColorPod);addMaterial(materials,"Flake Box",kitsNeeded(sqft,280),COSTS.flakeBox);let pc=size==="1/16"?180:size==="1/4"?250:220;addMaterial(materials,"Poly 2G",kitsNeeded(sqft,pc),COSTS.poly2g);if(val("flakeExtra"+i)==="Yes"){if(val("flakeFinish"+i)==="Matte")addMaterial(materials,"WB Urethane 3G",kitsNeeded(sqft,2500),COSTS.wbUrethane3g);else addMaterial(materials,"Aliphatic Urethane",kitsNeeded(sqft,2000),COSTS.aliphatic);}sell=sqft*5;}
