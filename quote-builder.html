@@ -140,6 +140,7 @@ button{
 }
 button.secondary{background:linear-gradient(180deg,#2b2b2b,#171717);border:1px solid rgba(255,255,255,.16)}
 button.danger{background:#c21d17}
+button:disabled{opacity:.55;cursor:not-allowed;filter:saturate(.55)}
 .textButton{background:transparent;border:0;color:var(--orange);padding:0;font-size:13px}
 .btnRow{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
 .btnRow button{flex:1;min-width:140px}
@@ -465,7 +466,9 @@ let savedQuotesCache=[];
 let pendingMeasurementExport=null;
 let customerProfiles=[];
 let selectedCustomerId="";
+const quoteActionLocks=new Set();
 function qEsc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+async function withQuoteAction(button,key,label,action){if(quoteActionLocks.has(key))return;quoteActionLocks.add(key);let old=button?.textContent||'';if(button){button.disabled=true;button.textContent=label||'Saving...'}try{await action()}finally{quoteActionLocks.delete(key);if(button){button.disabled=false;button.textContent=old}}}
 function syncParentDashboard(){try{parent.refresh?.()}catch(e){}}
 function backToDashboard(){
   try{
@@ -797,7 +800,7 @@ function renderResults(data){
  let serviceFeeSummary=data.serviceFee>0?`<div class="notice"><strong>Service Fee Applied</strong><br>A service fee was added automatically because the original margin was below ${money(MIN_MARGIN_DOLLARS)}.</div><div class="summaryLine"><span>Base Customer Price</span><strong>${money(data.baseTotalSell)}</strong></div><div class="summaryLine"><span>Service Fee</span><strong>${money(data.serviceFee)}</strong></div>`:"";
  let summary=`<div class="paper summaryPaper"><div class="paperHeader"><img class="paperLogo" src="${LOGO_URI}"><div><strong>MANAGEMENT SUMMARY</strong><br><small>FULL COST BREAKDOWN</small></div></div><div class="paperBody"><h3>Management Summary</h3>${data.floors.map(f=>`<div class="summaryLine"><span>Floor ${f.i}: ${f.system}${f.option_details?.length?`<br><small>${f.option_details.map(qEsc).join("<br>")}</small>`:""}</span><strong>${f.sqft} SQ FT</strong></div>`).join("")}<div class="summaryLine"><span>Material Cost</span><strong>${money(data.totalMat)}</strong></div><div class="summaryLine"><span>Labor Cost</span><strong>${money(data.totalLabor)}</strong></div><div class="summaryLine"><span>Admin Cost</span><strong>${money(data.totalAdmin)}</strong></div><div class="summaryLine"><span>Out Of Town</span><strong>${money(data.totalOut)}</strong></div><div class="summaryLine"><span>Company Cost</span><strong>${money(data.companyCost)}</strong></div>${serviceFeeSummary}<div class="orangeBar"><span>CUSTOMER PRICE</span><span>${money(data.totalSell)}</span></div><div class="summaryLine"><span>Margin Dollars</span><strong>${money(data.marginDollars)}</strong></div><div class="summaryLine"><span>Margin Percent</span><strong>${data.marginPercent.toFixed(1)}%</strong></div><h3>Quote Labor</h3><p>${data.laborDetails.join("<br>")}</p></div></div>`;
 
- proposal += customer+installer+summary+`</div><div class="btnRow quoteActionRow noPrint"><button onclick="saveQuote()">Save Quote</button><button onclick="createLeadFromCurrentQuote()">Create Lead</button><button class="createJobButton" onclick="createJobFromCurrentQuote()">Create Job</button><a href="quote-print.html" target="_blank" onclick="return prepareQuotePrint()">Print / Save PDF</a><button onclick="downloadHTML()">Download HTML</button></div></div>`;
+ proposal += customer+installer+summary+`</div><div class="btnRow quoteActionRow noPrint"><button onclick="withQuoteAction(this,'save-current-quote','Saving...',()=>saveQuote())">Save Quote</button><button onclick="withQuoteAction(this,'create-current-lead','Creating...',()=>createLeadFromCurrentQuote())">Create Lead</button><button class="createJobButton" onclick="withQuoteAction(this,'create-current-job','Creating...',()=>createJobFromCurrentQuote())">Create Job</button><a href="quote-print.html" target="_blank" onclick="return prepareQuotePrint()">Print / Save PDF</a><button onclick="downloadHTML()">Download HTML</button></div></div>`;
  $("results").innerHTML=proposal; lastQuoteHTML=proposal; lastPlainText=dataToText(data); resizeParentQuoteFrame();
 }
 
@@ -877,7 +880,7 @@ async function renderHistory(){
  if(result.error){list.innerHTML=`<p class="small">Could not load quotes: ${qEsc(result.error.message)}</p>`;return;}
  const search=String(val("quoteSearch")||"").toLowerCase();
  savedQuotesCache=(result.data||[]).filter(q=>!search||[q.quote_name,q.customer,q.phone,q.address,q.status,String(q.sale_price||"")].some(v=>String(v||"").toLowerCase().includes(search)));
- list.innerHTML=savedQuotesCache.length?savedQuotesCache.map(q=>`<div class="card"><div class="summaryLine"><strong>${qEsc(q.customer||q.quote_name||"Saved Quote")}</strong><span>${money(q.sale_price)}</span></div><p class="small">${qEsc(q.status||"Draft")} - ${qEsc((q.created_at||"").slice(0,10))}${q.lead_id?" - Lead created":""}${q.job_id?" - Job created":""}</p><div class="btnRow"><button class="secondary" onclick="viewSaved('${q.id}')">View</button><button class="secondary" onclick="createLeadFromQuote('${q.id}')">Create Lead</button><button class="secondary" onclick="createJobFromQuote('${q.id}')">Create Job</button></div></div>`).join(""):`<p class="small">No saved quotes yet.</p>`;
+ list.innerHTML=savedQuotesCache.length?savedQuotesCache.map(q=>`<div class="card"><div class="summaryLine"><strong>${qEsc(q.customer||q.quote_name||"Saved Quote")}</strong><span>${money(q.sale_price)}</span></div><p class="small">${qEsc(q.status||"Draft")} - ${qEsc((q.created_at||"").slice(0,10))}${q.lead_id?" - Lead created":""}${q.job_id?" - Job created":""}</p><div class="btnRow"><button class="secondary" onclick="viewSaved('${q.id}')">View</button><button class="secondary" onclick="withQuoteAction(this,'create-lead-${q.id}','Creating...',()=>createLeadFromQuote('${q.id}'))">Create Lead</button><button class="secondary" onclick="withQuoteAction(this,'create-job-${q.id}','Creating...',()=>createJobFromQuote('${q.id}'))">Create Job</button></div></div>`).join(""):`<p class="small">No saved quotes yet.</p>`;
  queueQuoteResize();
 }
 function quoteById(id){return savedQuotesCache.find(q=>q.id===id);}
