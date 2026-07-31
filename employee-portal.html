@@ -526,6 +526,11 @@
       color: #111;
     }
 
+    .portal-calendar-event.task-event {
+      border-color: rgba(43,182,115,.7);
+      background: linear-gradient(180deg, rgba(43,182,115,.2), rgba(43,182,115,.07));
+    }
+
     .portal-calendar-event small {
       display: block;
       margin-top: 3px;
@@ -1391,9 +1396,10 @@
     let profile = null;
     let jobs = [];
     let scheduleJobs = [];
+    let scheduleTasks = [];
     let scheduleCalendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     let scheduleCalendarInitialized = false;
-    let selectedScheduleJobId = '';
+    let selectedScheduleItemKey = '';
     let entries = [];
     let entryAuditLogs = [];
     let managerEntries = [];
@@ -1427,6 +1433,9 @@
     const cleanName = (value) => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
     const currentEmployeeNames = () => [...new Set([profile?.full_name, session?.user?.email].map(cleanName).filter(Boolean))];
     const jobMatchesCurrentEmployee = (job) => currentEmployeeNames().includes(cleanName(job?.crew));
+    const itemKey = (item) => `${item.kind}:${item.id}`;
+    const taskTitle = (task) => task.title || task.job_name || 'Assigned task';
+    const taskAssignedToCurrentEmployee = (task) => currentEmployeeNames().includes(cleanName(task?.assigned_to));
 
     function setMessage(id, text, isError = false) {
       const el = $(id);
@@ -1632,6 +1641,8 @@
       profile = null;
       jobs = [];
       scheduleJobs = [];
+      scheduleTasks = [];
+      selectedScheduleItemKey = '';
       entries = [];
       entryAuditLogs = [];
       managerEntries = [];
@@ -1713,16 +1724,28 @@
       scheduleJobs = Array.from(byId.values())
         .filter((job) => job.start_date)
         .sort((a, b) => String(a.start_date || '9999').localeCompare(String(b.start_date || '9999')) || String(a.start_time || '').localeCompare(String(b.start_time || '')));
-      if (!scheduleCalendarInitialized && scheduleJobs.length) {
-        const firstScheduled = scheduleJobs.find((job) => job.start_date) || scheduleJobs[0];
-        const firstDate = scheduleDate(firstScheduled.start_date) || new Date();
-        scheduleCalendarMonth = new Date(firstDate.getFullYear(), firstDate.getMonth(), 1);
-        selectedScheduleJobId = firstScheduled.id;
-        scheduleCalendarInitialized = true;
-      }
-      if (selectedScheduleJobId && !scheduleJobs.some((job) => job.id === selectedScheduleJobId)) {
-        selectedScheduleJobId = scheduleJobs[0]?.id || '';
-      }
+    }
+
+    async function loadScheduleTasks() {
+      const result = await supa
+        .from('tasks')
+        .select('id, title, details, status, priority, due_date, due_time, assigned_to, show_on_schedule')
+        .order('due_date', { ascending: true, nullsFirst: false })
+        .order('due_time', { ascending: true });
+      scheduleTasks = result.error ? [] : (result.data || [])
+        .filter((task) => task.due_date && task.show_on_schedule !== false && task.status !== 'Done' && taskAssignedToCurrentEmployee(task))
+        .map((task) => ({
+          ...task,
+          kind: 'task',
+          start_date: task.due_date,
+          end_date: task.due_date,
+          start_time: task.due_time || '',
+          end_time: '',
+          job_name: task.title,
+          customer: task.title,
+          address: task.details || '',
+          crew: task.assigned_to || ''
+        }));
     }
 
     async function loadEntries() {
@@ -1849,7 +1872,7 @@
         await loadProfile();
         if (profile?.active) {
           await loadJobs();
-          await Promise.all([loadScheduleJobs(), loadEntries(), loadPtoEntries()]);
+          await Promise.all([loadScheduleJobs(), loadScheduleTasks(), loadEntries(), loadPtoEntries()]);
           await loadEntryAuditLogs();
           await loadManagerReviewData();
         }
@@ -1917,15 +1940,27 @@
 
     function renderSchedule() {
       $('scheduleMonthLabel').textContent = scheduleMonthName(scheduleCalendarMonth);
-      if (!scheduleJobs.length) {
+      const scheduleItems = [
+        ...scheduleJobs.map((job) => ({ ...job, kind: 'job' })),
+        ...scheduleTasks
+      ].sort((a, b) => String(a.start_date || '9999').localeCompare(String(b.start_date || '9999')) || String(a.start_time || '').localeCompare(String(b.start_time || '')));
+      if (!scheduleItems.length) {
         $('scheduleList').innerHTML = `
-          <div class="muted">No jobs assigned to you yet. Time can still be entered below as Other / No job or against an active job.</div>
+          <div class="muted">No jobs or tasks assigned to you yet. Time can still be entered below as Other / No job or against an active job.</div>
         `;
         return;
       }
 
-      if (!selectedScheduleJobId || !scheduleJobs.some((job) => job.id === selectedScheduleJobId)) {
-        selectedScheduleJobId = scheduleJobs[0].id;
+      if (!scheduleCalendarInitialized && scheduleItems.length) {
+        const firstScheduled = scheduleItems.find((item) => item.start_date) || scheduleItems[0];
+        const firstDate = scheduleDate(firstScheduled.start_date) || new Date();
+        scheduleCalendarMonth = new Date(firstDate.getFullYear(), firstDate.getMonth(), 1);
+        selectedScheduleItemKey = itemKey(firstScheduled);
+        scheduleCalendarInitialized = true;
+      }
+
+      if (!selectedScheduleItemKey || !scheduleItems.some((item) => itemKey(item) === selectedScheduleItemKey)) {
+        selectedScheduleItemKey = itemKey(scheduleItems[0]);
       }
 
       const firstOfMonth = new Date(scheduleCalendarMonth.getFullYear(), scheduleCalendarMonth.getMonth(), 1);
@@ -1941,9 +1976,9 @@
       };
       const weekStacks = [0, 0, 0, 0, 0, 0];
       const dayBars = Array.from({ length: 42 }, () => []);
-      scheduleJobs.forEach((job) => {
-        const start = job.start_date ? Math.max(0, diffDays(job.start_date, scheduleIsoDate(calendarStart))) : -1;
-        const end = job.start_date ? Math.min(41, diffDays(job.end_date || job.start_date, scheduleIsoDate(calendarStart))) : -1;
+      scheduleItems.forEach((item) => {
+        const start = item.start_date ? Math.max(0, diffDays(item.start_date, scheduleIsoDate(calendarStart))) : -1;
+        const end = item.start_date ? Math.min(41, diffDays(item.end_date || item.start_date, scheduleIsoDate(calendarStart))) : -1;
         if (start < 0 || end < 0 || end < start) return;
         for (let week = Math.floor(start / 7); week <= Math.floor(end / 7); week++) {
           const segStart = Math.max(start, week * 7);
@@ -1954,11 +1989,11 @@
           dayBars[segStart].push(`
             <button
               type="button"
-              class="portal-calendar-event portal-calendar-bar ${job.id === selectedScheduleJobId ? 'active' : ''}"
+              class="portal-calendar-event portal-calendar-bar ${item.kind === 'task' ? 'task-event' : ''} ${itemKey(item) === selectedScheduleItemKey ? 'active' : ''}"
               style="top:${top}px;width:calc(${span * 100}% - 6px)"
-              onclick="selectScheduleJob('${esc(job.id)}')">
-              ${esc(moneylessJobName(job))}
-              <small>${esc([formatTime(job.start_time), job.address].filter(Boolean).join(' - ') || job.status || 'Scheduled')}</small>
+              onclick="selectScheduleItem('${esc(itemKey(item))}')">
+              ${esc(item.kind === 'task' ? taskTitle(item) : moneylessJobName(item))}
+              <small>${esc(item.kind === 'task' ? ['Task', formatTime(item.start_time), item.status].filter(Boolean).join(' - ') : [formatTime(item.start_time), item.address].filter(Boolean).join(' - ') || item.status || 'Scheduled')}</small>
             </button>
           `);
         }
@@ -1979,39 +2014,57 @@
         `;
       }).join('');
 
-      const selectedJob = scheduleJobs.find((job) => job.id === selectedScheduleJobId) || scheduleJobs[0];
+      const selectedItem = scheduleItems.find((item) => itemKey(item) === selectedScheduleItemKey) || scheduleItems[0];
+      const selectedDetail = selectedItem.kind === 'task'
+        ? `
+        <article class="job-card portal-schedule-detail">
+          <header>
+            <h3>${esc(taskTitle(selectedItem))}</h3>
+            <span class="status">${esc(selectedItem.status || 'Open')}</span>
+          </header>
+          <div class="facts">
+            <div class="fact"><b>When</b>${esc(formatDate(selectedItem.start_date))}${selectedItem.start_time ? ` ${esc(formatTime(selectedItem.start_time))}` : ''}</div>
+            <div class="fact"><b>Assigned To</b>${esc(selectedItem.assigned_to || '-')}</div>
+            <div class="fact"><b>Priority</b>${esc(selectedItem.priority || 'Normal')}</div>
+            <div class="fact"><b>Type</b>Task</div>
+          </div>
+          ${selectedItem.details ? `<p class="muted">${esc(selectedItem.details)}</p>` : ''}
+          <p class="muted">Tasks are read-only in the employee portal. Use the dashboard to edit task details.</p>
+        </article>`
+        : `
+        <article class="job-card portal-schedule-detail">
+          <header>
+            <h3>${esc(moneylessJobName(selectedItem))}</h3>
+            <span class="status">${esc(selectedItem.status || 'Scheduled')}</span>
+          </header>
+          <div class="facts">
+            <div class="fact"><b>When</b>${esc(formatRange(selectedItem))}</div>
+            <div class="fact"><b>Address</b>${esc(selectedItem.address || '-')}</div>
+            <div class="fact"><b>Square Feet</b>${Number(selectedItem.square_feet || 0).toLocaleString()}</div>
+            <div class="fact"><b>Crew</b>${esc(selectedItem.crew || '-')}</div>
+          </div>
+          ${selectedItem.notes ? `<p class="muted">${esc(selectedItem.notes)}</p>` : ''}
+          ${selectedItem.material_notes ? `<p class="muted">${esc(selectedItem.material_notes)}</p>` : ''}
+          <div class="schedule-actions">
+            <a class="button-link" href="${esc(scheduleJobUrl(selectedItem, 'materials'))}" target="_blank" rel="noopener">Material List</a>
+          </div>
+          <div class="schedule-update-form">
+            <label for="scheduleNote_${esc(selectedItem.id)}">Add Job Note</label>
+            <textarea id="scheduleNote_${esc(selectedItem.id)}" placeholder="Crew notes, job progress, prep concerns, or anything the office should know."></textarea>
+            <label for="schedulePhotos_${esc(selectedItem.id)}">Add Job Photos</label>
+            <input id="schedulePhotos_${esc(selectedItem.id)}" type="file" accept="image/*" multiple>
+            <div class="actions">
+              <button class="primary" type="button" onclick="saveScheduleJobUpdate('${esc(selectedItem.id)}')">Save Note / Photos</button>
+            </div>
+            <p class="muted">Schedule dates and job details are read-only in the employee portal.</p>
+          </div>
+        </article>`;
       $('scheduleList').innerHTML = `
         <div class="portal-calendar" aria-label="Assigned job calendar">
           <div class="portal-calendar-month"><span>${esc(scheduleMonthName(scheduleCalendarMonth))}</span><small>Swipe to change month</small></div>
           <div class="portal-calendar-grid" ontouchstart="scheduleSwipeBegin(event)" ontouchmove="scheduleSwipeMove(event)" ontouchend="scheduleSwipeEnd(event)" ontouchcancel="scheduleSwipeEnd(event)">${heads}${days}</div>
         </div>
-        <article class="job-card portal-schedule-detail">
-          <header>
-            <h3>${esc(moneylessJobName(selectedJob))}</h3>
-            <span class="status">${esc(selectedJob.status || 'Scheduled')}</span>
-          </header>
-          <div class="facts">
-            <div class="fact"><b>When</b>${esc(formatRange(selectedJob))}</div>
-            <div class="fact"><b>Address</b>${esc(selectedJob.address || '-')}</div>
-            <div class="fact"><b>Square Feet</b>${Number(selectedJob.square_feet || 0).toLocaleString()}</div>
-            <div class="fact"><b>Crew</b>${esc(selectedJob.crew || '-')}</div>
-          </div>
-          ${selectedJob.notes ? `<p class="muted">${esc(selectedJob.notes)}</p>` : ''}
-          ${selectedJob.material_notes ? `<p class="muted">${esc(selectedJob.material_notes)}</p>` : ''}
-          <div class="schedule-actions">
-            <a class="button-link" href="${esc(scheduleJobUrl(selectedJob, 'materials'))}" target="_blank" rel="noopener">Material List</a>
-          </div>
-          <div class="schedule-update-form">
-            <label for="scheduleNote_${esc(selectedJob.id)}">Add Job Note</label>
-            <textarea id="scheduleNote_${esc(selectedJob.id)}" placeholder="Crew notes, job progress, prep concerns, or anything the office should know."></textarea>
-            <label for="schedulePhotos_${esc(selectedJob.id)}">Add Job Photos</label>
-            <input id="schedulePhotos_${esc(selectedJob.id)}" type="file" accept="image/*" multiple>
-            <div class="actions">
-              <button class="primary" type="button" onclick="saveScheduleJobUpdate('${esc(selectedJob.id)}')">Save Note / Photos</button>
-            </div>
-            <p class="muted">Schedule dates and job details are read-only in the employee portal.</p>
-          </div>
-        </article>
+        ${selectedDetail}
       `;
     }
 
@@ -2088,8 +2141,8 @@
       renderSchedule();
     };
 
-    window.selectScheduleJob = function selectScheduleJob(jobId) {
-      selectedScheduleJobId = jobId;
+    window.selectScheduleItem = function selectScheduleItem(key) {
+      selectedScheduleItemKey = key;
       renderSchedule();
     };
 
@@ -3308,6 +3361,8 @@
       profile = null;
       jobs = [];
       scheduleJobs = [];
+      scheduleTasks = [];
+      selectedScheduleItemKey = '';
       entries = [];
       managerEntries = [];
       managerProfiles = [];
