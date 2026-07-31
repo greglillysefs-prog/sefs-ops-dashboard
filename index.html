@@ -56,6 +56,11 @@ main{overflow:visible}
 .schedule-title h2:after{display:none}
 .schedule-nav,.schedule-toggle{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .schedule-toggle button.active{background:#1b1209;color:var(--o);border-color:var(--o)}
+.calendar-shell{overflow:hidden}
+.calendar-month-banner{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid #333;border-bottom:0;border-radius:10px 10px 0 0;background:linear-gradient(90deg,#1b1209,#111);padding:11px 14px;font-weight:900;color:#fff}
+.calendar-month-banner span{color:var(--o);font-size:18px}
+.calendar-swipe-surface{touch-action:pan-y;will-change:transform,opacity}
+.calendar-shell .calendar-grid{border-radius:0 0 10px 10px}
 .calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(120px,1fr));grid-template-rows:auto repeat(6,minmax(142px,auto));border:1px solid #333;border-radius:10px;overflow:hidden;background:#0b0b0b}
 .calendar-head{padding:9px 10px;background:#151515;border-right:1px solid #333;color:#aaa;font-size:12px;text-transform:uppercase;font-weight:900;grid-row:1}
 .calendar-head:nth-child(7){border-right:0}
@@ -573,8 +578,9 @@ function scheduledItems(){return [...scheduledJobs().map(j=>({...j,kind:'job'}))
 function setScheduleView(view){scheduleUi.view=view;renderSchedule()}
 function shiftScheduleMonth(n){scheduleUi.month=new Date(scheduleUi.month.getFullYear(),scheduleUi.month.getMonth()+n,1);renderSchedule()}
 let scheduleSwipeStart=null;
-function scheduleSwipeBegin(e){let t=e.touches&&e.touches[0];if(!t)return;scheduleSwipeStart={x:t.clientX,y:t.clientY}}
-function scheduleSwipeEnd(e){if(!scheduleSwipeStart)return;let t=e.changedTouches&&e.changedTouches[0];if(!t){scheduleSwipeStart=null;return}let dx=t.clientX-scheduleSwipeStart.x,dy=t.clientY-scheduleSwipeStart.y;scheduleSwipeStart=null;if(Math.abs(dx)<55||Math.abs(dx)<Math.abs(dy)*1.35)return;shiftScheduleMonth(dx<0?1:-1)}
+function scheduleSwipeBegin(e){let t=e.touches&&e.touches[0];if(!t)return;scheduleSwipeStart={x:t.clientX,y:t.clientY,time:Date.now(),el:e.currentTarget};e.currentTarget.style.transition='none'}
+function scheduleSwipeMove(e){if(!scheduleSwipeStart)return;let t=e.touches&&e.touches[0];if(!t)return;let dx=t.clientX-scheduleSwipeStart.x,dy=t.clientY-scheduleSwipeStart.y;if(Math.abs(dx)<10||Math.abs(dx)<Math.abs(dy))return;e.preventDefault();let pull=Math.max(-120,Math.min(120,dx));scheduleSwipeStart.el.style.transform=`translateX(${pull}px)`;scheduleSwipeStart.el.style.opacity=String(Math.max(.72,1-Math.abs(pull)/420))}
+function scheduleSwipeEnd(e){if(!scheduleSwipeStart)return;let t=e.changedTouches&&e.changedTouches[0],start=scheduleSwipeStart,el=start.el;scheduleSwipeStart=null;if(!t)return;let dx=t.clientX-start.x,dy=t.clientY-start.y,dt=Math.max(1,Date.now()-start.time),speed=Math.abs(dx)/dt,duration=Math.max(140,Math.min(320,260-speed*70));el.style.transition=`transform ${duration}ms ease, opacity ${duration}ms ease`;if(Math.abs(dx)<55||Math.abs(dx)<Math.abs(dy)*1.35){el.style.transform='translateX(0)';el.style.opacity='1';return}let dir=dx<0?1:-1;el.style.transform=`translateX(${-dir*28}%)`;el.style.opacity='.38';setTimeout(()=>{shiftScheduleMonth(dir);requestAnimationFrame(()=>{let next=document.querySelector('#schedule .calendar-swipe-surface');if(!next)return;next.style.transition='none';next.style.transform=`translateX(${dir*18}%)`;next.style.opacity='.5';requestAnimationFrame(()=>{next.style.transition=`transform ${duration}ms ease, opacity ${duration}ms ease`;next.style.transform='translateX(0)';next.style.opacity='1'})})},Math.round(duration*.45))}
 function editScheduleJob(id){edit('jobs',id)}
 function editScheduleTask(id){show('tasks');editTask(id)}
 async function moveScheduledJob(id,newStart){
@@ -605,7 +611,7 @@ function renderScheduleMonth(jobs){
  let y=scheduleUi.month.getFullYear(),m=scheduleUi.month.getMonth(),first=new Date(y,m,1),start=addDays(first,-first.getDay()),end=addDays(start,41),todayIso=today(),cells=[],bars=[],weekStacks=[0,0,0,0,0,0];
  for(let i=0;i<42;i++){let d=addDays(start,i),iso=isoDate(d),other=d.getMonth()!==m,w=Math.floor(i/7),col=d.getDay()+1;cells.push(`<div class="calendar-day ${other?'other':''} ${iso===todayIso?'today':''}" style="grid-column:${col};grid-row:${w+2};${col===7?'border-right:0':''}" ondragover="allowJobDrop(event)" ondragleave="leaveJobDrop(event)" ondrop="dropJobOnDate(event,'${iso}')"><div class=calendar-date>${d.getDate()}</div></div>`)}
  for(const j of jobs){let js=j.start_date,je=j.end_date||j.start_date;if(!js||je<isoDate(start)||js>isoDate(end))continue;for(let w=0;w<6;w++){let ws=isoDate(addDays(start,w*7)),we=isoDate(addDays(start,w*7+6)),ss=js>ws?js:ws,ee=je<we?je:we;if(ss>ee)continue;let col=dateObj(ss).getDay()+1,span=dateDiff(ss,ee)+1,stack=weekStacks[w]++,compact=compactCalendarLayout(),top=(compact?24:30)+stack*(compact?22:64);bars.push(calendarEvent(j,`grid-column:${col}/span ${span};grid-row:${w+2};margin-top:${top}px`))}}
- return `<div class=calendar-grid ontouchstart="scheduleSwipeBegin(event)" ontouchend="scheduleSwipeEnd(event)">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((d,i)=>`<div class=calendar-head style="grid-column:${i+1}">${d}</div>`).join('')}${cells.join('')}${bars.join('')}</div>`;
+ return `<div class=calendar-shell><div class=calendar-month-banner><span>${esc(monthLabel(scheduleUi.month))}</span><small>Swipe to change month</small></div><div class="calendar-grid calendar-swipe-surface" ontouchstart="scheduleSwipeBegin(event)" ontouchmove="scheduleSwipeMove(event)" ontouchend="scheduleSwipeEnd(event)" ontouchcancel="scheduleSwipeEnd(event)">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((d,i)=>`<div class=calendar-head style="grid-column:${i+1}">${d}</div>`).join('')}${cells.join('')}${bars.join('')}</div></div>`;
 }
 function scheduleMobileCard(j){
  if(j.kind==='task')return `<article class=mobile-record-card><h3>${esc(j.job_name||'Task')}</h3><div class=muted>${esc(j.address||'')}</div><div class=mobile-record-grid><div><b>When</b>${fmtRange(j)}</div><div><b>Owner</b>${esc(j.crew||'Unassigned')}</div><div><b>Status</b>${taskPill(j)}</div></div><div class=mobile-record-section><b>Details</b><div class=muted>${esc(j.address||'')}</div></div><div class=mobile-record-section><div class=schedule-list-actions><button type=button class=secondary onclick="editScheduleTask('${j.id}')">Edit Task</button><button type=button class=secondary onclick="completeTask('${j.id}')">Done</button></div></div></article>`;
