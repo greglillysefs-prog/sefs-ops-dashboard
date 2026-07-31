@@ -315,7 +315,7 @@ function field(f,val,rec={},tableName=''){
   return jobSystemSelectHTML(l,val);
  }
  if(t==='optionkeyselect'){
-  let actual=val?String(val):(rec.id?'__always':''),defs=recipeOptionDefs(rec.recipe_id,actual);
+  let actual=val?String(val):'__always',defs=recipeOptionDefs(rec.recipe_id,actual);
   return `<label>${l}</label><select name="${n}" required onchange="updateRecipeOptionControls(false)"><option value="">Choose applies when...</option><option value="__always" ${actual==='__always'?'selected':''}>Always</option>${defs.map(d=>`<option value="${esc(d.key)}" ${actual===d.key?'selected':''}>${esc(d.label)}</option>`).join('')}</select><div class=muted>Only options available for this system are shown.</div>`
  }
  if(t==='optionvalueinput')return `<label>${l}</label><input type=hidden name="${n}" value="${esc(val)}"><div id=recipeOptionValues class=option-value-picker></div><div class=muted>Check one or more values that should include this material.</div>`;
@@ -419,7 +419,19 @@ function openModal(t,rec={}){
    p.google_calendar_sync_status='Not Synced';
    p.google_calendar_sync_error=null;
   }
-  if(t==='system_recipe_items'){p.option_key=String(p.option_key||'').trim();p.option_value=String(p.option_value||'').trim();if(!p.option_key){unlockSave();return alert('Choose Always or one of the linked options for this system.')}if(p.option_key==='__always'){p.option_key=null;p.option_value=null}else if(!p.option_value){unlockSave();return alert('Check at least one option value for this material.')}let inv=p.inventory_item_id?state.inventory_items.find(i=>i.id===p.inventory_item_id):state.inventory_items.find(i=>materialNamesMatch(p.material_name,i.name));if(inv){p.inventory_item_id=inv.id;p.unit_cost=+inv.cost||0;if(!p.unit)p.unit=inv.unit||null;if(!p.material_name)p.material_name=inv.name||null}}
+  if(t==='system_recipe_items'){
+   p.option_key=String(p.option_key||'').trim();
+   p.option_value=String(p.option_value||'').trim();
+   p.material_name=String(p.material_name||'').trim()||null;
+   p.unit=String(p.unit||'').trim()||null;
+   if(!p.recipe_id){unlockSave();return alert('Choose a system for this material.')}
+   if(!p.inventory_item_id&&!p.material_name){unlockSave();return alert('Choose an inventory item or enter a material name.')}
+   if(!p.option_key){unlockSave();return alert('Choose Always or one of the linked options for this system.')}
+   if(p.option_key==='__always'){p.option_key=null;p.option_value=null}else if(!p.option_value){unlockSave();return alert('Check at least one option value for this material.')}
+   let inv=p.inventory_item_id?state.inventory_items.find(i=>i.id===p.inventory_item_id):state.inventory_items.find(i=>materialNamesMatch(p.material_name,i.name));
+   if(inv){p.inventory_item_id=inv.id;p.unit_cost=+inv.cost||0;if(!p.unit)p.unit=inv.unit||null;if(!p.material_name)p.material_name=inv.name||null}
+   ['unit_cost','coverage_rate','fixed_qty','waste_factor','sort_order'].forEach(k=>{p[k]=p[k]===null||p[k]===''?null:+p[k]});
+  }
   let r=t==='jobs'?(rec.id?await supa.from(t).update(p).eq('id',rec.id).select().single():await supa.from(t).insert(p).select().single()):(rec.id?await supa.from(t).update(p).eq('id',rec.id):(needsPhotoUpload?await supa.from(t).insert(p).select().single():await supa.from(t).insert(p)));
   if(r.error){unlockSave();return alert(r.error.message)}
   let savedId=rec.id||r.data?.id;
