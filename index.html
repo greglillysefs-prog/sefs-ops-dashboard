@@ -176,6 +176,7 @@ const GOOGLE_CALENDAR_CLIENT_ID='68310380883-qsgo9jevptt84u2jfch0lgfptsqvrmul.ap
 let googleCalendarAccessToken='', calendarSyncMessage='Google Calendar has not been synced this session.', calendarAutoSyncActive=false, calendarAutoSyncBusy=false, calendarAutoSyncTimer=null, calendarLastAutoSync=0;
 const tables=['customers','employees','profiles','employee_job_assignments','personal_time_entries','leads','jobs','quotes','tasks','task_audit_logs','field_measurements','field_measurement_areas','field_scan_uploads','inventory_items','system_recipes','system_recipe_items','equipment_items','vehicles','inspections','callbacks','photo_attachments'];
 const state={}; const errors={}; tables.forEach(t=>{state[t]=[]});
+const optionalTables=new Set(['task_audit_logs']);
 const actionLocks=new Set();
 function actionLocked(key){if(actionLocks.has(key))return true;actionLocks.add(key);return false}
 function actionUnlock(key){actionLocks.delete(key)}
@@ -200,7 +201,7 @@ function mobileNavGo(value){let sel=$('mobileNavSelect');if(value==='__employee_
 function show(id){let target=$(id); if(!target)return; document.querySelectorAll('section').forEach(s=>s.classList.remove('active')); target.classList.add('active');document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.tab===id)); let mobileSelect=$('mobileNavSelect'); if(mobileSelect)mobileSelect.value=id; if(id==='quotes')setTimeout(resizeQuoteFrame,120);}
 function localTasks(){try{return JSON.parse(localStorage.getItem('sefs_tasks')||'[]')}catch(e){return []}}
 function saveLocalTasks(rows){localStorage.setItem('sefs_tasks',JSON.stringify(rows))}
-async function loadTable(t){ const r=await supa.from(t).select('*').order('created_at',{ascending:false}); if(r.error){errors[t]=r.error.message; state[t]=t==='tasks'?localTasks():[]} else {delete errors[t]; state[t]=r.data||[];} }
+async function loadTable(t){ const r=await supa.from(t).select('*').order('created_at',{ascending:false}); if(r.error){state[t]=t==='tasks'?localTasks():[]; if(optionalTables.has(t)){delete errors[t];return} errors[t]=r.error.message;} else {delete errors[t]; state[t]=r.data||[];} }
 async function refresh(){setStatus('Syncing...'); await Promise.all(tables.map(t=>loadTable(t))); await autoLinkCustomerHistory(); const bad=Object.keys(errors).length; setStatus(bad?`Loaded with ${bad} table issue(s)`:'Cloud connected', bad?'bad':'ok'); renderAll(); handleInitialRoute();}
 function err(t){return errors[t]?`<div class=err><b>${t}</b>: ${esc(errors[t])}</div>`:''}
 function table(head,rows){ if(!rows.length)return '<div class=muted>No records yet.</div>'; return `<table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`;}
