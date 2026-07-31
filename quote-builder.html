@@ -488,6 +488,10 @@ function hideCustomerMatchesSoon(){setTimeout(hideCustomerMatches,160)}
 function selectedCustomerLabel(c){return `${qEsc(c.name||"Customer")}${c.phone?` - ${qEsc(c.phone)}`:""}${c.email?` - ${qEsc(c.email)}`:""}`}
 function selectCustomerProfile(id){let c=customerProfiles.find(x=>x.id===id);if(!c)return;selectedCustomerId=c.id;if($("customerName"))$("customerName").value=c.name||"";if($("customerPhone"))$("customerPhone").value=c.phone||"";if($("customerAddress"))$("customerAddress").value=c.address||"";let s=$("customerMatchStatus");if(s)s.innerHTML=`<div class="linkedCustomer">Linked to existing customer: ${selectedCustomerLabel(c)}</div>`;hideCustomerMatches();queueQuoteResize()}
 function updateCustomerMatches(){let box=$("customerMatches");if(!box)return;let raw=[val("customerName"),val("customerPhone"),val("customerAddress")].join(" ").trim(),digits=raw.replace(/\D/g,"");if(!raw||raw.length<2&&digits.length<3){box.classList.add("hidden");box.innerHTML="";return}let q=raw.toLowerCase(),matches=customerProfiles.filter(c=>customerText(c).includes(q)||digits&&String(c.phone||"").replace(/\D/g,"").includes(digits)).slice(0,6);if(!matches.length){box.innerHTML=`<div class="customerMatch"><div><strong>No existing customer found</strong><small>Continue typing to create a new customer on save.</small></div></div>`;box.classList.remove("hidden");queueQuoteResize();return}box.innerHTML=matches.map(c=>`<button type="button" class="customerMatch" onmousedown="event.preventDefault();selectCustomerProfile('${c.id}')"><div><strong>${qEsc(c.name||"Customer")}</strong><small>${[c.phone,c.email].filter(Boolean).map(qEsc).join(" - ")||"No contact saved"}</small><small>${qEsc(c.address||"")}</small></div><span class="price">Use</span></button>`).join("");box.classList.remove("hidden");queueQuoteResize()}
+function quoteCustomerPayload(){return {name:val("customerName").trim(),phone:val("customerPhone").trim()||null,email:null,address:val("customerAddress").trim()||null,status:"Active"}}
+function quoteSameCustomer(c,p){let name=String(p.name||"").trim().toLowerCase(),cname=String(c.name||"").trim().toLowerCase(),phone=String(p.phone||"").replace(/\D/g,""),cphone=String(c.phone||"").replace(/\D/g,""),addr=String(p.address||"").trim().toLowerCase(),caddr=String(c.address||"").trim().toLowerCase();return !!((name&&cname&&name===cname)||(phone&&cphone&&phone===cphone)||(addr&&caddr&&addr===caddr))}
+async function ensureQuoteCustomer(){if(!supa)throw new Error("Supabase is not loaded yet.");let p=quoteCustomerPayload();if(!p.name)throw new Error("Enter the customer name before saving the quote.");let existing=customerProfiles.find(c=>selectedCustomerId&&c.id===selectedCustomerId)||customerProfiles.find(c=>quoteSameCustomer(c,p));if(existing){let upd={};if(!existing.phone&&p.phone)upd.phone=p.phone;if(!existing.address&&p.address)upd.address=p.address;if(Object.keys(upd).length){let u=await supa.from("customers").update(upd).eq("id",existing.id).select().single();if(!u.error&&u.data){Object.assign(existing,u.data)}}selectedCustomerId=existing.id;return existing}let ins=await supa.from("customers").insert({...p,notes:"Created automatically from quote builder."}).select().single();if(ins.error)throw new Error(ins.error.message);customerProfiles.push(ins.data);selectedCustomerId=ins.data.id;return ins.data}
+async function ensureCustomerForQuoteRecord(quote){if(quote.customer_id)return quote.customer_id;let p={name:String(quote.customer||quote.quote_name||"").trim(),phone:quote.phone||null,email:quote.email||null,address:quote.address||null,status:"Active"};if(!p.name)throw new Error("This quote needs a customer name before creating a lead or job.");let existing=customerProfiles.find(c=>quoteSameCustomer(c,p));if(existing)return existing.id;let ins=await supa.from("customers").insert({...p,notes:"Created automatically from saved quote history."}).select().single();if(ins.error)throw new Error(ins.error.message);customerProfiles.push(ins.data);return ins.data.id}
 function quoteBuilderContentHeight(){
   const content=[...document.querySelectorAll(".app > section")].filter(el=>{
     const style=getComputedStyle(el);
@@ -836,7 +840,11 @@ function quotePayload(){
 async function saveQuote(options={}){
  if(!lastData){alert("Generate a quote first.");return;}
  if(!supa){alert("Supabase is not loaded yet.");return;}
+ let customerProfile;
+ try{customerProfile=await ensureQuoteCustomer()}catch(e){alert(e.message||e);return;}
+ if(lastData.customer){lastData.customer.customer_id=customerProfile.id;lastData.customer.name=lastData.customer.name||customerProfile.name;lastData.customer.phone=lastData.customer.phone||customerProfile.phone;lastData.customer.address=lastData.customer.address||customerProfile.address}
  const payload=quotePayload();
+ payload.customer_id=customerProfile.id;
  const existing=lastData.quoteId;
  const result=existing?await supa.from("quotes").update(payload).eq("id",existing).select().single():await supa.from("quotes").insert(payload).select().single();
  if(result.error){alert("Quote save failed: "+result.error.message);return;}
@@ -899,8 +907,9 @@ async function createJobFromCurrentQuote(){
 async function createLeadFromQuote(id){
  const quote=await loadQuote(id);if(!quote)return;
  if(quote.lead_id&&!confirm("This quote already has a lead. Create another lead anyway?"))return;
+ let customerId;try{customerId=await ensureCustomerForQuoteRecord(quote)}catch(e){alert(e.message||e);return;}
  const payload={
-  customer_id:quote.customer_id||quote.quote_json?.source_measurement?.customer_id||null,
+  customer_id:customerId,
   customer:quote.customer||quote.quote_name||"Quote Lead",
   phone:quote.phone||"",
   email:quote.email||"",
@@ -922,6 +931,7 @@ async function createLeadFromQuote(id){
 async function createJobFromQuote(id){
  const quote=await loadQuote(id);if(!quote)return;
  if(quote.job_id&&!confirm("This quote already has a job. Create another job anyway?"))return;
+ let customerId;try{customerId=await ensureCustomerForQuoteRecord(quote)}catch(e){alert(e.message||e);return;}
  const jobStatus=await jobStatusForQuote(quote);if(!jobStatus)return;
  const linkedLeadId=quote.lead_id||quote.quote_json?.source_measurement?.lead_id||"";
  const qFloors=quote.quote_json?.floors||[];
@@ -930,7 +940,7 @@ async function createJobFromQuote(id){
  const squareFeet=floorScopes.reduce((sum,f)=>sum+(+f.sqft||0),0)||quote.square_feet||0;
  const materialList=qFloors.flatMap(f=>(f.materials||[]).map(m=>({floor:f.i,area_name:f.area_name||'',system:f.system,sqft:f.sqft,options:f.options||{},option_details:f.option_details||[],name:m.name,qty:m.qty})));
  const payload={
-  customer_id:quote.customer_id||quote.quote_json?.source_measurement?.customer_id||null,
+  customer_id:customerId,
   customer:quote.customer||quote.quote_name||"Quote Job",
   phone:quote.phone||"",
   job_name:quote.quote_name||quote.customer||"Quote Job",
