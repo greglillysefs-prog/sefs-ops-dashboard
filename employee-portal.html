@@ -550,6 +550,35 @@
       margin-top: 12px;
     }
 
+    .mini-material-list {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      margin: 14px 0;
+      overflow: hidden;
+      background: rgba(255, 255, 255, .02);
+    }
+
+    .mini-material-list h4 {
+      margin: 0;
+      padding: 10px 12px;
+      background: rgba(255, 121, 0, .12);
+      font-size: 13px;
+      text-transform: uppercase;
+    }
+
+    .mini-material-list div {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 9px 12px;
+      border-top: 1px solid var(--line);
+    }
+
+    .mini-material-list b {
+      white-space: nowrap;
+      color: var(--orange);
+    }
+
     .button-link {
       border: 1px solid var(--orange);
       background: linear-gradient(180deg, #222, #141414);
@@ -1558,6 +1587,28 @@
       return target >= start && target <= (end || start);
     }
 
+    function compactMaterialList(job) {
+      return Array.isArray(job?.material_list)
+        ? job.material_list.filter((item) => item && String(item.name || '').trim())
+        : [];
+    }
+
+    function compactMaterialListHTML(job) {
+      const list = compactMaterialList(job);
+      if (!list.length || list.length >= 10) return '';
+      return `
+        <div class="mini-material-list">
+          <h4>Material List</h4>
+          ${list.map((item) => `
+            <div>
+              <span>${esc(item.name || 'Material')}</span>
+              <b>${esc([item.qty, item.unit].filter(Boolean).join(' ') || '-')}</b>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
     function scheduleJobUrl(job, hash = '') {
       const url = new URL('mobile-job.html', location.href);
       url.searchParams.set('job', job.id);
@@ -1727,7 +1778,7 @@
     async function loadJobs() {
       const result = await supa
         .from('jobs')
-        .select('id, customer, phone, job_name, address, system_type, square_feet, status, start_date, end_date, start_time, end_time, crew, notes, material_notes, floor_scopes')
+        .select('id, customer, phone, job_name, address, system_type, square_feet, status, start_date, end_date, start_time, end_time, crew, notes, material_notes, material_list, floor_scopes')
         .order('start_date', { ascending: true, nullsFirst: false })
         .order('start_time', { ascending: true });
       if (result.error) throw result.error;
@@ -2102,6 +2153,7 @@
           <div class="schedule-actions">
             <a class="button-link" href="${esc(scheduleJobUrl(selectedItem, 'materials'))}" target="_blank" rel="noopener">Material List</a>
           </div>
+          ${compactMaterialListHTML(selectedItem)}
           <div class="schedule-update-form">
             <label for="scheduleNote_${esc(selectedItem.id)}">Add Job Note</label>
             <textarea id="scheduleNote_${esc(selectedItem.id)}" placeholder="Crew notes, job progress, prep concerns, or anything the office should know."></textarea>
