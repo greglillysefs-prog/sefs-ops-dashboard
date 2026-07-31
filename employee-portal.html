@@ -422,7 +422,6 @@
       display: grid;
       grid-template-columns: repeat(7, minmax(0, 1fr));
       grid-template-rows: auto repeat(6, minmax(112px, auto));
-      position: relative;
     }
 
     .portal-calendar-head {
@@ -446,6 +445,7 @@
       border-right: 1px solid var(--line);
       padding: 8px;
       position: relative;
+      overflow: visible;
       background: rgba(255,255,255,.018);
     }
 
@@ -486,9 +486,11 @@
 
     .portal-calendar-bar {
       align-self: start;
-      position: relative;
+      position: absolute;
+      left: 3px;
+      top: 31px;
       z-index: 2;
-      margin: 31px 3px 0;
+      margin: 0;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -907,7 +909,7 @@
       .portal-calendar-day {
         min-height: 76px;
         padding: 4px 2px;
-        overflow: hidden;
+        overflow: visible;
       }
 
       .portal-calendar-date {
@@ -927,7 +929,8 @@
       }
 
       .portal-calendar-bar {
-        margin: 25px 1px 0;
+        left: 1px;
+        top: 25px;
       }
 
       .portal-calendar-event small {
@@ -1891,8 +1894,35 @@
       const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
       const heads = dayNames.map((day) => `<div class="portal-calendar-head">${day}</div>`).join('');
       const dayMs = 24 * 60 * 60 * 1000;
-      const diffDays = (a, b) => Math.round((scheduleDate(a) - scheduleDate(b)) / dayMs);
+      const diffDays = (a, b) => {
+        const left = scheduleDate(a);
+        const right = scheduleDate(b);
+        return left && right ? Math.round((left - right) / dayMs) : -1;
+      };
       const weekStacks = [0, 0, 0, 0, 0, 0];
+      const dayBars = Array.from({ length: 42 }, () => []);
+      scheduleJobs.forEach((job) => {
+        const start = job.start_date ? Math.max(0, diffDays(job.start_date, scheduleIsoDate(calendarStart))) : -1;
+        const end = job.start_date ? Math.min(41, diffDays(job.end_date || job.start_date, scheduleIsoDate(calendarStart))) : -1;
+        if (start < 0 || end < 0 || end < start) return;
+        for (let week = Math.floor(start / 7); week <= Math.floor(end / 7); week++) {
+          const segStart = Math.max(start, week * 7);
+          const segEnd = Math.min(end, week * 7 + 6);
+          const span = segEnd - segStart + 1;
+          const stack = weekStacks[week]++;
+          const top = window.matchMedia('(max-width: 760px)').matches ? 25 + stack * 22 : 31 + stack * 30;
+          dayBars[segStart].push(`
+            <button
+              type="button"
+              class="portal-calendar-event portal-calendar-bar ${job.id === selectedScheduleJobId ? 'active' : ''}"
+              style="top:${top}px;width:calc(${span * 100}% - 6px)"
+              onclick="selectScheduleJob('${esc(job.id)}')">
+              ${esc(moneylessJobName(job))}
+              <small>${esc([formatTime(job.start_time), job.address].filter(Boolean).join(' - ') || job.status || 'Scheduled')}</small>
+            </button>
+          `);
+        }
+      });
       const days = Array.from({ length: 42 }, (_, index) => {
         const date = addDays(calendarStart, index);
         const iso = scheduleIsoDate(date);
@@ -1904,37 +1934,15 @@
         return `
           <div class="${classes}">
             <div class="portal-calendar-date">${date.getDate()}</div>
+            ${dayBars[index].join('')}
           </div>
         `;
-      }).join('');
-      const bars = scheduleJobs.map((job) => {
-        const start = job.start_date ? Math.max(0, diffDays(job.start_date, scheduleIsoDate(calendarStart))) : -1;
-        const end = job.start_date ? Math.min(41, diffDays(job.end_date || job.start_date, scheduleIsoDate(calendarStart))) : -1;
-        if (start < 0 || end < 0 || end < start) return '';
-        let html = '';
-        for (let week = Math.floor(start / 7); week <= Math.floor(end / 7); week++) {
-          const segStart = Math.max(start, week * 7);
-          const segEnd = Math.min(end, week * 7 + 6);
-          const stack = weekStacks[week]++;
-          const top = window.matchMedia('(max-width: 760px)').matches ? 25 + stack * 22 : 31 + stack * 30;
-          html += `
-            <button
-              type="button"
-              class="portal-calendar-event portal-calendar-bar ${job.id === selectedScheduleJobId ? 'active' : ''}"
-              style="grid-row:${week + 2};grid-column:${(segStart % 7) + 1} / ${(segEnd % 7) + 2};margin-top:${top}px"
-              onclick="selectScheduleJob('${esc(job.id)}')">
-              ${esc(moneylessJobName(job))}
-              <small>${esc([formatTime(job.start_time), job.address].filter(Boolean).join(' - ') || job.status || 'Scheduled')}</small>
-            </button>
-          `;
-        }
-        return html;
       }).join('');
 
       const selectedJob = scheduleJobs.find((job) => job.id === selectedScheduleJobId) || scheduleJobs[0];
       $('scheduleList').innerHTML = `
         <div class="portal-calendar" aria-label="Assigned job calendar">
-          <div class="portal-calendar-grid">${heads}${days}${bars}</div>
+          <div class="portal-calendar-grid">${heads}${days}</div>
         </div>
         <article class="job-card portal-schedule-detail">
           <header>
