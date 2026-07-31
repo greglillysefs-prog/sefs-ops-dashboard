@@ -1945,7 +1945,7 @@
 
       const selectedJob = scheduleJobs.find((job) => job.id === selectedScheduleJobId) || scheduleJobs[0];
       $('scheduleList').innerHTML = `
-        <div class="portal-calendar" aria-label="Assigned job calendar">
+        <div class="portal-calendar" aria-label="Assigned job calendar" ontouchstart="scheduleSwipeBegin(event)" ontouchend="scheduleSwipeEnd(event)">
           <div class="portal-calendar-grid">${heads}${days}</div>
         </div>
         <article class="job-card portal-schedule-detail">
@@ -1981,6 +1981,28 @@
     window.shiftScheduleCalendar = function shiftScheduleCalendar(months) {
       scheduleCalendarMonth = new Date(scheduleCalendarMonth.getFullYear(), scheduleCalendarMonth.getMonth() + months, 1);
       renderSchedule();
+    };
+
+    let scheduleSwipeStart = null;
+
+    window.scheduleSwipeBegin = function scheduleSwipeBegin(event) {
+      const touch = event.touches && event.touches[0];
+      if (!touch) return;
+      scheduleSwipeStart = { x: touch.clientX, y: touch.clientY };
+    };
+
+    window.scheduleSwipeEnd = function scheduleSwipeEnd(event) {
+      if (!scheduleSwipeStart) return;
+      const touch = event.changedTouches && event.changedTouches[0];
+      if (!touch) {
+        scheduleSwipeStart = null;
+        return;
+      }
+      const dx = touch.clientX - scheduleSwipeStart.x;
+      const dy = touch.clientY - scheduleSwipeStart.y;
+      scheduleSwipeStart = null;
+      if (Math.abs(dx) < 55 || Math.abs(dx) < Math.abs(dy) * 1.35) return;
+      shiftScheduleCalendar(dx < 0 ? 1 : -1);
     };
 
     window.goToScheduleToday = function goToScheduleToday() {
