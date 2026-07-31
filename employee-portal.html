@@ -1510,6 +1510,10 @@
       return url.href;
     }
 
+    function activeTimeJob(job) {
+      return !['Complete', 'Lost', 'Canceled'].includes(job?.status);
+    }
+
     function statusClass(status) {
       return String(status || 'draft').toLowerCase();
     }
@@ -1657,7 +1661,7 @@
         .order('start_date', { ascending: true, nullsFirst: false })
         .order('start_time', { ascending: true });
       if (result.error) throw result.error;
-      jobs = (result.data || []).filter((job) => !['Complete', 'Lost', 'Canceled'].includes(job.status));
+      jobs = result.data || [];
     }
 
     async function loadScheduleJobs() {
@@ -1671,7 +1675,7 @@
       const crewFallbackJobs = jobs.filter(jobMatchesCurrentEmployee);
       const byId = new Map([...assignedJobs, ...crewFallbackJobs].map((job) => [job.id, job]));
       scheduleJobs = Array.from(byId.values())
-        .filter((job) => !['Complete', 'Lost', 'Canceled'].includes(job.status))
+        .filter((job) => job.start_date)
         .sort((a, b) => String(a.start_date || '9999').localeCompare(String(b.start_date || '9999')) || String(a.start_time || '').localeCompare(String(b.start_time || '')));
       if (!scheduleCalendarInitialized && scheduleJobs.length) {
         const firstScheduled = scheduleJobs.find((job) => job.start_date) || scheduleJobs[0];
@@ -1821,7 +1825,7 @@
 
     function renderJobOptions() {
       $('jobId').disabled = false;
-      $('jobId').innerHTML = `<option value="">Other / No job</option>` + jobs.map((job) => `<option value="${job.id}">${esc(moneylessJobName(job))} - ${esc(formatRange(job))}</option>`).join('');
+      $('jobId').innerHTML = `<option value="">Other / No job</option>` + jobs.filter(activeTimeJob).map((job) => `<option value="${job.id}">${esc(moneylessJobName(job))} - ${esc(formatRange(job))}</option>`).join('');
     }
 
     function renderCrewTimePanel() {
