@@ -2960,7 +2960,7 @@
       const source = document.querySelector('.weekly-print-target');
       if (!source) throw new Error('Weekly timesheet is not available yet.');
       const clone = source.cloneNode(true);
-      clone.querySelectorAll('.no-print, details, .weekly-print-target > p.muted').forEach((node) => node.remove());
+      clone.querySelectorAll('.no-print, details, .mobile-timesheet, .weekly-print-target > p.muted').forEach((node) => node.remove());
       const title = clone.querySelector('h3')?.textContent || 'Weekly Timesheet';
       const period = clone.querySelector('.muted')?.textContent || '';
       return { title, period, html: clone.outerHTML };
@@ -2980,11 +2980,12 @@
             .muted { color: #444; }
             .weekly-tools { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
             .status { border: 1px solid #111; border-radius: 999px; padding: 6px 10px; font-weight: 800; white-space: nowrap; }
-            .timesheet-wrap { width: 100%; overflow: visible; }
-            table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 9px; }
+            .mobile-timesheet { display: none !important; }
+            .timesheet-wrap { display: block !important; width: 100%; overflow: visible; }
+            table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 8.5px; }
             th, td { border: 1px solid #999; padding: 5px 4px; text-align: center; vertical-align: middle; color: #111; }
             th { background: #eee; text-transform: uppercase; font-weight: 800; }
-            .employee-col { width: 120px; text-align: left; font-weight: 800; background: #f7f7f7; }
+            .employee-col { width: 110px; text-align: left; font-weight: 800; background: #f7f7f7; }
             .total-col, .pay-col, .overtime-col { font-weight: 800; }
             tfoot td { font-weight: 800; background: #f3f3f3; }
             .timesheet-notes-row td { vertical-align: top; font-weight: 400; }

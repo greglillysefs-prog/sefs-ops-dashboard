@@ -80,14 +80,18 @@
       white-space: nowrap;
     }
     .timesheet-wrap {
+      display: block !important;
       width: 100%;
       overflow: visible;
+    }
+    .mobile-timesheet {
+      display: none !important;
     }
     table {
       width: 100%;
       border-collapse: collapse;
       table-layout: fixed;
-      font-size: 9px;
+      font-size: 8.5px;
     }
     th, td {
       border: 1px solid #999;
@@ -102,7 +106,7 @@
       font-weight: 800;
     }
     .employee-col {
-      width: 120px;
+      width: 110px;
       text-align: left;
       font-weight: 800;
       background: #f7f7f7;
@@ -172,6 +176,8 @@
       document.getElementById('docTitle').textContent = data.title || 'Weekly Timesheet';
       document.getElementById('docPeriod').textContent = data.period || '';
       paper.innerHTML = data.html;
+      paper.querySelectorAll('.mobile-timesheet, .no-print, details').forEach((node) => node.remove());
+      paper.querySelectorAll('.timesheet-wrap').forEach((node) => { node.style.display = 'block'; });
     } catch (error) {
       paper.className = 'empty';
       paper.innerHTML = `<h2>Weekly Timesheet Not Found</h2><p>${String(error.message || error)}</p><p>Go back to the Employee Portal and press Share / Save PDF again.</p>`;
