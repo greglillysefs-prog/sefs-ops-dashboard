@@ -49,6 +49,16 @@
       background: #222;
       color: #fff;
     }
+    .secondary {
+      background: #222;
+      color: #fff;
+    }
+    .hint {
+      color: #555;
+      font-size: 12px;
+      margin: 10px 0 0;
+      text-align: center;
+    }
     main {
       padding: 18px;
     }
@@ -161,21 +171,58 @@
     </div>
     <div class="actions">
       <a href="employee-portal.html">Back to Portal</a>
-      <button type="button" onclick="window.print()">Print / Save PDF</button>
+      <button type="button" class="secondary" onclick="shareTimesheet()">Share</button>
+      <button type="button" onclick="printTimesheet()">Print / Save PDF</button>
     </div>
   </div>
   <main>
     <div id="paper" class="paper"></div>
+    <p id="shareHint" class="hint"></p>
   </main>
   <script>
     const paper = document.getElementById('paper');
+    let printData = {};
+    function printTimesheet() {
+      const hint = document.getElementById('shareHint');
+      if (hint) hint.textContent = 'Opening print dialog...';
+      setTimeout(() => {
+        try {
+          window.focus();
+          window.print();
+          if (hint) hint.textContent = 'If the print dialog did not open, use your browser share button and choose Print.';
+        } catch (error) {
+          if (hint) hint.textContent = 'Print is blocked in this browser. Use Share, then choose Print or Save to Files.';
+        }
+      }, 80);
+    }
+    async function shareTimesheet() {
+      const hint = document.getElementById('shareHint');
+      const title = document.getElementById('docTitle')?.textContent || 'Weekly Timesheet';
+      const period = document.getElementById('docPeriod')?.textContent || '';
+      const text = `${title}${period ? ' - ' + period : ''}`;
+      try {
+        if (navigator.share) {
+          await navigator.share({ title: text, text, url: location.href });
+          if (hint) hint.textContent = 'Shared.';
+          return;
+        }
+      } catch (error) {
+        if (error?.name === 'AbortError') return;
+      }
+      try {
+        await navigator.clipboard.writeText(location.href);
+        if (hint) hint.textContent = 'Share is not available here, so the page link was copied. You can also use Print / Save PDF.';
+      } catch (error) {
+        if (hint) hint.textContent = 'Share is not available in this browser. Use Print / Save PDF or your browser share button.';
+      }
+    }
     try {
-      const data = JSON.parse(sessionStorage.getItem('sefs_weekly_timesheet_print') || '{}');
-      if (!data.html) throw new Error('No weekly timesheet was sent to this page.');
-      document.title = `${data.title || 'Weekly Timesheet'} ${data.period || ''}`.trim();
-      document.getElementById('docTitle').textContent = data.title || 'Weekly Timesheet';
-      document.getElementById('docPeriod').textContent = data.period || '';
-      paper.innerHTML = data.html;
+      printData = JSON.parse(sessionStorage.getItem('sefs_weekly_timesheet_print') || '{}');
+      if (!printData.html) throw new Error('No weekly timesheet was sent to this page.');
+      document.title = `${printData.title || 'Weekly Timesheet'} ${printData.period || ''}`.trim();
+      document.getElementById('docTitle').textContent = printData.title || 'Weekly Timesheet';
+      document.getElementById('docPeriod').textContent = printData.period || '';
+      paper.innerHTML = printData.html;
       paper.querySelectorAll('.mobile-timesheet, .no-print, details').forEach((node) => node.remove());
       paper.querySelectorAll('.timesheet-wrap').forEach((node) => { node.style.display = 'block'; });
     } catch (error) {
