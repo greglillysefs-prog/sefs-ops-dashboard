@@ -381,6 +381,7 @@ alter table system_recipes add column if not exists default_labor_days numeric d
 alter table system_recipes add column if not exists default_labor_rate numeric default 250;
 alter table system_recipes add column if not exists default_price_per_sqft numeric default 0;
 alter table system_recipes add column if not exists quote_enabled boolean default false;
+alter table system_recipes add column if not exists option_schema jsonb default '[]'::jsonb;
 alter table system_recipes add column if not exists labor_notes text;
 alter table system_recipes add column if not exists active boolean default true;
 alter table system_recipes add column if not exists sort_order numeric default 0;
