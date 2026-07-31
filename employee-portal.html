@@ -1106,7 +1106,10 @@
           <p id="userLine">Sign in to view your schedule and time.</p>
         </div>
       </div>
-      <button id="signOutBtn" class="ghost hidden" type="button">Sign Out</button>
+      <div class="actions">
+        <a id="dashboardLink" class="ghost hidden" href="index.html">SEFS Dashboard</a>
+        <button id="signOutBtn" class="ghost hidden" type="button">Sign Out</button>
+      </div>
     </header>
 
     <section id="authCard" class="card">
@@ -2646,6 +2649,7 @@
       $('authCard').classList.toggle('hidden', Boolean(session));
       $('app').classList.toggle('hidden', !session);
       $('signOutBtn').classList.toggle('hidden', !session);
+      $('dashboardLink').classList.toggle('hidden', !(session && canReviewTime()));
       $('userLine').textContent = session
         ? `${profile?.full_name || session.user.email || 'Signed in'}${profile?.role ? ` - ${profile.role}` : ''}`
         : 'Sign in to view your schedule and time.';
