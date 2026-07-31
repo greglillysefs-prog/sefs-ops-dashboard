@@ -1205,6 +1205,7 @@
         <label for="mobileTabSelect">Go To</label>
         <select id="mobileTabSelect" aria-label="Employee portal section">
           <option value="schedule">Schedule</option>
+          <option value="tasks">Tasks</option>
           <option value="time">Add Time</option>
           <option value="entries">Entries</option>
           <option value="pto">PTO</option>
@@ -1216,6 +1217,7 @@
 
       <div class="tabs">
         <button class="primary" type="button" data-tab="schedule">Schedule</button>
+        <button type="button" data-tab="tasks">Tasks</button>
         <button type="button" data-tab="time">Add Time</button>
         <button type="button" data-tab="entries">Entries</button>
       </div>
@@ -1309,6 +1311,11 @@
             <div id="entryMode" class="actions"></div>
             <div id="entryList" class="entry-list"></div>
           </div>
+          <div id="tasksPanel" class="card mobile-panel hidden-mobile">
+            <h2>My Tasks</h2>
+            <input id="taskSearch" placeholder="Search your tasks" oninput="setTaskSearch(this.value)">
+            <div id="taskList" class="entry-list"></div>
+          </div>
         </section>
 
         <aside id="timePanel" class="mobile-panel">
@@ -1397,6 +1404,9 @@
     let jobs = [];
     let scheduleJobs = [];
     let scheduleTasks = [];
+    let portalTasks = [];
+    let taskAuditLogs = [];
+    let taskSearch = '';
     let scheduleCalendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     let scheduleCalendarInitialized = false;
     let selectedScheduleItemKey = '';
@@ -1642,6 +1652,8 @@
       jobs = [];
       scheduleJobs = [];
       scheduleTasks = [];
+      portalTasks = [];
+      taskAuditLogs = [];
       selectedScheduleItemKey = '';
       entries = [];
       entryAuditLogs = [];
@@ -1727,13 +1739,9 @@
     }
 
     async function loadScheduleTasks() {
-      const result = await supa
-        .from('tasks')
-        .select('id, title, details, status, priority, due_date, due_time, assigned_to, show_on_schedule')
-        .order('due_date', { ascending: true, nullsFirst: false })
-        .order('due_time', { ascending: true });
-      scheduleTasks = result.error ? [] : (result.data || [])
-        .filter((task) => task.due_date && task.show_on_schedule !== false && task.status !== 'Done' && taskAssignedToCurrentEmployee(task))
+      await loadPortalTasks();
+      scheduleTasks = portalTasks
+        .filter((task) => task.due_date && task.show_on_schedule !== false && task.status !== 'Done')
         .map((task) => ({
           ...task,
           kind: 'task',
@@ -1746,6 +1754,37 @@
           address: task.details || '',
           crew: task.assigned_to || ''
         }));
+    }
+
+    async function loadPortalTasks() {
+      let result = await supa
+        .from('tasks')
+        .select('id, title, details, status, priority, due_date, due_time, assigned_to, show_on_schedule, completed_at, completed_by, completed_by_name, created_at, updated_at')
+        .order('due_date', { ascending: true, nullsFirst: false })
+        .order('due_time', { ascending: true });
+      if (result.error && String(result.error.message || '').includes('schema cache')) {
+        result = await supa
+          .from('tasks')
+          .select('id, title, details, status, priority, due_date, due_time, assigned_to, show_on_schedule, created_at, updated_at')
+          .order('due_date', { ascending: true, nullsFirst: false })
+          .order('due_time', { ascending: true });
+      }
+      portalTasks = result.error ? [] : (result.data || []).filter(taskAssignedToCurrentEmployee);
+      await loadTaskAuditLogs();
+    }
+
+    async function loadTaskAuditLogs() {
+      if (!portalTasks.length) {
+        taskAuditLogs = [];
+        return;
+      }
+      const result = await supa
+        .from('task_audit_logs')
+        .select('id, task_id, actor_user_id, actor_name, action_type, reason, created_at')
+        .in('task_id', portalTasks.map((task) => task.id))
+        .order('created_at', { ascending: false })
+        .limit(100);
+      taskAuditLogs = result.error ? [] : (result.data || []);
     }
 
     async function loadEntries() {
@@ -2029,7 +2068,11 @@
             <div class="fact"><b>Type</b>Task</div>
           </div>
           ${selectedItem.details ? `<p class="muted">${esc(selectedItem.details)}</p>` : ''}
-          <p class="muted">Tasks are read-only in the employee portal. Use the dashboard to edit task details.</p>
+          ${selectedItem.completed_at ? `<p class="muted">Completed ${esc(new Date(selectedItem.completed_at).toLocaleString())} by ${esc(selectedItem.completed_by_name || 'Unknown')}</p>` : ''}
+          <div class="actions">
+            ${selectedItem.status !== 'Done' ? `<button class="primary" type="button" onclick="completePortalTask('${esc(selectedItem.id)}')">Mark Complete</button>` : ''}
+          </div>
+          <p class="muted">Tasks can only be completed from the employee portal. Use the dashboard to edit task details.</p>
         </article>`
         : `
         <article class="job-card portal-schedule-detail">
@@ -2067,6 +2110,96 @@
         ${selectedDetail}
       `;
     }
+
+    function taskMatchesSearch(task) {
+      const query = taskSearch.trim().toLowerCase();
+      if (!query) return true;
+      return [task.title, task.details, task.status, task.priority, task.assigned_to, task.completed_by_name]
+        .some((value) => String(value || '').toLowerCase().includes(query));
+    }
+
+    function taskAuditFor(taskId) {
+      return taskAuditLogs
+        .filter((log) => log.task_id === taskId)
+        .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+    }
+
+    function renderTasksPanel() {
+      const list = $('taskList');
+      if (!list) return;
+      const rows = portalTasks
+        .filter(taskMatchesSearch)
+        .sort((a, b) => {
+          const aDone = a.status === 'Done';
+          const bDone = b.status === 'Done';
+          if (aDone !== bDone) return aDone ? 1 : -1;
+          return String(a.due_date || '9999').localeCompare(String(b.due_date || '9999')) || String(a.due_time || '').localeCompare(String(b.due_time || ''));
+        });
+      list.innerHTML = rows.length ? rows.map((task) => {
+        const logs = taskAuditFor(task.id).slice(0, 3);
+        return `
+          <article class="entry-card">
+            <header>
+              <div>
+                <h3>${esc(taskTitle(task))}</h3>
+                <span class="muted">${task.due_date ? `${esc(formatDate(task.due_date))}${task.due_time ? ` - ${esc(formatTime(task.due_time))}` : ''}` : 'No due date'}</span>
+              </div>
+              <span class="status ${task.status === 'Done' ? 'approved' : 'submitted'}">${esc(task.status || 'Open')}</span>
+            </header>
+            <div class="facts">
+              <div class="fact"><b>Priority</b>${esc(task.priority || 'Normal')}</div>
+              <div class="fact"><b>Assigned To</b>${esc(task.assigned_to || '-')}</div>
+            </div>
+            ${task.details ? `<p class="muted">${esc(task.details)}</p>` : ''}
+            ${task.completed_at ? `<p class="muted">Completed ${esc(new Date(task.completed_at).toLocaleString())} by ${esc(task.completed_by_name || 'Unknown')}</p>` : ''}
+            ${logs.length ? `<details><summary>Changes</summary>${logs.map((log) => `<p class="muted">${esc(new Date(log.created_at).toLocaleString())} - ${esc(log.action_type)} by ${esc(log.actor_name || 'Unknown')}${log.reason ? `: ${esc(log.reason)}` : ''}</p>`).join('')}</details>` : ''}
+            <div class="actions">
+              ${task.status !== 'Done' ? `<button class="primary" type="button" onclick="completePortalTask('${esc(task.id)}')">Mark Complete</button>` : ''}
+            </div>
+          </article>
+        `;
+      }).join('') : '<div class="muted">No tasks match your search.</div>';
+    }
+
+    window.setTaskSearch = function setTaskSearch(value) {
+      taskSearch = value || '';
+      renderTasksPanel();
+    };
+
+    window.completePortalTask = async function completePortalTask(id) {
+      const task = portalTasks.find((item) => item.id === id);
+      if (!task || task.status === 'Done') return;
+      const actorName = profile?.full_name || session?.user?.email || 'Employee';
+      const stamp = new Date().toISOString();
+      const payload = {
+        status: 'Done',
+        completed_at: stamp,
+        completed_by: session?.user?.id || null,
+        completed_by_name: actorName
+      };
+      try {
+        let result = await supa.from('tasks').update(payload).eq('id', id);
+        if (result.error && String(result.error.message || '').includes('schema cache')) {
+          result = await supa.from('tasks').update({ status: 'Done' }).eq('id', id);
+        }
+        if (result.error) throw result.error;
+        const auditResult = await supa.from('task_audit_logs').insert({
+          task_id: id,
+          actor_user_id: session?.user?.id || null,
+          actor_name: actorName,
+          action_type: 'completed',
+          previous_values: task,
+          new_values: { ...task, ...payload },
+          reason: 'Marked complete from employee portal',
+          device_info: deviceInfo()
+        });
+        setMessage('appMessage', auditResult.error ? 'Task marked complete. Run the task audit SQL migration to keep completion logs across devices.' : 'Task marked complete.');
+        await refresh();
+        setActiveTab('tasks');
+      } catch (error) {
+        setMessage('appMessage', error.message, true);
+      }
+    };
 
     window.shiftScheduleCalendar = function shiftScheduleCalendar(months) {
       scheduleCalendarMonth = new Date(scheduleCalendarMonth.getFullYear(), scheduleCalendarMonth.getMonth() + months, 1);
@@ -2861,6 +2994,7 @@
       renderJobOptions();
       ensureCrewOptionsForSelectedJob();
       renderSchedule();
+      renderTasksPanel();
       renderTotals();
       renderEntries();
       renderManagerReview();
@@ -3205,13 +3339,14 @@
       });
       if ($('mobileTabSelect')) $('mobileTabSelect').value = tab;
       const show = (id, shouldShow) => $(id)?.classList.toggle('hidden-mobile', !shouldShow);
-      const usesScheduleColumn = ['schedule', 'entries'].includes(tab);
+      const usesScheduleColumn = ['schedule', 'tasks', 'entries'].includes(tab);
       const usesTimeColumn = ['time', 'pto', 'pay_rates'].includes(tab);
       $('managerTopPanel').classList.toggle('hidden-mobile', !['review', 'pay_periods'].includes(tab));
       show('managerReviewCard', tab === 'review' && canReviewTime());
       show('payPeriodsPanel', tab === 'pay_periods');
       show('schedulePanel', usesScheduleColumn);
       show('scheduleCard', tab === 'schedule');
+      show('tasksPanel', tab === 'tasks');
       show('entriesPanel', tab === 'entries');
       show('timePanel', usesTimeColumn);
       show('timeEntryPanel', tab === 'time');
@@ -3362,6 +3497,8 @@
       jobs = [];
       scheduleJobs = [];
       scheduleTasks = [];
+      portalTasks = [];
+      taskAuditLogs = [];
       selectedScheduleItemKey = '';
       entries = [];
       managerEntries = [];
