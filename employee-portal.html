@@ -550,6 +550,35 @@
       margin-top: 12px;
     }
 
+    .address-link {
+      color: var(--orange);
+      font-weight: 900;
+      text-decoration: none;
+    }
+
+    .address-link:hover,
+    .address-link:focus {
+      text-decoration: underline;
+    }
+
+    .schedule-map {
+      width: 100%;
+      height: 180px;
+      margin-top: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #050505;
+    }
+
+    .schedule-map iframe {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      display: block;
+      filter: grayscale(.15) contrast(1.05);
+    }
+
     .mini-material-list {
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -1593,6 +1622,11 @@
         : [];
     }
 
+    function materialQtyText(item) {
+      const qty = Math.ceil(Math.max(0, Number(item?.qty) || 0));
+      return [qty || '', item?.unit].filter(Boolean).join(' ') || '-';
+    }
+
     function compactMaterialListHTML(job) {
       const list = compactMaterialList(job);
       if (!list.length || list.length >= 10) return '';
@@ -1602,7 +1636,7 @@
           ${list.map((item) => `
             <div>
               <span>${esc(item.name || 'Material')}</span>
-              <b>${esc([item.qty, item.unit].filter(Boolean).join(' ') || '-')}</b>
+              <b>${esc(materialQtyText(item))}</b>
             </div>
           `).join('')}
         </div>
@@ -1615,6 +1649,26 @@
       url.searchParams.set('crew', '1');
       if (hash) url.hash = hash;
       return url.href;
+    }
+
+    function mapUrl(address) {
+      return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address || '')}`;
+    }
+
+    function mapEmbedUrl(address) {
+      return `https://maps.google.com/maps?q=${encodeURIComponent(address || '')}&output=embed`;
+    }
+
+    function addressLinkHTML(address) {
+      const value = String(address || '').trim();
+      if (!value) return '-';
+      return `<a class="address-link" href="${esc(mapUrl(value))}" target="_blank" rel="noopener">${esc(value)}</a>`;
+    }
+
+    function scheduleMapHTML(address) {
+      const value = String(address || '').trim();
+      if (!value) return '';
+      return `<div class="schedule-map"><iframe title="Map to ${esc(value)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade" src="${esc(mapEmbedUrl(value))}"></iframe></div>`;
     }
 
     function activeTimeJob(job) {
@@ -2144,10 +2198,11 @@
           </header>
           <div class="facts">
             <div class="fact"><b>When</b>${esc(formatRange(selectedItem))}</div>
-            <div class="fact"><b>Address</b>${esc(selectedItem.address || '-')}</div>
+            <div class="fact"><b>Address</b>${addressLinkHTML(selectedItem.address)}</div>
             <div class="fact"><b>Square Feet</b>${Number(selectedItem.square_feet || 0).toLocaleString()}</div>
             <div class="fact"><b>Crew</b>${esc(selectedItem.crew || '-')}</div>
           </div>
+          ${scheduleMapHTML(selectedItem.address)}
           ${selectedItem.notes ? `<p class="muted">${esc(selectedItem.notes)}</p>` : ''}
           ${selectedItem.material_notes ? `<p class="muted">${esc(selectedItem.material_notes)}</p>` : ''}
           <div class="schedule-actions">
