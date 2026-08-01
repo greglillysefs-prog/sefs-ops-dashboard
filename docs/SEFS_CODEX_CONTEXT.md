@@ -223,6 +223,29 @@ Recent mobile navigation update:
 - Employee Portal/Admin links from mobile dropdown should use same-tab navigation (`location.assign`) instead of `window.open`, because mobile browsers can block dropdown-triggered popups.
 - Desktop navigation should remain full/sidebar-oriented.
 
+## Latest Session Notes
+
+2026-07-31:
+
+- Latest known branch commit: `a3c5de5 Streamline quote builder workspace`.
+- Recent related commits:
+  - `5474b36 Add quote price sheet controls`
+  - `52719a5 Move tasks navigation to production`
+  - `15f28b4 Wire system option materials into quotes`
+  - `353d67e Harden modal save handling`
+- Quote builder was cleaned up to feel more like the dashboard:
+  - Removed the huge inline/base64 logo payload from `quote-builder.html`.
+  - Replaced quote-builder logo references with `assets/sefs-icon.jpeg`.
+  - Reworked the start screen into a compact Quote Workspace flow.
+  - Fixed the New Quote flow so it moves to the customer form and sets the correct active step.
+  - Verified `quote-builder.html` direct in browser with no console errors after the cleanup.
+- Quote builder file size was reduced substantially by removing embedded base64 image data.
+- GitHub push note:
+  - A push showed `update_ref failed for ref 'refs/remotes/origin/sefs-ui-workflow-revamp'`.
+  - `git ls-remote` confirmed GitHub already had commit `a3c5de5`.
+  - Local stale remote-tracking ref was repaired with `git update-ref refs/remotes/origin/sefs-ui-workflow-revamp a3c5de5...`.
+  - If this happens again, first verify GitHub with `git ls-remote origin refs/heads/sefs-ui-workflow-revamp` before assuming the push failed.
+
 ## Development Rules for Codex
 
 Before making changes:
