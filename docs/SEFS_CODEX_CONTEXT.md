@@ -244,8 +244,15 @@ Recent mobile navigation update:
   - Creates/permits a `Needs Quote` job without customer name or phone.
   - Saves `customer` as `Unknown`, `phone` as `null`, and does not create/link an `Unknown` customer profile.
   - Uses a generated job name from address/system where possible.
-- Open issue to address next:
-  - User reported the Quick Intake Parser is not recognizing a simple address. Inspect and improve `parseIntakeAddress` in `index.html`, especially common short address formats.
+- Quick Intake Parser address/date handling was improved:
+  - `parseIntakeAddress` now recognizes fuller street/city/state/ZIP addresses such as `5024 Halls Hill Pike Murfreesboro, TN 37130`.
+  - Address parsing recognizes suffixes such as `Pike`, `Place`, `Trail`, `Terrace`, and `Loop`.
+  - Address parsing strips sqft and time phrases first so values like `500sqft`, `6AM`, and `12 PM` are not mistaken for street numbers.
+  - `parseIntakeDate` now recognizes month-name dates like `Wednesday, Aug 5, 2026`.
+  - `parseIntakeTimeRange` recognizes time windows like `6AM - 12 PM`.
+  - Quick Intake job creation now saves parsed `start_date`, `start_time`, `end_date`, and `end_time`.
+  - If a clear schedule date is parsed, Quick Intake creates the job as `Scheduled` so it appears on the calendar.
+  - Verified screenshot sample parsed as address `5024 Halls Hill Pike Murfreesboro, TN 37130`, date `2026-08-05`, start `06:00`, end `12:00`.
 
 2026-07-31:
 
