@@ -225,6 +225,28 @@ Recent mobile navigation update:
 
 ## Latest Session Notes
 
+2026-08-01:
+
+- Price Sheet / Systems option pricing was expanded:
+  - Price Sheet shows quote-builder fallback system rates when `system_recipes.default_price_per_sqft` is still `0`.
+  - Saving the Price Sheet writes those displayed base rates to Supabase.
+  - Option pricing is shown alongside base system rates.
+  - System Options now support explicit pricing modes:
+    - `Square-foot pricing` for add-ons charged per sq ft.
+    - `Unit pricing with coverage` for add-ons charged as full units over a coverage amount.
+  - Cove base defaults to unit pricing:
+    - 4 inch: `$250` per `25 LF`.
+    - 6 inch: `$300` per `20 LF`.
+  - Fill joints defaults to unit pricing:
+    - `$250` per `25 LF`.
+  - Quote builder calculates custom unit-priced options as `ceil(quantity / coverage) * unit price`.
+- Quick Intake Parser was updated so typing `unknown customer`:
+  - Creates/permits a `Needs Quote` job without customer name or phone.
+  - Saves `customer` as `Unknown`, `phone` as `null`, and does not create/link an `Unknown` customer profile.
+  - Uses a generated job name from address/system where possible.
+- Open issue to address next:
+  - User reported the Quick Intake Parser is not recognizing a simple address. Inspect and improve `parseIntakeAddress` in `index.html`, especially common short address formats.
+
 2026-07-31:
 
 - Latest known branch commit: `a3c5de5 Streamline quote builder workspace`.
