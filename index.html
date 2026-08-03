@@ -70,7 +70,7 @@ main{overflow:visible}
 .calendar-day:nth-of-type(7n+7){border-right:0}
 .calendar-day.other{background:#080808;color:#666}
 .calendar-day.today{box-shadow:inset 0 0 0 2px var(--o)}
-.calendar-day.drag-over{background:#1b1209}.calendar-day{cursor:pointer;position:relative}.calendar-day:hover{background:#15110d}.calendar-day-add{position:absolute;top:4px;right:4px;z-index:5;display:inline-flex;border:1px solid #444;border-radius:999px;background:#111;color:var(--o);font-size:11px;font-weight:900;padding:3px 7px;cursor:pointer}
+.calendar-day.drag-over{background:#1b1209}.calendar-day{cursor:pointer;position:relative}.calendar-day:hover{background:#15110d}
 .calendar-date{position:relative;z-index:4;font-weight:900;color:#bbb;margin-bottom:7px}
 .calendar-event{display:block;text-align:left;border:1px solid #555;border-left:4px solid var(--o);border-radius:6px;background:#181818;color:#eee;padding:6px;margin:0 4px 6px;cursor:grab;font-size:12px;line-height:1.25;z-index:2;align-self:start;min-width:0;box-shadow:0 8px 14px #0006}
 .calendar-event:active{cursor:grabbing}
@@ -116,7 +116,7 @@ img,iframe{max-width:100%}
   .calendar-head{display:block;padding:7px 2px;font-size:10px;text-align:center}
   .calendar-day{display:block;min-height:82px;padding:4px 2px;border-right:1px solid #333;overflow:hidden}
   .calendar-day.other{display:block}
-  .calendar-date{font-size:11px;margin-bottom:4px}.calendar-day-add{display:inline-flex;top:3px;right:3px;padding:1px 5px;font-size:9px}
+  .calendar-date{font-size:11px;margin-bottom:4px}
   .calendar-event{margin:0 1px 3px;padding:4px 3px;border-left-width:2px;border-radius:4px;font-size:9px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;box-shadow:none}
   .calendar-event b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .calendar-event small,.calendar-actions{display:none}
@@ -689,7 +689,7 @@ function calendarEvent(j,style=''){if(j.kind==='task')return `<div class=calenda
 function compactCalendarLayout(){return window.matchMedia&&window.matchMedia('(max-width: 760px)').matches}
 function renderScheduleMonth(jobs){
  let y=scheduleUi.month.getFullYear(),m=scheduleUi.month.getMonth(),first=new Date(y,m,1),start=addDays(first,-first.getDay()),end=addDays(start,41),todayIso=today(),cells=[],bars=[],weekStacks=[0,0,0,0,0,0];
- for(let i=0;i<42;i++){let d=addDays(start,i),iso=isoDate(d),other=d.getMonth()!==m,w=Math.floor(i/7),col=d.getDay()+1;cells.push(`<div class="calendar-day ${other?'other':''} ${iso===todayIso?'today':''}" style="grid-column:${col};grid-row:${w+2};${col===7?'border-right:0':''}" onclick="openScheduleDateFromCell(event,'${iso}')" ondragover="allowJobDrop(event)" ondragleave="leaveJobDrop(event)" ondrop="dropJobOnDate(event,'${iso}')"><div class=calendar-date>${d.getDate()}</div><button type=button class=calendar-day-add onclick="openScheduleDateFromCell(event,'${iso}')">+ Add</button></div>`)}
+ for(let i=0;i<42;i++){let d=addDays(start,i),iso=isoDate(d),other=d.getMonth()!==m,w=Math.floor(i/7),col=d.getDay()+1;cells.push(`<div class="calendar-day ${other?'other':''} ${iso===todayIso?'today':''}" style="grid-column:${col};grid-row:${w+2};${col===7?'border-right:0':''}" onclick="openScheduleDateFromCell(event,'${iso}')" ondragover="allowJobDrop(event)" ondragleave="leaveJobDrop(event)" ondrop="dropJobOnDate(event,'${iso}')"><div class=calendar-date>${d.getDate()}</div></div>`)}
  for(const j of jobs){let js=j.start_date,je=j.end_date||j.start_date;if(!js||je<isoDate(start)||js>isoDate(end))continue;for(let w=0;w<6;w++){let ws=isoDate(addDays(start,w*7)),we=isoDate(addDays(start,w*7+6)),ss=js>ws?js:ws,ee=je<we?je:we;if(ss>ee)continue;let col=dateObj(ss).getDay()+1,span=dateDiff(ss,ee)+1,stack=weekStacks[w]++,compact=compactCalendarLayout(),top=(compact?24:30)+stack*(compact?22:64);bars.push(calendarEvent(j,`grid-column:${col}/span ${span};grid-row:${w+2};margin-top:${top}px`))}}
  return `<div class=calendar-shell><div class=calendar-month-banner><span>${esc(monthLabel(scheduleUi.month))}</span><small>Swipe to change month</small></div><div class="calendar-grid calendar-swipe-surface" ontouchstart="scheduleSwipeBegin(event)" ontouchmove="scheduleSwipeMove(event)" ontouchend="scheduleSwipeEnd(event)" ontouchcancel="scheduleSwipeEnd(event)">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((d,i)=>`<div class=calendar-head style="grid-column:${i+1}">${d}</div>`).join('')}${cells.join('')}${bars.join('')}</div></div>`;
 }
