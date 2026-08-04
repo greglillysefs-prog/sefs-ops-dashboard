@@ -225,6 +225,28 @@ Recent mobile navigation update:
 
 ## Latest Session Notes
 
+2026-08-04:
+
+- Latest known branch commit before this context update: `3b46481 Fix stale schedule modal save locks`.
+- Recent related commits:
+  - `db44a10 Improve job floor editing and schedule assignment rules`
+  - `a7bc78b Add employee self service password change`
+  - `ff78caa Exclude salary roles from PTO tracking`
+  - `3b46481 Fix stale schedule modal save locks`
+- Job editing now preserves existing fields such as crew lead unless the user intentionally changes them.
+- Job edit flow supports quoted multi-floor scope editing instead of flattening systems into one combined field.
+- Scheduled jobs must keep an assigned employee/crew lead; the assigned person can be changed but should not be left empty.
+- Dashboard and employee portal calendars use employee-based colors so jobs and tasks assigned to the same employee are visually consistent.
+- Employee portal users can change their own password using their current password.
+- Admins can change portal passwords through the admin PIN flow.
+- Managers and admins are treated as salary roles and are excluded from employee PTO tracking, PTO dropdowns, PTO history, and hourly/pay-period employee totals. They can still be used as managers/admins and can assign/review work where appropriate.
+- Schedule modal save buttons now recover from stale disabled states after app/background interruptions, page visibility changes, and browser back/forward restores.
+- Schedule date action modals reset save-lock state when opened so leaving the app to collect information should not leave the Save button permanently disabled.
+- Verified local development server responses on:
+  - `http://127.0.0.1:4173/index.html`
+  - `http://192.168.68.127:4173/index.html`
+  - `https://drove-avon-wifi-guns.trycloudflare.com/index.html`
+
 2026-08-01:
 
 - Price Sheet / Systems option pricing was expanded:
