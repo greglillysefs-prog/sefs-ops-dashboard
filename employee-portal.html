@@ -1238,6 +1238,7 @@
       </div>
       <div class="actions">
         <a id="dashboardLink" class="ghost hidden" href="index.html">SEFS Dashboard</a>
+        <button id="accountBtn" class="ghost hidden" type="button">Password</button>
         <button id="signOutBtn" class="ghost hidden" type="button">Sign Out</button>
       </div>
     </header>
@@ -1267,6 +1268,38 @@
 
     <main id="app" class="hidden">
       <div id="appMessage" class="notice hidden"></div>
+
+      <section id="accountPanel" class="card hidden">
+        <h2>Change Password</h2>
+        <div id="passwordMessage" class="notice hidden"></div>
+        <form id="passwordForm" class="form-grid">
+          <div class="full">
+            <label>Current Password</label>
+            <div class="password-control">
+              <input id="currentPassword" type="password" autocomplete="current-password" required>
+              <button class="ghost" type="button" data-toggle-password="currentPassword">Show</button>
+            </div>
+          </div>
+          <div>
+            <label>New Password</label>
+            <div class="password-control">
+              <input id="newPassword" type="password" autocomplete="new-password" minlength="6" required>
+              <button class="ghost" type="button" data-toggle-password="newPassword">Show</button>
+            </div>
+          </div>
+          <div>
+            <label>Confirm New Password</label>
+            <div class="password-control">
+              <input id="confirmNewPassword" type="password" autocomplete="new-password" minlength="6" required>
+              <button class="ghost" type="button" data-toggle-password="confirmNewPassword">Show</button>
+            </div>
+          </div>
+          <div class="actions full">
+            <button id="savePasswordBtn" class="primary" type="submit">Save Password</button>
+            <button id="cancelPasswordBtn" class="ghost" type="button">Cancel</button>
+          </div>
+        </form>
+      </section>
 
       <div class="mobile-tab-select-wrap">
         <label for="mobileTabSelect">Go To</label>
@@ -1799,6 +1832,60 @@
       } catch (error) {
         $('loginEmail').innerHTML = '<option value="">Logins unavailable</option>';
         setMessage('authMessage', `Could not load login names: ${error.message}`, true);
+      }
+    }
+
+    function setPasswordBusy(isBusy) {
+      $('savePasswordBtn').disabled = isBusy;
+      $('savePasswordBtn').textContent = isBusy ? 'Saving...' : 'Save Password';
+    }
+
+    function clearPasswordForm() {
+      ['currentPassword', 'newPassword', 'confirmNewPassword'].forEach((id) => {
+        const input = $(id);
+        if (input) input.value = '';
+      });
+      setMessage('passwordMessage', '');
+    }
+
+    function togglePasswordField(id, button) {
+      const input = $(id);
+      if (!input) return;
+      const isHidden = input.type === 'password';
+      input.type = isHidden ? 'text' : 'password';
+      if (button) button.textContent = isHidden ? 'Hide' : 'Show';
+      input.focus();
+    }
+
+    async function changeOwnPassword(event) {
+      event.preventDefault();
+      const email = session?.user?.email;
+      const currentPassword = $('currentPassword').value;
+      const newPassword = $('newPassword').value;
+      const confirmPassword = $('confirmNewPassword').value;
+      if (!email) return setMessage('passwordMessage', 'This login does not have an email on file.', true);
+      if (!currentPassword) return setMessage('passwordMessage', 'Enter your current password.', true);
+      if (newPassword.length < 6) return setMessage('passwordMessage', 'New password must be at least 6 characters.', true);
+      if (newPassword !== confirmPassword) return setMessage('passwordMessage', 'New passwords do not match.', true);
+      setPasswordBusy(true);
+      setMessage('passwordMessage', 'Checking current password...');
+      try {
+        const verified = await withTimeout(
+          supa.auth.signInWithPassword({ email, password: currentPassword }),
+          'Password check timed out. Try again.'
+        );
+        if (verified.error) throw new Error('Current password is not correct.');
+        const updated = await withTimeout(
+          supa.auth.updateUser({ password: newPassword }),
+          'Password update timed out. Try again.'
+        );
+        if (updated.error) throw updated.error;
+        clearPasswordForm();
+        setMessage('passwordMessage', 'Password changed.');
+      } catch (error) {
+        setMessage('passwordMessage', error.message || String(error), true);
+      } finally {
+        setPasswordBusy(false);
       }
     }
 
@@ -3139,6 +3226,7 @@
       $('authCard').classList.toggle('hidden', Boolean(session));
       $('app').classList.toggle('hidden', !session);
       $('signOutBtn').classList.toggle('hidden', !session);
+      $('accountBtn').classList.toggle('hidden', !session);
       $('dashboardLink').classList.toggle('hidden', !(session && canReviewTime()));
       $('userLine').textContent = session
         ? `${currentEmployee?.name || profile?.full_name || session.user.email || 'Signed in'}${profile?.role ? ` - ${profile.role}` : ''}`
@@ -3583,14 +3671,30 @@
     });
 
     $('togglePasswordBtn').addEventListener('click', () => {
-      const input = $('password');
-      const isHidden = input.type === 'password';
-      input.type = isHidden ? 'text' : 'password';
-      $('togglePasswordBtn').textContent = isHidden ? 'Hide' : 'Show';
-      input.focus();
+      togglePasswordField('password', $('togglePasswordBtn'));
     });
 
+    document.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-toggle-password]');
+      if (!button) return;
+      togglePasswordField(button.dataset.togglePassword, button);
+    });
+
+    $('accountBtn').addEventListener('click', () => {
+      $('accountPanel').classList.toggle('hidden');
+      clearPasswordForm();
+    });
+
+    $('cancelPasswordBtn').addEventListener('click', () => {
+      $('accountPanel').classList.add('hidden');
+      clearPasswordForm();
+    });
+
+    $('passwordForm').addEventListener('submit', changeOwnPassword);
+
     $('signOutBtn').addEventListener('click', async () => {
+      $('accountPanel').classList.add('hidden');
+      clearPasswordForm();
       await supa.auth.signOut();
     });
 
