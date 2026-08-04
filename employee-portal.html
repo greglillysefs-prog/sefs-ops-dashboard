@@ -456,6 +456,7 @@
       grid-template-rows: auto repeat(6, minmax(112px, auto));
       touch-action: pan-y;
       will-change: transform, opacity;
+      position: relative;
     }
 
     .portal-calendar-head {
@@ -479,8 +480,9 @@
       border-right: 1px solid var(--line);
       padding: 8px;
       position: relative;
-      overflow: visible;
+      overflow: hidden;
       background: rgba(255,255,255,.018);
+      z-index: 1;
     }
 
     .portal-calendar-day:nth-child(7n) {
@@ -504,7 +506,7 @@
 
     .portal-calendar-event {
       display: block;
-      width: 100%;
+      width: auto;
       min-height: 0;
       margin: 5px 0 0;
       padding: 7px;
@@ -520,11 +522,9 @@
 
     .portal-calendar-bar {
       align-self: start;
-      position: absolute;
-      left: 3px;
-      top: 31px;
-      z-index: 2;
-      margin: 0;
+      position: relative;
+      z-index: 4;
+      margin: 0 3px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -1007,7 +1007,7 @@
         width: 100%;
         min-width: 0;
         grid-template-columns: repeat(7, minmax(0, 1fr));
-        grid-template-rows: auto repeat(6, minmax(76px, auto));
+        grid-template-rows: auto repeat(6, 92px);
       }
 
       .portal-calendar-head {
@@ -1016,9 +1016,9 @@
       }
 
       .portal-calendar-day {
-        min-height: 76px;
+        min-height: 92px;
         padding: 4px 2px;
-        overflow: visible;
+        overflow: hidden;
       }
 
       .portal-calendar-date {
@@ -1030,7 +1030,7 @@
         margin-top: 3px;
         padding: 4px 3px;
         border-radius: 4px;
-        font-size: 9px;
+        font-size: 10px;
         line-height: 1.1;
         white-space: nowrap;
         overflow: hidden;
@@ -1038,8 +1038,7 @@
       }
 
       .portal-calendar-bar {
-        left: 1px;
-        top: 25px;
+        margin: 0 2px;
       }
 
       .portal-calendar-event small {
@@ -2132,52 +2131,82 @@
       const calendarStart = addDays(firstOfMonth, -firstOfMonth.getDay());
       const todayIso = today();
       const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-      const heads = dayNames.map((day) => `<div class="portal-calendar-head">${day}</div>`).join('');
+      const heads = dayNames.map((day, index) => `<div class="portal-calendar-head" style="grid-column:${index + 1};grid-row:1;">${day}</div>`).join('');
       const dayMs = 24 * 60 * 60 * 1000;
-      const diffDays = (a, b) => {
-        const left = scheduleDate(a);
-        const right = scheduleDate(b);
-        return left && right ? Math.round((left - right) / dayMs) : -1;
-      };
-      const weekStacks = [0, 0, 0, 0, 0, 0];
-      const dayBars = Array.from({ length: 42 }, () => []);
+      const diffDateDays = (left, right) => Math.round((left - right) / dayMs);
+      const calendarEnd = addDays(calendarStart, 41);
+      const compactCalendar = window.matchMedia('(max-width: 760px)').matches;
+      const weekLanes = Array.from({ length: 6 }, () => []);
+      const segments = [];
       scheduleItems.forEach((item) => {
-        const start = item.start_date ? Math.max(0, diffDays(item.start_date, scheduleIsoDate(calendarStart))) : -1;
-        const end = item.start_date ? Math.min(41, diffDays(item.end_date || item.start_date, scheduleIsoDate(calendarStart))) : -1;
-        if (start < 0 || end < 0 || end < start) return;
-        for (let week = Math.floor(start / 7); week <= Math.floor(end / 7); week++) {
-          const segStart = Math.max(start, week * 7);
-          const segEnd = Math.min(end, week * 7 + 6);
-          const span = segEnd - segStart + 1;
-          const stack = weekStacks[week]++;
-          const top = window.matchMedia('(max-width: 760px)').matches ? 25 + stack * 22 : 31 + stack * 30;
-          dayBars[segStart].push(`
+        const rawStart = scheduleDate(item.start_date);
+        const rawEnd = scheduleDate(item.end_date || item.start_date);
+        if (!rawStart || !rawEnd || rawEnd < calendarStart || rawStart > calendarEnd) return;
+        const visibleStart = rawStart < calendarStart ? calendarStart : rawStart;
+        const visibleEnd = rawEnd > calendarEnd ? calendarEnd : rawEnd;
+        const startIndex = diffDateDays(visibleStart, calendarStart);
+        const endIndex = diffDateDays(visibleEnd, calendarStart);
+        for (let week = Math.floor(startIndex / 7); week <= Math.floor(endIndex / 7); week++) {
+          const weekStartIndex = week * 7;
+          const segStartIndex = Math.max(startIndex, weekStartIndex);
+          const segEndIndex = Math.min(endIndex, weekStartIndex + 6);
+          segments.push({
+            item,
+            week,
+            col: (segStartIndex % 7) + 1,
+            span: segEndIndex - segStartIndex + 1,
+            start: String(item.start_date || ''),
+            time: String(item.start_time || ''),
+            name: String(item.kind === 'task' ? taskTitle(item) : moneylessJobName(item))
+          });
+        }
+      });
+      const bars = segments
+        .sort((a, b) => a.week - b.week || a.start.localeCompare(b.start) || a.time.localeCompare(b.time) || a.name.localeCompare(b.name))
+        .map((segment) => {
+          const lanes = weekLanes[segment.week];
+          let lane = lanes.findIndex((days) => {
+            for (let col = segment.col; col < segment.col + segment.span; col += 1) {
+              if (days[col]) return false;
+            }
+            return true;
+          });
+          if (lane < 0) {
+            lane = lanes.length;
+            lanes.push({});
+          }
+          for (let col = segment.col; col < segment.col + segment.span; col += 1) {
+            lanes[lane][col] = true;
+          }
+          const top = (compactCalendar ? 25 : 32) + lane * (compactCalendar ? 21 : 30);
+          const item = segment.item;
+          return `
             <button
               type="button"
               class="portal-calendar-event portal-calendar-bar ${item.kind === 'task' ? 'task-event' : ''} ${itemKey(item) === selectedScheduleItemKey ? 'active' : ''}"
-              style="top:${top}px;width:calc(${span * 100}% - 6px)"
+              style="grid-column:${segment.col}/span ${segment.span};grid-row:${segment.week + 2};margin-top:${top}px;"
               onclick="selectScheduleItem('${esc(itemKey(item))}')">
-              ${esc(item.kind === 'task' ? taskTitle(item) : moneylessJobName(item))}
+              ${esc(segment.name)}
               <small>${esc(item.kind === 'task' ? ['Task', formatTime(item.start_time), item.status].filter(Boolean).join(' - ') : [formatTime(item.start_time), item.address].filter(Boolean).join(' - ') || item.status || 'Scheduled')}</small>
             </button>
-          `);
-        }
-      });
+          `;
+        }).join('');
       const days = Array.from({ length: 42 }, (_, index) => {
         const date = addDays(calendarStart, index);
         const iso = scheduleIsoDate(date);
+        const week = Math.floor(index / 7);
+        const col = (index % 7) + 1;
         const classes = [
           'portal-calendar-day',
           date.getMonth() === scheduleCalendarMonth.getMonth() ? '' : 'other-month',
           iso === todayIso ? 'today' : ''
         ].filter(Boolean).join(' ');
         return `
-          <div class="${classes}">
+          <div class="${classes}" style="grid-column:${col};grid-row:${week + 2};">
             <div class="portal-calendar-date">${date.getDate()}</div>
-            ${dayBars[index].join('')}
           </div>
         `;
-      }).join('');
+      }).join('') + bars;
 
       const selectedItem = scheduleItems.find((item) => itemKey(item) === selectedScheduleItemKey) || scheduleItems[0];
       const selectedDetail = selectedItem.kind === 'task'
