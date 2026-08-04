@@ -1,4 +1,4 @@
-const SEFS_CACHE = 'sefs-pwa-v20260803a';
+const SEFS_CACHE = 'sefs-pwa-v20260803b';
 const SEFS_ASSETS = [
   './',
   './index.html',
@@ -12,6 +12,9 @@ const SEFS_ASSETS = [
   './privacy.html',
   './terms.html',
   './manifest.webmanifest',
+  './employee-portal.webmanifest',
+  './mobile-measure.webmanifest',
+  './mobile-job.webmanifest',
   './pwa-init.js',
   './assets/sefs-icon.jpeg',
   './assets/sefs-app-icon-180.png',
