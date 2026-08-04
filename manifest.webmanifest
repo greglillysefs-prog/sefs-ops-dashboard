@@ -1,0 +1,52 @@
+{
+  "name": "SEFS Operations Dashboard",
+  "short_name": "SEFS Ops",
+  "description": "Southeast Flooring Solutions operations dashboard, employee portal, scheduling, quotes, jobs, materials, and time tracking.",
+  "start_url": "index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#050505",
+  "theme_color": "#050505",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "assets/sefs-app-icon-180.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/sefs-app-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "assets/sefs-app-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Employee Portal",
+      "short_name": "Portal",
+      "url": "employee-portal.html",
+      "icons": [{ "src": "assets/sefs-app-icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Field Measure",
+      "short_name": "Measure",
+      "url": "mobile-measure.html",
+      "icons": [{ "src": "assets/sefs-app-icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Mobile Job View",
+      "short_name": "Jobs",
+      "url": "mobile-job.html",
+      "icons": [{ "src": "assets/sefs-app-icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}
