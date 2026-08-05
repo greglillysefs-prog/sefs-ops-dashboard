@@ -386,7 +386,7 @@ function field(f,val,rec={},tableName=''){
   let changeAttr=tableName==='jobs'&&n==='status'?' onchange="handleJobStatusChange(this)"':'';
   return `<label>${l}</label><select name="${n}"${changeAttr}>${opts.map(o=>`<option ${val===o?'selected':''}>${o}</option>`).join('')}</select>`
  }
- let inputAttr=tableName==='jobs'&&n==='start_date'?' onchange="handleJobStartDateChange(this)"':'';
+ let inputAttr=tableName==='jobs'&&n==='start_date'?` onchange="handleJobStartDateChange(this)" data-schedule-span-days="${scheduleSpanDays(rec)}"`:'';
  return `<label>${l}</label><input name="${n}" type="${t}" value="${esc(val)}"${inputAttr}>`
 }
 function googleCalendarConfigured(){return GOOGLE_CALENDAR_CLIENT_ID&&!GOOGLE_CALENDAR_CLIENT_ID.startsWith('PASTE_')}
@@ -403,9 +403,11 @@ function normalizeJobScheduleState(p={},rec={}){
  return p;
 }
 function jobScheduleTerminalStatus(status){return ['Complete','Lost','Canceled','Needs Review','Sync Conflict'].includes(status)}
+function scheduleSpanDays(rec){return rec?.start_date?Math.max(0,dateDiff(rec.start_date,rec.end_date||rec.start_date)):0}
+function syncEndDateToScheduleSpan(input){let end=input.form?.querySelector('[name="end_date"]'),span=Number(input.dataset.scheduleSpanDays||0);if(input.value&&end)end.value=isoDate(addDays(dateObj(input.value),span))}
 function clearJobScheduleInputs(form){['start_date','start_time','end_date','end_time'].forEach(name=>{let el=form?.querySelector(`[name="${name}"]`);if(el)el.value=''})}
 function handleJobStatusChange(sel){if(sel.value==='Awaiting Schedule')clearJobScheduleInputs(sel.form)}
-function handleJobStartDateChange(input){let status=input.form?.querySelector('[name="status"]');if(input.value&&input.value>=today()&&status&&!jobScheduleTerminalStatus(status.value))status.value='Scheduled'}
+function handleJobStartDateChange(input){syncEndDateToScheduleSpan(input);let status=input.form?.querySelector('[name="status"]');if(input.value&&input.value>=today()&&status&&!jobScheduleTerminalStatus(status.value))status.value='Scheduled'}
 function timePlus(t,min=60){let [h,m]=cleanTime(t||'08:00').split(':').map(Number),d=new Date(2000,0,1,h||0,m||0);d.setMinutes(d.getMinutes()+min);return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')}
 function jobShouldSyncCalendar(j){return !!(j&&j.start_date&&jobCanBeScheduled(j)&&!['Complete','Lost','Canceled','Needs Quote','Needs Review','Sync Conflict'].includes(j.status))}
 function safeJobCalendarFields(j){return {job_name:googleCalendarTitle(j),address:j.address||'',notes:j.notes||'',start_date:j.start_date||'',start_time:cleanTime(j.start_time),end_date:j.end_date||'',end_time:cleanTime(j.end_time)}}
