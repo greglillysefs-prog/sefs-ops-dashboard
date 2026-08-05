@@ -908,7 +908,8 @@
       min-height: 46px;
     }
 
-    .hidden { display: none !important; }
+    .hidden,
+    .hidden-mobile { display: none !important; }
 
     @media (max-width: 1200px) {
       .manager-view .grid {
@@ -933,10 +934,6 @@
 
       .mobile-tab-select-wrap {
         display: block;
-      }
-
-      .mobile-panel.hidden-mobile {
-        display: none;
       }
 
       .pay-periods-wide {
@@ -1539,11 +1536,13 @@
     let selectedScheduleItemKey = '';
     let entries = [];
     let entryAuditLogs = [];
+    let timeEntryPhotos = [];
     let managerEntries = [];
     let managerProfiles = [];
     let managerEmployees = [];
     let managerReviewView = 'pending';
     let entryReviewView = 'accepted';
+    let activePortalTab = '';
     let selectedPayPeriodStart = '';
     let crewOptions = [];
     let selectedCrewIds = new Set();
@@ -1770,6 +1769,33 @@
       `;
     }
 
+    function photosForTimeEntries(entryList) {
+      const list = Array.isArray(entryList) ? entryList : [entryList].filter(Boolean);
+      const entryIds = new Set(list.map((entry) => entry?.id).filter(Boolean));
+      const jobIds = new Set(list.map((entry) => entry?.job_id).filter(Boolean));
+      const entryPathNeedles = [...entryIds].map((id) => `/time-entry/${id}/`);
+      return dedupePhotos(timeEntryPhotos.filter((photo) => {
+        if (photo.entity_type === 'time_entry' && entryIds.has(photo.entity_id)) return true;
+        if (photo.entity_type !== 'job' || !jobIds.has(photo.entity_id)) return false;
+        if (String(photo.category || '').toLowerCase() !== 'time-entry') return false;
+        const storagePath = String(photo.storage_path || '');
+        return !storagePath || entryPathNeedles.some((needle) => storagePath.includes(needle));
+      }));
+    }
+
+    function timeEntryPhotosHTML(entryList) {
+      const photos = photosForTimeEntries(entryList);
+      if (!photos.length) return '';
+      return `
+        <div class="linked-photo-grid time-entry-photos">
+          ${photos.map((photo) => {
+            const url = photoUrl(photo);
+            return url ? `<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}" alt="${esc(photo.caption || photo.file_name || 'Time entry photo')}"></a>` : '';
+          }).join('')}
+        </div>
+      `;
+    }
+
     function scheduleJobUrl(job, hash = '') {
       const url = new URL('mobile-job.html', location.href);
       url.searchParams.set('job', job.id);
@@ -1891,6 +1917,7 @@
       selectedScheduleItemKey = '';
       entries = [];
       entryAuditLogs = [];
+      timeEntryPhotos = [];
       managerEntries = [];
       managerProfiles = [];
       managerEmployees = [];
@@ -1899,6 +1926,7 @@
       ptoBalance = { accrued: 0, ledger: 0, pending: 0, balance: 0, available: 0 };
       crewOptions = [];
       selectedCrewIds = new Set();
+      activePortalTab = '';
       resetForm();
       await refresh();
     }
@@ -2201,6 +2229,42 @@
       entryAuditLogs = result.data || [];
     }
 
+    async function loadTimeEntryPhotos() {
+      const allEntries = [...entries, ...managerEntries].filter((entry) => entry?.id);
+      if (!allEntries.length) {
+        timeEntryPhotos = [];
+        return;
+      }
+
+      const entryIds = [...new Set(allEntries.map((entry) => entry.id).filter(Boolean))];
+      const jobIds = [...new Set(allEntries.map((entry) => entry.job_id).filter(Boolean))];
+      const photoSelect = 'id, entity_type, entity_id, file_name, storage_path, public_url, caption, category, created_at';
+      const photos = [];
+
+      if (entryIds.length) {
+        const result = await supa
+          .from('photo_attachments')
+          .select(photoSelect)
+          .eq('entity_type', 'time_entry')
+          .in('entity_id', entryIds)
+          .order('created_at', { ascending: false });
+        if (!result.error) photos.push(...(result.data || []));
+      }
+
+      if (jobIds.length) {
+        const result = await supa
+          .from('photo_attachments')
+          .select(photoSelect)
+          .eq('entity_type', 'job')
+          .in('entity_id', jobIds)
+          .eq('category', 'time-entry')
+          .order('created_at', { ascending: false });
+        if (!result.error) photos.push(...(result.data || []));
+      }
+
+      timeEntryPhotos = dedupePhotos(photos);
+    }
+
     async function loadPtoEntries() {
       const response = await fetch(ADMIN_FUNCTION_URL, {
         method: 'POST',
@@ -2296,6 +2360,7 @@
           await loadScheduleJobPhotos();
           await loadEntryAuditLogs();
           await loadManagerReviewData();
+          await loadTimeEntryPhotos();
         }
         render();
       } catch (error) {
@@ -2742,6 +2807,7 @@
             </div>
             ${entry.notes ? `<p class="muted">${esc(entry.notes)}</p>` : ''}
             ${entry.rejection_reason ? `<p class="muted">Rejected: ${esc(entry.rejection_reason)}</p>` : ''}
+            ${timeEntryPhotosHTML([entry])}
             <div class="actions">
               ${canEdit ? `<button type="button" onclick="editEntry('${entry.id}')">Edit</button><button type="button" onclick="submitEntry('${entry.id}')">Submit</button>` : ''}
               ${entry.status === 'draft' ? `<button class="ghost" type="button" onclick="deleteEntry('${entry.id}')">Delete</button>` : ''}
@@ -2888,6 +2954,7 @@
           <p class="muted">${esc(names)}</p>
           ${entry.notes ? `<p class="muted">${esc(entry.notes)}</p>` : ''}
           ${entry.rejection_reason ? `<p class="muted">Rejected: ${esc(entry.rejection_reason)}</p>` : ''}
+          ${timeEntryPhotosHTML(group.entries)}
           <div class="actions">
             ${entry.status !== 'approved' ? `<button class="primary" type="button" onclick="approveManagerGroup('${esc(group.id)}')">Approve Group</button>` : ''}
             <button type="button" onclick="editManagerGroup('${esc(group.id)}')">Edit Group</button>
@@ -3419,7 +3486,7 @@
       renderPayRates();
       renderPto();
       calculateHours();
-      setActiveTab($('mobileTabSelect')?.value || 'schedule');
+      setActiveTab(activePortalTab || (canReviewTime() ? 'review' : 'schedule'));
     }
 
     function resetForm() {
@@ -3751,6 +3818,7 @@
     function setActiveTab(tab) {
       if (tab === 'review' && !canReviewTime()) tab = 'schedule';
       if (tab === 'pay_rates' && !canReviewTime()) tab = 'time';
+      activePortalTab = tab;
       document.querySelectorAll('[data-tab]').forEach((button) => {
         button.classList.toggle('primary', button.dataset.tab === tab || (button.dataset.tab === 'entries' && ['pto', 'pay_periods', 'review', 'pay_rates'].includes(tab)));
       });
@@ -3935,11 +4003,14 @@
       taskAuditLogs = [];
       selectedScheduleItemKey = '';
       entries = [];
+      entryAuditLogs = [];
+      timeEntryPhotos = [];
       managerEntries = [];
       managerProfiles = [];
       managerEmployees = [];
       ptoEntries = [];
       ptoBalance = { accrued: 0, ledger: 0, pending: 0, balance: 0, available: 0 };
+      activePortalTab = '';
       clearTimeout(authRefreshTimer);
       if (session) {
         authRefreshTimer = setTimeout(async () => {
