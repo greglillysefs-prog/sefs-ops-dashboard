@@ -618,6 +618,27 @@
       color: var(--orange);
     }
 
+    .linked-photo-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin: 12px 0;
+    }
+
+    .linked-photo-grid a,
+    .linked-photo-grid img {
+      display: block;
+      width: 100%;
+    }
+
+    .linked-photo-grid img {
+      aspect-ratio: 1.25;
+      object-fit: cover;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #050505;
+    }
+
     .button-link {
       border: 1px solid var(--orange);
       background: linear-gradient(180deg, #222, #141414);
@@ -977,6 +998,10 @@
         grid-column: 1 / -1;
         order: -1;
         text-align: left;
+      }
+
+      .linked-photo-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
       .password-control {
@@ -1505,6 +1530,7 @@
     let jobs = [];
     let scheduleJobs = [];
     let scheduleTasks = [];
+    let scheduleJobPhotos = [];
     let portalTasks = [];
     let taskAuditLogs = [];
     let taskSearch = '';
@@ -1681,6 +1707,65 @@
               <b>${esc(materialQtyText(item))}</b>
             </div>
           `).join('')}
+        </div>
+      `;
+    }
+
+    function photoUrl(photo) {
+      if (photo?.public_url) return photo.public_url;
+      if (photo?.storage_path) {
+        try {
+          return supa.storage.from('sefs-photos').getPublicUrl(photo.storage_path).data.publicUrl || '';
+        } catch (error) {
+          return '';
+        }
+      }
+      return '';
+    }
+
+    function photoKey(photo) {
+      return [
+        photo?.storage_path || '',
+        photo?.public_url || '',
+        photo?.file_name || '',
+        photo?.field_measurement_id || '',
+        photo?.field_measurement_area_id || ''
+      ].join('|');
+    }
+
+    function dedupePhotos(rows) {
+      const seen = new Set();
+      const out = [];
+      (rows || []).forEach((photo) => {
+        const key = photoKey(photo);
+        if (seen.has(key)) return;
+        seen.add(key);
+        out.push(photo);
+      });
+      return out.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+    }
+
+    function quoteMeasurementIds(quote) {
+      const data = quote?.quote_json || {};
+      const ids = [data.source_measurement_id, data.source_measurement?.id];
+      (data.floors || []).forEach((floor) => ids.push(floor?.field_measurement_id));
+      return ids.filter(Boolean);
+    }
+
+    function relatedJobPhotos(job) {
+      if (!job?.id) return [];
+      return dedupePhotos(scheduleJobPhotos.filter((photo) => photo.__job_id === job.id));
+    }
+
+    function jobPhotosHTML(job) {
+      const photos = relatedJobPhotos(job);
+      if (!photos.length) return '';
+      return `
+        <div class="linked-photo-grid">
+          ${photos.map((photo) => {
+            const url = photoUrl(photo);
+            return url ? `<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}" alt="${esc(photo.caption || photo.file_name || 'Job photo')}"></a>` : '';
+          }).join('')}
         </div>
       `;
     }
@@ -1928,7 +2013,7 @@
     async function loadJobs() {
       const result = await supa
         .from('jobs')
-        .select('id, customer, phone, job_name, address, system_type, square_feet, status, start_date, end_date, start_time, end_time, crew, notes, material_notes, material_list, floor_scopes')
+        .select('id, customer_id, source_lead_id, source_quote_id, customer, phone, job_name, address, system_type, square_feet, status, start_date, end_date, start_time, end_time, crew, notes, material_notes, material_list, floor_scopes')
         .order('start_date', { ascending: true, nullsFirst: false })
         .order('start_time', { ascending: true });
       if (result.error) throw result.error;
@@ -1944,10 +2029,94 @@
         .order('start_time', { ascending: true });
       const assignedJobs = result.error ? [] : (result.data || []);
       const crewFallbackJobs = jobs.filter(jobMatchesCurrentEmployee);
-      const byId = new Map([...assignedJobs, ...crewFallbackJobs].map((job) => [job.id, job]));
+      const fullJobsById = new Map(jobs.map((job) => [job.id, job]));
+      const byId = new Map([...assignedJobs, ...crewFallbackJobs].map((job) => [job.id, { ...(fullJobsById.get(job.id) || {}), ...job }]));
       scheduleJobs = Array.from(byId.values())
         .filter((job) => job.start_date)
         .sort((a, b) => String(a.start_date || '9999').localeCompare(String(b.start_date || '9999')) || String(a.start_time || '').localeCompare(String(b.start_time || '')));
+    }
+
+    async function loadScheduleJobPhotos() {
+      scheduleJobPhotos = [];
+      if (!scheduleJobs.length) return;
+
+      const byJob = new Map(scheduleJobs.map((job) => {
+        const pairs = new Set([`job:${job.id}`]);
+        if (job.customer_id) pairs.add(`customer:${job.customer_id}`);
+        if (job.source_lead_id) pairs.add(`lead:${job.source_lead_id}`);
+        if (job.source_quote_id) pairs.add(`quote:${job.source_quote_id}`);
+        return [job.id, { job, pairs, measurementIds: new Set() }];
+      }));
+      const jobIds = [...byJob.keys()];
+      const leadIds = [...new Set(scheduleJobs.map((job) => job.source_lead_id).filter(Boolean))];
+      const sourceQuoteIds = [...new Set(scheduleJobs.map((job) => job.source_quote_id).filter(Boolean))];
+      const measureRows = [];
+      const quoteRows = [];
+
+      if (jobIds.length) {
+        const result = await supa.from('quotes').select('id, lead_id, job_id, customer_id, quote_json').in('job_id', jobIds);
+        if (!result.error) quoteRows.push(...(result.data || []));
+      }
+      if (sourceQuoteIds.length) {
+        const result = await supa.from('quotes').select('id, lead_id, job_id, customer_id, quote_json').in('id', sourceQuoteIds);
+        if (!result.error) quoteRows.push(...(result.data || []));
+      }
+
+      const seenQuoteIds = new Set();
+      quoteRows.forEach((quote) => {
+        if (!quote?.id || seenQuoteIds.has(quote.id)) return;
+        seenQuoteIds.add(quote.id);
+        byJob.forEach((info) => {
+          if (quote.job_id !== info.job.id && quote.id !== info.job.source_quote_id) return;
+          info.pairs.add(`quote:${quote.id}`);
+          if (quote.lead_id) info.pairs.add(`lead:${quote.lead_id}`);
+          if (quote.customer_id) info.pairs.add(`customer:${quote.customer_id}`);
+          quoteMeasurementIds(quote).forEach((id) => info.measurementIds.add(id));
+        });
+      });
+
+      if (jobIds.length) {
+        const result = await supa.from('field_measurements').select('id, job_id, lead_id').in('job_id', jobIds);
+        if (!result.error) measureRows.push(...(result.data || []));
+      }
+      if (leadIds.length) {
+        const result = await supa.from('field_measurements').select('id, job_id, lead_id').in('lead_id', leadIds);
+        if (!result.error) measureRows.push(...(result.data || []));
+      }
+
+      const seenMeasureIds = new Set();
+      measureRows.forEach((measure) => {
+        if (!measure?.id || seenMeasureIds.has(measure.id)) return;
+        seenMeasureIds.add(measure.id);
+        if (measure.job_id && byJob.has(measure.job_id)) byJob.get(measure.job_id).measurementIds.add(measure.id);
+        byJob.forEach((info) => {
+          if (measure.lead_id && info.job.source_lead_id === measure.lead_id) info.measurementIds.add(measure.id);
+        });
+      });
+
+      const pairIds = [...new Set([...byJob.values()].flatMap((info) => [...info.pairs].map((pair) => pair.split(':')[1])))].filter(Boolean);
+      const measurementIds = [...new Set([...byJob.values()].flatMap((info) => [...info.measurementIds]))].filter(Boolean);
+      const rawPhotos = [];
+      const photoSelect = 'id, entity_type, entity_id, file_name, storage_path, public_url, caption, category, field_measurement_id, field_measurement_area_id, created_at';
+
+      if (pairIds.length) {
+        const result = await supa.from('photo_attachments').select(photoSelect).in('entity_id', pairIds).order('created_at', { ascending: false });
+        if (!result.error) rawPhotos.push(...(result.data || []));
+      }
+      if (measurementIds.length) {
+        const result = await supa.from('photo_attachments').select(photoSelect).in('field_measurement_id', measurementIds).order('created_at', { ascending: false });
+        if (!result.error) rawPhotos.push(...(result.data || []));
+      }
+
+      const tagged = [];
+      byJob.forEach((info, jobId) => {
+        rawPhotos.forEach((photo) => {
+          if (info.pairs.has(`${photo.entity_type}:${photo.entity_id}`) || (photo.field_measurement_id && info.measurementIds.has(photo.field_measurement_id))) {
+            tagged.push({ ...photo, __job_id: jobId });
+          }
+        });
+      });
+      scheduleJobPhotos = tagged;
     }
 
     async function loadScheduleTasks() {
@@ -2124,6 +2293,7 @@
         if (profile?.active) {
           await loadJobs();
           await Promise.all([loadScheduleJobs(), loadScheduleTasks(), loadEntries(), loadPtoEntries()]);
+          await loadScheduleJobPhotos();
           await loadEntryAuditLogs();
           await loadManagerReviewData();
         }
@@ -2335,6 +2505,7 @@
             <a class="button-link" href="${esc(scheduleJobUrl(selectedItem, 'materials'))}" target="_blank" rel="noopener">Material List</a>
           </div>
           ${compactMaterialListHTML(selectedItem)}
+          ${jobPhotosHTML(selectedItem)}
           <div class="schedule-update-form">
             <label for="scheduleNote_${esc(selectedItem.id)}">Add Job Note</label>
             <textarea id="scheduleNote_${esc(selectedItem.id)}" placeholder="Crew notes, job progress, prep concerns, or anything the office should know."></textarea>
