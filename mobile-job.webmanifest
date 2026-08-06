@@ -1,9 +1,9 @@
 {
-  "id": "mobile-job.html",
+  "id": "mobile-job.html?app=mobile-job",
   "name": "SEFS Mobile Job",
   "short_name": "SEFS Job",
   "description": "Southeast Flooring Solutions limited mobile job view for crews.",
-  "start_url": "mobile-job.html",
+  "start_url": "mobile-job.html?app=mobile-job",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",

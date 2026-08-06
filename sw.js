@@ -1,4 +1,4 @@
-const SEFS_CACHE = 'sefs-pwa-v20260803b';
+const SEFS_CACHE = 'sefs-pwa-v20260806a';
 const SEFS_ASSETS = [
   './',
   './index.html',
@@ -41,6 +41,11 @@ self.addEventListener('fetch', event => {
   if (url.origin !== location.origin) return;
 
   if (request.mode === 'navigate') {
+    const page = url.pathname.endsWith('/employee-portal.html') ? './employee-portal.html'
+      : url.pathname.endsWith('/mobile-job.html') ? './mobile-job.html'
+      : url.pathname.endsWith('/mobile-measure.html') ? './mobile-measure.html'
+      : url.pathname.endsWith('/employee-admin.html') ? './employee-admin.html'
+      : './index.html';
     event.respondWith(
       fetch(request)
         .then(response => {
@@ -48,7 +53,7 @@ self.addEventListener('fetch', event => {
           caches.open(SEFS_CACHE).then(cache => cache.put(request, copy));
           return response;
         })
-        .catch(() => caches.match(request).then(cached => cached || caches.match('./index.html')))
+        .catch(() => caches.match(request).then(cached => cached || caches.match(page) || caches.match('./index.html')))
     );
     return;
   }

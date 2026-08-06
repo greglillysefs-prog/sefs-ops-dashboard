@@ -1,8 +1,9 @@
 {
   "name": "SEFS Operations Dashboard",
+  "id": "index.html?app=dashboard",
   "short_name": "SEFS Ops",
   "description": "Southeast Flooring Solutions operations dashboard, employee portal, scheduling, quotes, jobs, materials, and time tracking.",
-  "start_url": "index.html",
+  "start_url": "index.html?app=dashboard",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",

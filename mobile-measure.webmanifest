@@ -1,9 +1,9 @@
 {
-  "id": "mobile-measure.html",
+  "id": "mobile-measure.html?app=mobile-measure",
   "name": "SEFS Field Measure",
   "short_name": "Field Measure",
   "description": "Southeast Flooring Solutions mobile field measuring and photo capture.",
-  "start_url": "mobile-measure.html",
+  "start_url": "mobile-measure.html?app=mobile-measure",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",

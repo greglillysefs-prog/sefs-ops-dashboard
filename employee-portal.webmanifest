@@ -1,9 +1,9 @@
 {
-  "id": "employee-portal.html",
+  "id": "employee-portal.html?app=employee-portal",
   "name": "SEFS Employee Portal",
   "short_name": "Employee Portal",
   "description": "Southeast Flooring Solutions employee schedule, time, tasks, PTO, and job access.",
-  "start_url": "employee-portal.html",
+  "start_url": "employee-portal.html?app=employee-portal",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
