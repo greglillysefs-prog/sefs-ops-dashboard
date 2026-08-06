@@ -125,6 +125,24 @@ alter table public.time_entry_audit_logs add column if not exists device_info te
 alter table public.time_entry_audit_logs add column if not exists reason text;
 alter table public.time_entry_audit_logs add column if not exists created_at timestamptz not null default now();
 
+create table if not exists public.pto_requests (
+  id uuid primary key default gen_random_uuid(),
+  employee_id uuid references public.employees(id) on delete cascade,
+  user_id uuid references auth.users(id) on delete set null default auth.uid(),
+  request_date date not null,
+  hours numeric(8,2) not null default 0,
+  notes text,
+  status text not null default 'submitted',
+  manager_id uuid references auth.users(id) on delete set null,
+  manager_note text,
+  decided_at timestamptz,
+  personal_time_entry_id uuid,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.pto_requests add column if not exists time_entry_id uuid references public.time_entries(id) on delete set null;
+
 create index if not exists profiles_employee_id_idx on public.profiles(employee_id);
 create index if not exists profiles_role_idx on public.profiles(role);
 create index if not exists employee_job_assignments_employee_idx on public.employee_job_assignments(employee_id);
@@ -133,6 +151,7 @@ create index if not exists time_entries_employee_date_idx on public.time_entries
 create index if not exists time_entries_user_idx on public.time_entries(user_id);
 create index if not exists time_entries_job_idx on public.time_entries(job_id);
 create index if not exists time_entries_status_idx on public.time_entries(status);
+create index if not exists pto_requests_time_entry_id_idx on public.pto_requests(time_entry_id);
 create index if not exists time_entry_audit_logs_entry_idx on public.time_entry_audit_logs(time_entry_id, created_at desc);
 
 create or replace function public.current_profile_role()

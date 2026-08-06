@@ -2796,14 +2796,14 @@
           <article class="entry-card">
             <header>
               <div>
-                <h3>${esc(job ? moneylessJobName(job) : 'Job')}</h3>
+                <h3>${esc(timeEntryJobLabel(entry))}</h3>
                 <span class="muted">${esc(formatDate(entry.work_date))} - ${esc(formatTime(entry.start_time))} to ${esc(formatTime(entry.end_time))}</span>
               </div>
               <span class="status ${statusClass(entry.status)}">${esc(entry.status)}</span>
             </header>
             <div class="facts">
               <div class="fact"><b>Total</b>${Number(entry.total_hours || 0).toFixed(2)} hours</div>
-              <div class="fact"><b>Job</b>${esc(job ? moneylessJobName(job) : 'Other / No job')}</div>
+              <div class="fact"><b>Job</b>${esc(timeEntryJobLabel(entry))}</div>
             </div>
             ${entry.notes ? `<p class="muted">${esc(entry.notes)}</p>` : ''}
             ${entry.rejection_reason ? `<p class="muted">Rejected: ${esc(entry.rejection_reason)}</p>` : ''}
@@ -2857,6 +2857,14 @@
     function jobName(jobId) {
       const job = jobs.find((item) => item.id === jobId);
       return job ? moneylessJobName(job) : 'Other / No job';
+    }
+
+    function isPtoTimeEntry(entry) {
+      return !entry?.job_id && /^PTO Request\b/i.test(String(entry?.notes || ''));
+    }
+
+    function timeEntryJobLabel(entry) {
+      return isPtoTimeEntry(entry) ? 'PTO Request' : jobName(entry?.job_id);
     }
 
     function reviewGroupKey(entry) {
@@ -2941,7 +2949,7 @@
           <header>
             <div>
               <h3>${esc(groupLabel(group))}</h3>
-              <span class="muted">${esc(jobName(entry.job_id))}</span>
+              <span class="muted">${esc(timeEntryJobLabel(entry))}</span>
             </div>
             <span class="status ${statusClass(entry.status)}">${esc(entry.status || 'draft')}</span>
           </header>
@@ -2988,7 +2996,7 @@
       const byJob = new Map();
       for (const entry of acceptedEntries) {
         const job = jobs.find((item) => item.id === entry.job_id);
-        const name = job ? moneylessJobName(job) : 'Other / No job';
+        const name = isPtoTimeEntry(entry) ? 'PTO Request' : job ? moneylessJobName(job) : 'Other / No job';
         byJob.set(name, (byJob.get(name) || 0) + Number(entry.total_hours || 0));
       }
 
@@ -3152,7 +3160,7 @@
               ${notesByDay[day.iso].length ? notesByDay[day.iso].map((group) => `
                 <div class="timesheet-note">
                   <b>${esc(groupLabel(group))}</b>
-                  <span class="muted">${esc(jobName(group.entry.job_id))} - ${esc(formatTime(group.entry.start_time))} to ${esc(formatTime(group.entry.end_time))}</span>
+                  <span class="muted">${esc(timeEntryJobLabel(group.entry))} - ${esc(formatTime(group.entry.start_time))} to ${esc(formatTime(group.entry.end_time))}</span>
                   <div>${esc(group.entry.notes)}</div>
                 </div>
               `).join('') : '<div class="muted">No notes.</div>'}
@@ -3223,7 +3231,7 @@
                       ${notesByDay[day.iso].length ? notesByDay[day.iso].map((group) => `
                         <div class="timesheet-note">
                           <b>${esc(groupLabel(group))}</b><br>
-                          <span class="muted">${esc(jobName(group.entry.job_id))} - ${esc(formatTime(group.entry.start_time))} to ${esc(formatTime(group.entry.end_time))}</span><br>
+                          <span class="muted">${esc(timeEntryJobLabel(group.entry))} - ${esc(formatTime(group.entry.start_time))} to ${esc(formatTime(group.entry.end_time))}</span><br>
                           ${esc(group.entry.notes)}
                         </div>
                       `).join('') : '<span class="muted">No notes.</span>'}
@@ -3566,7 +3574,7 @@
       if (!entry) return;
       $('managerEntryId').value = group.id;
       $('managerEntryEmployee').value = group.employees.join(', ');
-      $('managerEntryJob').value = jobName(entry.job_id);
+      $('managerEntryJob').value = timeEntryJobLabel(entry);
       $('managerEntryDate').value = entry.work_date || today();
       $('managerEntryStatus').value = entry.status || 'draft';
       $('managerEntryStart').value = normalizeQuarterTime(entry.start_time);
@@ -3582,17 +3590,25 @@
       if (!canReviewTime()) throw new Error('Manager or admin access is required.');
       const entryIds = Array.isArray(ids) ? ids : String(ids || '').split(',').filter(Boolean);
       if (!entryIds.length) throw new Error('Choose a time entry to update.');
-      const result = await supa
-        .from('time_entries')
-        .update({
-          ...updates,
-          break_minutes: 0,
-          device_info: deviceInfo()
+      const response = await fetch(ADMIN_FUNCTION_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          action: 'review_time_entries',
+          ids: entryIds,
+          updates: {
+            ...updates,
+            break_minutes: 0,
+            device_info: deviceInfo()
+          }
         })
-        .in('id', entryIds)
-        .select();
-      if (result.error) throw result.error;
-      return result.data;
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.error) throw new Error(result.error || `Time review update failed (${response.status})`);
+      return result.time_entries || [];
     }
 
     window.approveManagerGroup = async function approveManagerGroup(groupId) {
@@ -3857,7 +3873,8 @@
           action: 'pto_request',
           request_date: $('ptoDate').value,
           hours,
-          notes: $('ptoNotes').value.trim() || null
+          notes: $('ptoNotes').value.trim() || null,
+          device_info: deviceInfo()
         })
       });
       const payload = await response.json().catch(() => ({}));

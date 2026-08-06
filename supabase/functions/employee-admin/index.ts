@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-type AdminAction = "login_options" | "job_crew_options" | "save_group_time_entries" | "pto_list" | "pto_request" | "pto_decision" | "verify_pin" | "assign_job_crew_lead" | "list" | "upsert" | "reset_password" | "deactivate" | "remove_employee" | "update_time_entry";
+type AdminAction = "login_options" | "job_crew_options" | "save_group_time_entries" | "review_time_entries" | "pto_list" | "pto_request" | "pto_decision" | "pto_log" | "verify_pin" | "assign_job_crew_lead" | "list" | "upsert" | "reset_password" | "deactivate" | "remove_employee" | "update_time_entry";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -64,6 +64,19 @@ const salaryRoles = ["manager", "admin"];
 
 function isSalaryRole(role: unknown) {
   return salaryRoles.includes(String(role || ""));
+}
+
+function ptoTimeRange(hours: number) {
+  const minutes = Math.max(15, Math.round((Number(hours) || 0) * 60));
+  const capped = Math.min(minutes, (23 * 60) + 45);
+  const hh = String(Math.floor(capped / 60)).padStart(2, "0");
+  const mm = String(capped % 60).padStart(2, "0");
+  return { start_time: "00:00", end_time: `${hh}:${mm}` };
+}
+
+function ptoNotes(notes: unknown) {
+  const detail = cleanText(notes);
+  return detail ? `PTO Request - ${detail}` : "PTO Request";
 }
 
 Deno.serve(async (req) => {
@@ -147,6 +160,95 @@ Deno.serve(async (req) => {
       }
 
       return { user: authData.user, profile: actorProfile };
+    }
+
+    async function ensurePtoLedgerForRequest(request: Record<string, unknown>, actor: { user: Record<string, unknown>; profile: Record<string, unknown> }) {
+      if (request.personal_time_entry_id) return request.personal_time_entry_id;
+
+      const [
+        { data: employee, error: employeeError },
+        { data: ledgerEntries, error: balanceLedgerError },
+        { data: pendingRequests, error: pendingRequestsError },
+      ] = await Promise.all([
+        supa.from("employees").select("id, start_date").eq("id", request.employee_id).maybeSingle(),
+        supa.from("personal_time_entries").select("entry_type, hours").eq("employee_id", request.employee_id),
+        supa.from("pto_requests").select("id, status, hours").eq("employee_id", request.employee_id).eq("status", "submitted"),
+      ]);
+      if (employeeError) throw employeeError;
+      if (balanceLedgerError) throw balanceLedgerError;
+      if (pendingRequestsError) throw pendingRequestsError;
+
+      const otherPendingRequests = (pendingRequests || []).filter((pendingRequest) => pendingRequest.id !== request.id);
+      const balance = ptoBalance(employee || undefined, ledgerEntries || [], otherPendingRequests);
+      if (Number(request.hours || 0) > balance.available + 0.001) {
+        throw new Error(`Only ${balance.available.toFixed(2)} PTO hours are available for approval.`);
+      }
+
+      const { data: ledgerEntry, error: ledgerError } = await supa
+        .from("personal_time_entries")
+        .insert({
+          employee_id: request.employee_id,
+          entry_type: "used",
+          hours: request.hours,
+          date_used: request.request_date,
+          manager: actor.profile.full_name || actor.user.email || "manager",
+          notes: request.notes,
+        })
+        .select("id")
+        .single();
+      if (ledgerError) throw ledgerError;
+      return ledgerEntry?.id || null;
+    }
+
+    async function syncLinkedPtoRequestFromTimeEntry(entry: Record<string, unknown>, actor: { user: Record<string, unknown>; profile: Record<string, unknown> }, note = "") {
+      const { data: request, error: requestError } = await supa
+        .from("pto_requests")
+        .select("*")
+        .eq("time_entry_id", entry.id)
+        .maybeSingle();
+      if (requestError) throw requestError;
+      if (!request) return;
+
+      const status = cleanText(entry.status);
+      if (status === "approved") {
+        const personalTimeEntryId = await ensurePtoLedgerForRequest(request, actor);
+        const { error } = await supa
+          .from("pto_requests")
+          .update({
+            status: "approved",
+            manager_id: actor.user.id,
+            manager_note: cleanText(note) || request.manager_note || null,
+            decided_at: new Date().toISOString(),
+            personal_time_entry_id: personalTimeEntryId,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", request.id);
+        if (error) throw error;
+      } else if (status === "rejected") {
+        const { error } = await supa
+          .from("pto_requests")
+          .update({
+            status: "rejected",
+            manager_id: actor.user.id,
+            manager_note: cleanText(entry.rejection_reason) || cleanText(note) || null,
+            decided_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", request.id);
+        if (error) throw error;
+      } else if (status === "submitted" && request.status !== "submitted") {
+        const { error } = await supa
+          .from("pto_requests")
+          .update({
+            status: "submitted",
+            manager_id: null,
+            manager_note: null,
+            decided_at: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", request.id);
+        if (error) throw error;
+      }
     }
 
     if (action === "job_crew_options") {
@@ -394,6 +496,18 @@ Deno.serve(async (req) => {
         return json({ error: `Only ${balance.available.toFixed(2)} PTO hours are available.` }, 400);
       }
 
+      const { data: duplicateRequest, error: duplicateRequestError } = await supa
+        .from("pto_requests")
+        .select("id")
+        .eq("employee_id", actor.profile.employee_id)
+        .eq("request_date", requestDate)
+        .in("status", ["submitted", "approved"])
+        .maybeSingle();
+      if (duplicateRequestError) throw duplicateRequestError;
+      if (duplicateRequest) {
+        return json({ error: "PTO is already requested for this date." }, 400);
+      }
+
       const { data, error } = await supa
         .from("pto_requests")
         .insert({
@@ -407,7 +521,39 @@ Deno.serve(async (req) => {
         .select()
         .single();
       if (error) throw error;
-      return json({ ok: true, pto_entry: data });
+
+      const range = ptoTimeRange(hours);
+      const { data: timeEntry, error: timeEntryError } = await supa
+        .from("time_entries")
+        .insert({
+          employee_id: actor.profile.employee_id,
+          user_id: actor.user.id,
+          job_id: null,
+          work_date: requestDate,
+          start_time: range.start_time,
+          end_time: range.end_time,
+          break_minutes: 0,
+          notes: ptoNotes(payload.notes),
+          status: "submitted",
+          submitted_at: new Date().toISOString(),
+          device_info: cleanText(payload.device_info) || null,
+          change_reason: "PTO request submitted from employee portal",
+        })
+        .select("id")
+        .single();
+      if (timeEntryError) {
+        await supa.from("pto_requests").delete().eq("id", data.id);
+        throw timeEntryError;
+      }
+
+      const { data: linkedRequest, error: linkError } = await supa
+        .from("pto_requests")
+        .update({ time_entry_id: timeEntry.id, updated_at: new Date().toISOString() })
+        .eq("id", data.id)
+        .select()
+        .single();
+      if (linkError) throw linkError;
+      return json({ ok: true, pto_entry: linkedRequest, time_entry: timeEntry });
     }
 
     if (action === "pto_decision") {
@@ -444,39 +590,7 @@ Deno.serve(async (req) => {
 
       let personalTimeEntryId = request.personal_time_entry_id || null;
       if (status === "approved" && !personalTimeEntryId) {
-        const [
-          { data: employee, error: employeeError },
-          { data: ledgerEntries, error: balanceLedgerError },
-          { data: pendingRequests, error: pendingRequestsError },
-        ] = await Promise.all([
-          supa.from("employees").select("id, start_date").eq("id", request.employee_id).maybeSingle(),
-          supa.from("personal_time_entries").select("entry_type, hours").eq("employee_id", request.employee_id),
-          supa.from("pto_requests").select("id, status, hours").eq("employee_id", request.employee_id).eq("status", "submitted"),
-        ]);
-        if (employeeError) throw employeeError;
-        if (balanceLedgerError) throw balanceLedgerError;
-        if (pendingRequestsError) throw pendingRequestsError;
-
-        const otherPendingRequests = (pendingRequests || []).filter((pendingRequest) => pendingRequest.id !== request.id);
-        const balance = ptoBalance(employee || undefined, ledgerEntries || [], otherPendingRequests);
-        if (Number(request.hours || 0) > balance.available + 0.001) {
-          return json({ error: `Only ${balance.available.toFixed(2)} PTO hours are available for approval.` }, 400);
-        }
-
-        const { data: ledgerEntry, error: ledgerError } = await supa
-          .from("personal_time_entries")
-          .insert({
-            employee_id: request.employee_id,
-            entry_type: "used",
-            hours: request.hours,
-            date_used: request.request_date,
-            manager: actor.profile.full_name || actor.user.email || "manager",
-            notes: request.notes,
-          })
-          .select("id")
-          .single();
-        if (ledgerError) throw ledgerError;
-        personalTimeEntryId = ledgerEntry?.id || null;
+        personalTimeEntryId = await ensurePtoLedgerForRequest(request, actor);
       }
 
       const { data, error } = await supa
@@ -493,7 +607,69 @@ Deno.serve(async (req) => {
         .select()
         .single();
       if (error) throw error;
+
+      if (request.time_entry_id) {
+        const timeUpdate: Record<string, unknown> = {
+          status,
+          rejection_reason: status === "rejected" ? cleanText(payload.manager_note) || "PTO request rejected." : null,
+          change_reason: `PTO request ${status} by ${actor.profile.full_name || actor.user.email || "manager"}`,
+          device_info: cleanText(payload.device_info) || null,
+        };
+        const { error: timeError } = await supa
+          .from("time_entries")
+          .update(timeUpdate)
+          .eq("id", request.time_entry_id);
+        if (timeError) throw timeError;
+      }
+
       return json({ ok: true, pto_entry: data });
+    }
+
+    if (action === "review_time_entries") {
+      const actor = await getPortalActor();
+      if (actor.error) return actor.error;
+      if (!reviewRoles.includes(String(actor.profile.role))) {
+        return json({ error: "Manager or admin access is required." }, 403);
+      }
+
+      const entryIds = Array.isArray(payload.ids)
+        ? payload.ids.map((id) => cleanText(id)).filter(Boolean)
+        : cleanText(payload.ids).split(",").map((id) => cleanText(id)).filter(Boolean);
+      if (!entryIds.length) return json({ error: "Choose a time entry to update." }, 400);
+
+      const updates = (payload.updates && typeof payload.updates === "object" ? payload.updates : payload) as Record<string, unknown>;
+      const status = Object.hasOwn(updates, "status") ? cleanText(updates.status) : "";
+      if (status && !["draft", "submitted", "approved", "rejected"].includes(status)) {
+        return json({ error: "Invalid time entry status." }, 400);
+      }
+
+      const updateBody: Record<string, unknown> = {
+        break_minutes: Number(updates.break_minutes || 0),
+        device_info: cleanText(updates.device_info) || null,
+        change_reason: cleanText(updates.change_reason) || `Manager edit from employee portal by ${actor.profile.full_name || actor.user.email || "manager"}`,
+      };
+
+      for (const field of ["work_date", "start_time", "end_time"]) {
+        if (Object.hasOwn(updates, field)) updateBody[field] = cleanText(updates[field]);
+      }
+      if (Object.hasOwn(updates, "notes")) updateBody.notes = cleanText(updates.notes) || null;
+      if (status) updateBody.status = status;
+      if (Object.hasOwn(updates, "rejection_reason") || status === "rejected") {
+        updateBody.rejection_reason = status === "rejected" ? cleanText(updates.rejection_reason) || "Rejected from employee portal review." : null;
+      }
+
+      const { data, error } = await supa
+        .from("time_entries")
+        .update(updateBody)
+        .in("id", entryIds)
+        .select();
+      if (error) throw error;
+
+      for (const entry of data || []) {
+        await syncLinkedPtoRequestFromTimeEntry(entry, actor, cleanText(updateBody.change_reason));
+      }
+
+      return json({ ok: true, time_entries: data || [] });
     }
 
     if (req.headers.get("x-sefs-admin-pin") !== adminPin) {
@@ -502,6 +678,118 @@ Deno.serve(async (req) => {
 
     if (action === "verify_pin") {
       return json({ ok: true });
+    }
+
+    if (action === "pto_log") {
+      const employeeId = cleanText(payload.employee_id);
+      const entryType = cleanText(payload.entry_type) || "used";
+      const hours = Number(payload.hours || 0);
+      const dateUsed = cleanText(payload.date_used);
+      if (!employeeId) return json({ error: "Choose an hourly employee." }, 400);
+      if (!["used", "add", "subtract"].includes(entryType)) return json({ error: "Invalid PTO log type." }, 400);
+      if (!Number.isFinite(hours) || hours <= 0) return json({ error: "PTO hours must be greater than zero." }, 400);
+      if (!dateUsed) return json({ error: "Date to be applied is required." }, 400);
+
+      const [{ data: employee, error: employeeError }, { data: employeeProfile, error: employeeProfileError }] = await Promise.all([
+        supa.from("employees").select("id, name, start_date, active").eq("id", employeeId).maybeSingle(),
+        supa.from("profiles").select("id, employee_id, role, full_name, active").eq("employee_id", employeeId).maybeSingle(),
+      ]);
+      if (employeeError) throw employeeError;
+      if (employeeProfileError) throw employeeProfileError;
+      if (!employee?.active) return json({ error: "Choose an active hourly employee." }, 400);
+      if (isSalaryRole(employeeProfile?.role)) {
+        return json({ error: "Managers and admins are salary and do not use PTO tracking." }, 400);
+      }
+
+      if (entryType !== "used") {
+        const { data, error } = await supa
+          .from("personal_time_entries")
+          .insert({
+            employee_id: employeeId,
+            entry_type: entryType,
+            hours: Math.abs(hours),
+            date_used: dateUsed,
+            manager: cleanText(payload.manager) || "manager",
+            notes: cleanText(payload.notes) || null,
+          })
+          .select()
+          .single();
+        if (error) throw error;
+        return json({ ok: true, pto_ledger_entry: data });
+      }
+
+      const [
+        { data: ledgerEntries, error: ledgerError },
+        { data: pendingRequests, error: pendingRequestsError },
+        { data: duplicateRequest, error: duplicateRequestError },
+      ] = await Promise.all([
+        supa.from("personal_time_entries").select("entry_type, hours").eq("employee_id", employeeId),
+        supa.from("pto_requests").select("status, hours").eq("employee_id", employeeId).eq("status", "submitted"),
+        supa
+          .from("pto_requests")
+          .select("id")
+          .eq("employee_id", employeeId)
+          .eq("request_date", dateUsed)
+          .in("status", ["submitted", "approved"])
+          .maybeSingle(),
+      ]);
+      if (ledgerError) throw ledgerError;
+      if (pendingRequestsError) throw pendingRequestsError;
+      if (duplicateRequestError) throw duplicateRequestError;
+      if (duplicateRequest) return json({ error: "PTO is already requested for this employee and date." }, 400);
+
+      const balance = ptoBalance(employee || undefined, ledgerEntries || [], pendingRequests || []);
+      if (hours > balance.available + 0.001) {
+        return json({ error: `Only ${balance.available.toFixed(2)} PTO hours are available.` }, 400);
+      }
+
+      const { data: ptoRequest, error: ptoRequestError } = await supa
+        .from("pto_requests")
+        .insert({
+          employee_id: employeeId,
+          user_id: employeeProfile?.id || null,
+          request_date: dateUsed,
+          hours,
+          notes: cleanText(payload.notes) || null,
+          status: "submitted",
+        })
+        .select()
+        .single();
+      if (ptoRequestError) throw ptoRequestError;
+
+      const range = ptoTimeRange(hours);
+      const { data: timeEntry, error: timeEntryError } = await supa
+        .from("time_entries")
+        .insert({
+          employee_id: employeeId,
+          user_id: employeeProfile?.id || null,
+          job_id: null,
+          work_date: dateUsed,
+          start_time: range.start_time,
+          end_time: range.end_time,
+          break_minutes: 0,
+          notes: ptoNotes(payload.notes),
+          status: "submitted",
+          submitted_at: new Date().toISOString(),
+          device_info: cleanText(payload.device_info) || null,
+          change_reason: `PTO request logged from dashboard by ${cleanText(payload.manager) || "manager"}`,
+        })
+        .select("id")
+        .single();
+      if (timeEntryError) {
+        await supa.from("pto_requests").delete().eq("id", ptoRequest.id);
+        throw timeEntryError;
+      }
+
+      const { data: linkedRequest, error: linkError } = await supa
+        .from("pto_requests")
+        .update({ time_entry_id: timeEntry.id, updated_at: new Date().toISOString() })
+        .eq("id", ptoRequest.id)
+        .select()
+        .single();
+      if (linkError) throw linkError;
+
+      return json({ ok: true, pto_entry: linkedRequest, time_entry: timeEntry });
     }
 
     let adminActorUserId: string | null = null;
@@ -798,6 +1086,10 @@ Deno.serve(async (req) => {
         .single();
 
       if (error) throw error;
+      await syncLinkedPtoRequestFromTimeEntry(data, {
+        user: { id: adminActorUserId, email: "Employee Admin" },
+        profile: { full_name: "Employee Admin" },
+      }, cleanText(updateBody.change_reason));
       return json({ ok: true, time_entry: data });
     }
 
