@@ -200,6 +200,49 @@ Deno.serve(async (req) => {
       return ledgerEntry?.id || null;
     }
 
+    async function returnPtoLedgerForRequest(request: Record<string, unknown>) {
+      const ledgerId = cleanText(request.personal_time_entry_id);
+      if (!ledgerId) return null;
+
+      const { error: deleteError } = await supa
+        .from("personal_time_entries")
+        .delete()
+        .eq("id", ledgerId);
+      if (deleteError) throw deleteError;
+
+      return null;
+    }
+
+    async function cleanupRejectedPtoLedgerRows(employeeIds: string[] = []) {
+      let query = supa
+        .from("pto_requests")
+        .select("id, personal_time_entry_id")
+        .eq("status", "rejected")
+        .not("personal_time_entry_id", "is", null);
+      if (employeeIds.length) query = query.in("employee_id", employeeIds);
+
+      const { data: rejectedRequests, error: rejectedError } = await query;
+      if (rejectedError) throw rejectedError;
+
+      const ledgerIds = [...new Set((rejectedRequests || []).map((request) => cleanText(request.personal_time_entry_id)).filter(Boolean))];
+      if (!ledgerIds.length) return;
+
+      const { error: deleteError } = await supa
+        .from("personal_time_entries")
+        .delete()
+        .in("id", ledgerIds);
+      if (deleteError) throw deleteError;
+
+      const requestIds = (rejectedRequests || []).map((request) => cleanText(request.id)).filter(Boolean);
+      if (requestIds.length) {
+        const { error: updateError } = await supa
+          .from("pto_requests")
+          .update({ personal_time_entry_id: null, updated_at: new Date().toISOString() })
+          .in("id", requestIds);
+        if (updateError) throw updateError;
+      }
+    }
+
     async function syncLinkedPtoRequestFromTimeEntry(entry: Record<string, unknown>, actor: { user: Record<string, unknown>; profile: Record<string, unknown> }, note = "") {
       const { data: request, error: requestError } = await supa
         .from("pto_requests")
@@ -225,6 +268,7 @@ Deno.serve(async (req) => {
           .eq("id", request.id);
         if (error) throw error;
       } else if (status === "rejected") {
+        const personalTimeEntryId = await returnPtoLedgerForRequest(request);
         const { error } = await supa
           .from("pto_requests")
           .update({
@@ -232,11 +276,13 @@ Deno.serve(async (req) => {
             manager_id: actor.user.id,
             manager_note: cleanText(entry.rejection_reason) || cleanText(note) || null,
             decided_at: new Date().toISOString(),
+            personal_time_entry_id: personalTimeEntryId,
             updated_at: new Date().toISOString(),
           })
           .eq("id", request.id);
         if (error) throw error;
       } else if (status === "submitted" && request.status !== "submitted") {
+        const personalTimeEntryId = await returnPtoLedgerForRequest(request);
         const { error } = await supa
           .from("pto_requests")
           .update({
@@ -244,6 +290,7 @@ Deno.serve(async (req) => {
             manager_id: null,
             manager_note: null,
             decided_at: null,
+            personal_time_entry_id: personalTimeEntryId,
             updated_at: new Date().toISOString(),
           })
           .eq("id", request.id);
@@ -433,6 +480,8 @@ Deno.serve(async (req) => {
       const visibleRequests = (requests || []).filter((request) => !isSalaryRole(profileByEmployee.get(request.employee_id)?.role));
       const employeesById = new Map((employees || []).map((employee) => [employee.id, employee]));
       const employeeIds = [...new Set((canReviewPto ? hourlyEmployees : hourlyEmployees.filter((employee) => employee.id === actor.profile.employee_id)).map((employee) => employee.id).filter(Boolean))];
+      await cleanupRejectedPtoLedgerRows(employeeIds);
+
       const { data: ledgerEntries, error: ledgerError } = employeeIds.length
         ? await supa
             .from("personal_time_entries")
@@ -477,6 +526,7 @@ Deno.serve(async (req) => {
       if (!actor.profile.employee_id) {
         return json({ error: "Your profile is not linked to an employee record." }, 400);
       }
+      await cleanupRejectedPtoLedgerRows([actor.profile.employee_id]);
 
       const [
         { data: employee, error: employeeError },
@@ -574,9 +624,6 @@ Deno.serve(async (req) => {
         .eq("id", id)
         .single();
       if (requestError) throw requestError;
-      if (request.status === "approved" && status === "rejected") {
-        return json({ error: "Approved PTO has already been added to the PTO ledger." }, 400);
-      }
       const { data: requestProfile, error: requestProfileError } = await supa
         .from("profiles")
         .select("role")
@@ -591,6 +638,8 @@ Deno.serve(async (req) => {
       let personalTimeEntryId = request.personal_time_entry_id || null;
       if (status === "approved" && !personalTimeEntryId) {
         personalTimeEntryId = await ensurePtoLedgerForRequest(request, actor);
+      } else if (status === "rejected") {
+        personalTimeEntryId = await returnPtoLedgerForRequest(request);
       }
 
       const { data, error } = await supa
