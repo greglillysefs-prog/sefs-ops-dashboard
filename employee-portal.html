@@ -891,14 +891,14 @@
     }
 
     .tabs {
-      display: none;
-      grid-template-columns: repeat(3, 1fr);
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 8px;
       margin-bottom: 12px;
     }
 
     .mobile-tab-select-wrap {
-      display: none;
+      display: block;
       margin-bottom: 12px;
     }
 
@@ -930,6 +930,10 @@
     @media (max-width: 900px) {
       .grid {
         grid-template-columns: 1fr;
+      }
+
+      .tabs {
+        display: none;
       }
 
       .mobile-tab-select-wrap {
