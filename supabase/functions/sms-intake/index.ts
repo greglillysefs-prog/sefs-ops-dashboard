@@ -331,7 +331,6 @@ Deno.serve(async (req) => {
   const messageSid = clean(params.get("MessageSid") || params.get("SmsMessageSid"));
 
   if (!body) return twiml("SEFS intake received a blank message.");
-  if (!allowedSender(fromPhone)) return twiml("This SEFS intake number is limited to approved users.");
 
   const existingMessage = messageSid
     ? await supa
@@ -345,12 +344,16 @@ Deno.serve(async (req) => {
   }
 
   const upperBody = body.toUpperCase();
-  if (upperBody === "HELP") {
-    return twiml("Southeast Flooring Solutions: Text job intake details here. Example: Mike 9315551212 600 sqft flake 123 Main St follow up in 3 days. For help call 321-284-8168. Reply STOP to opt out.");
+  if (upperBody === "START" || upperBody === "YES") {
+    return twiml("Southeast Flooring Solutions: You are opted in for job intake, scheduling, follow-up, and operations SMS. Msg freq varies. Msg&data rates may apply. Privacy/Terms: https://sefs-sms-compliance.pages.dev Reply HELP for help. Reply STOP to opt out.");
+  }
+  if (upperBody === "HELP" || upperBody === "INFO") {
+    return twiml("Southeast Flooring Solutions SMS help: call 321-284-8168. Msg freq varies. Msg&data rates may apply. Reply STOP to opt out. Privacy/Terms: https://sefs-sms-compliance.pages.dev");
   }
   if (upperBody === "STOP" || upperBody === "STOPALL" || upperBody === "UNSUBSCRIBE" || upperBody === "CANCEL" || upperBody === "END" || upperBody === "QUIT") {
-    return twiml("Southeast Flooring Solutions: You are opted out. Reply START to opt back in.");
+    return twiml("Southeast Flooring Solutions: You have successfully opted out. You will not receive any more messages from this number. Reply START to opt back in.");
   }
+  if (!allowedSender(fromPhone)) return twiml("This SEFS intake number is limited to approved SEFS users. Reply HELP for help or STOP to opt out.");
 
   try {
     const { data: conversation, error: conversationError } = await supa
