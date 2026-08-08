@@ -1544,6 +1544,7 @@
     let entryReviewView = 'accepted';
     let activePortalTab = '';
     let selectedPayPeriodStart = '';
+    let payPeriodManuallySelected = false;
     let crewOptions = [];
     let selectedCrewIds = new Set();
     let timeSaveInFlight = false;
@@ -3035,8 +3036,12 @@
         $('payPeriodControls').innerHTML = '';
         return;
       }
-      if (!selectedPayPeriodStart || !options.includes(selectedPayPeriodStart)) {
-        selectedPayPeriodStart = options[0] || isoDate(payPeriodStart(today()));
+      const currentStart = isoDate(payPeriodStart(today()));
+      if (!payPeriodManuallySelected && options.includes(currentStart)) {
+        selectedPayPeriodStart = currentStart;
+      } else if (!selectedPayPeriodStart || !options.includes(selectedPayPeriodStart)) {
+        selectedPayPeriodStart = options.includes(currentStart) ? currentStart : options[0] || currentStart;
+        payPeriodManuallySelected = false;
       }
       $('payPeriodControls').innerHTML = `
         <label for="payPeriodSelect">Pay Period</label>
@@ -3380,6 +3385,7 @@
 
     window.setPayPeriodStart = function setPayPeriodStart(start) {
       selectedPayPeriodStart = start;
+      payPeriodManuallySelected = true;
       renderWeeklySummaries();
     };
 
