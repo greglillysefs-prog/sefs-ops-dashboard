@@ -639,6 +639,31 @@
       background: #050505;
     }
 
+    .linked-attachment-file {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      min-height: 68px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #050505;
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    .linked-attachment-file b {
+      color: var(--orange);
+      font-size: 13px;
+    }
+
+    .linked-attachment-file span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     .button-link {
       border: 1px solid var(--orange);
       background: linear-gradient(180deg, #222, #141414);
@@ -1478,8 +1503,8 @@
                 <textarea id="notes" placeholder="Crew notes, prep details, delays, or anything the office should know."></textarea>
               </div>
               <div class="full">
-                <label>Photos</label>
-                <input id="timePhotos" type="file" accept="image/*" multiple>
+                <label>Photos / Files</label>
+                <input id="timePhotos" type="file" accept="image/*,application/pdf,.pdf" multiple>
               </div>
               <div class="actions full">
                 <button class="primary" type="submit">Save Draft</button>
@@ -1727,6 +1752,25 @@
       return '';
     }
 
+    function isPdfAttachment(photo, url = '') {
+      return /\.pdf($|[?#])/i.test([
+        photo?.file_name,
+        photo?.storage_path,
+        photo?.public_url,
+        url
+      ].filter(Boolean).join(' '));
+    }
+
+    function linkedAttachmentHTML(photo, label = 'Attachment') {
+      const url = photoUrl(photo);
+      if (!url) return '';
+      const name = photo.caption || photo.file_name || label;
+      if (isPdfAttachment(photo, url)) {
+        return `<a class="linked-attachment-file" href="${esc(url)}" target="_blank" rel="noopener"><b>PDF</b><span>${esc(name)}</span></a>`;
+      }
+      return `<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}" alt="${esc(name)}"></a>`;
+    }
+
     function photoKey(photo) {
       return [
         photo?.storage_path || '',
@@ -1766,10 +1810,7 @@
       if (!photos.length) return '';
       return `
         <div class="linked-photo-grid">
-          ${photos.map((photo) => {
-            const url = photoUrl(photo);
-            return url ? `<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}" alt="${esc(photo.caption || photo.file_name || 'Job photo')}"></a>` : '';
-          }).join('')}
+          ${photos.map((photo) => linkedAttachmentHTML(photo, 'Job attachment')).join('')}
         </div>
       `;
     }
@@ -1793,10 +1834,7 @@
       if (!photos.length) return '';
       return `
         <div class="linked-photo-grid time-entry-photos">
-          ${photos.map((photo) => {
-            const url = photoUrl(photo);
-            return url ? `<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}" alt="${esc(photo.caption || photo.file_name || 'Time entry photo')}"></a>` : '';
-          }).join('')}
+          ${photos.map((photo) => linkedAttachmentHTML(photo, 'Time entry attachment')).join('')}
         </div>
       `;
     }
@@ -2579,10 +2617,10 @@
           <div class="schedule-update-form">
             <label for="scheduleNote_${esc(selectedItem.id)}">Add Job Note</label>
             <textarea id="scheduleNote_${esc(selectedItem.id)}" placeholder="Crew notes, job progress, prep concerns, or anything the office should know."></textarea>
-            <label for="schedulePhotos_${esc(selectedItem.id)}">Add Job Photos</label>
-            <input id="schedulePhotos_${esc(selectedItem.id)}" type="file" accept="image/*" multiple>
+            <label for="schedulePhotos_${esc(selectedItem.id)}">Add Job Photos / Files</label>
+            <input id="schedulePhotos_${esc(selectedItem.id)}" type="file" accept="image/*,application/pdf,.pdf" multiple>
             <div class="actions">
-              <button class="primary" type="button" onclick="saveScheduleJobUpdate('${esc(selectedItem.id)}')">Save Note / Photos</button>
+              <button class="primary" type="button" onclick="saveScheduleJobUpdate('${esc(selectedItem.id)}')">Save Note / Files</button>
             </div>
             <p class="muted">Schedule dates and job details are read-only in the employee portal.</p>
           </div>
@@ -3652,8 +3690,8 @@
 
         const publicUrl = supa.storage.from('sefs-photos').getPublicUrl(path).data.publicUrl;
         const caption = jobId
-          ? `Time entry photo - ${formatDate(entry.work_date)}`
-          : `Other time entry photo - ${formatDate(entry.work_date)}`;
+          ? `Time entry attachment - ${formatDate(entry.work_date)}`
+          : `Other time entry attachment - ${formatDate(entry.work_date)}`;
         const saved = await supa.from('photo_attachments').insert({
           entity_type: targetType,
           entity_id: targetId,
@@ -3667,7 +3705,7 @@
         if (saved.error) throw new Error(saved.error.message);
       }
 
-      return `${files.length} photo${files.length === 1 ? '' : 's'} uploaded${jobId ? ' and attached to the job' : ' to the time entry'}.`;
+      return `${files.length} file${files.length === 1 ? '' : 's'} uploaded${jobId ? ' and attached to the job' : ' to the time entry'}.`;
     }
 
     async function uploadScheduleJobPhotos(jobId) {
@@ -3690,14 +3728,14 @@
           file_name: file.name,
           storage_path: path,
           public_url: publicUrl,
-          caption: `Employee portal photo - ${formatDate(today())}`,
+          caption: `Employee portal attachment - ${formatDate(today())}`,
           category: 'employee-portal',
           uploaded_by: uploadedBy
         });
         if (saved.error) throw new Error(saved.error.message);
       }
 
-      return `${files.length} photo${files.length === 1 ? '' : 's'} uploaded and attached to the job.`;
+      return `${files.length} file${files.length === 1 ? '' : 's'} uploaded and attached to the job.`;
     }
 
     window.saveScheduleJobUpdate = async function saveScheduleJobUpdate(jobId) {
@@ -3709,7 +3747,7 @@
         const note = noteInput?.value.trim() || '';
         const photoInput = $(`schedulePhotos_${jobId}`);
         if (!note && !photoInput?.files?.length) {
-          setMessage('appMessage', 'Add a job note or choose photos first.', true);
+          setMessage('appMessage', 'Add a job note or choose files first.', true);
           return;
         }
 

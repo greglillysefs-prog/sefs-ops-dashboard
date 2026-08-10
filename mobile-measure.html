@@ -135,8 +135,8 @@
         <label>Cracks / Spalls / Joints</label><textarea id="cracks_${i}" oninput="captureArea(${i})">${esc(area.cracks_spalls_joints_notes||'')}</textarea>
         <label>Moisture Notes</label><textarea id="moisture_${i}" oninput="captureArea(${i})">${esc(area.moisture_notes||'')}</textarea>
         <label>Area Notes</label><textarea id="notes_${i}" oninput="captureArea(${i})">${esc(area.notes||'')}</textarea>
-        <label>Photos</label><input id="files_${i}" type=file accept="image/*" multiple>
-        <div class=muted>Choose Photo Library / Gallery for multiple saved photos, or Camera to take a new photo.</div>
+        <label>Photos / Files</label><input id="files_${i}" type=file accept="image/*,application/pdf,.pdf" multiple>
+        <div class=muted>Choose photos, PDFs, or camera captures from the same picker.</div>
       </div>`;
     }
     function renderAreasOnly(){
