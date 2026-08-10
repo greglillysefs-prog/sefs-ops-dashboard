@@ -72,6 +72,8 @@
     function val(id){return $(id)?.value||''}
     function num(id){return parseFloat(val(id))||0}
     function today(){return new Date().toISOString().slice(0,10)}
+    function safeStorageName(name){return String(name||'file').replace(/[^a-zA-Z0-9._-]/g,'_')}
+    function inferFileType(file){let name=String(file?.name||'').toLowerCase();if(file?.type)return file.type;if(name.endsWith('.pdf'))return 'application/pdf';if(/\.(jpe?g)$/i.test(name))return 'image/jpeg';if(name.endsWith('.png'))return 'image/png';if(name.endsWith('.heic'))return 'image/heic';if(name.endsWith('.webp'))return 'image/webp';return 'application/octet-stream'}
     function targetName(item){return item?.customer||item?.job_name||'Untitled'}
     function targetAddress(item){return item?.address||''}
     function targetPhone(item){return item?.phone||''}
@@ -208,9 +210,8 @@
       const input=$(`files_${i}`);
       if(!input||!input.files.length)return;
       for(const file of input.files){
-        const clean=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
-        const path=`${targetType}/${targetId}/measurements/${areaId}/${Date.now()}_${clean}`;
-        const up=await supa.storage.from('sefs-photos').upload(path,file,{upsert:false});
+        const path=`${targetType}/${targetId}/measurements/${areaId}/${Date.now()}_${safeStorageName(file.name)}`;
+        const up=await supa.storage.from('sefs-photos').upload(path,file,{upsert:false,cacheControl:'3600',contentType:inferFileType(file)});
         if(up.error)throw new Error(up.error.message);
         const pub=supa.storage.from('sefs-photos').getPublicUrl(path).data.publicUrl;
         const saved=await supa.from('photo_attachments').insert({entity_type:targetType,entity_id:targetId,file_name:file.name,storage_path:path,public_url:pub,caption:`${area.area_name||'Measured area'} - ${area.area_type||'Area'}`,category:area.area_type||'Area',field_measurement_id:measurementId,field_measurement_area_id:areaId,uploaded_by:'mobile-measure'});

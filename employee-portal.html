@@ -1752,6 +1752,21 @@
       return '';
     }
 
+    function safeStorageName(name) {
+      return String(name || 'file').replace(/[^a-zA-Z0-9._-]/g, '_');
+    }
+
+    function inferFileType(file) {
+      const name = String(file?.name || '').toLowerCase();
+      if (file?.type) return file.type;
+      if (name.endsWith('.pdf')) return 'application/pdf';
+      if (/\.(jpe?g)$/i.test(name)) return 'image/jpeg';
+      if (name.endsWith('.png')) return 'image/png';
+      if (name.endsWith('.heic')) return 'image/heic';
+      if (name.endsWith('.webp')) return 'image/webp';
+      return 'application/octet-stream';
+    }
+
     function isPdfAttachment(photo, url = '') {
       return /\.pdf($|[?#])/i.test([
         photo?.file_name,
@@ -3680,12 +3695,15 @@
       const files = Array.from(input.files);
       const targetType = jobId ? 'job' : 'time_entry';
       const targetId = jobId || entry.id;
-      const safeName = (name) => name.replace(/[^a-zA-Z0-9._-]/g, '_');
       const uploadedBy = profile?.full_name || session?.user?.email || 'employee-portal';
 
       for (const file of files) {
-        const path = `${targetType}/${targetId}/time-entry/${entry.id}/${Date.now()}_${safeName(file.name)}`;
-        const upload = await supa.storage.from('sefs-photos').upload(path, file, { upsert: false });
+        const path = `${targetType}/${targetId}/time-entry/${entry.id}/${Date.now()}_${safeStorageName(file.name)}`;
+        const upload = await supa.storage.from('sefs-photos').upload(path, file, {
+          upsert: false,
+          cacheControl: '3600',
+          contentType: inferFileType(file)
+        });
         if (upload.error) throw new Error(upload.error.message);
 
         const publicUrl = supa.storage.from('sefs-photos').getPublicUrl(path).data.publicUrl;
@@ -3713,12 +3731,15 @@
       if (!input?.files?.length) return '';
 
       const files = Array.from(input.files);
-      const safeName = (name) => name.replace(/[^a-zA-Z0-9._-]/g, '_');
       const uploadedBy = profile?.full_name || session?.user?.email || 'employee-portal';
 
       for (const file of files) {
-        const path = `job/${jobId}/employee-portal/${Date.now()}_${safeName(file.name)}`;
-        const upload = await supa.storage.from('sefs-photos').upload(path, file, { upsert: false });
+        const path = `job/${jobId}/employee-portal/${Date.now()}_${safeStorageName(file.name)}`;
+        const upload = await supa.storage.from('sefs-photos').upload(path, file, {
+          upsert: false,
+          cacheControl: '3600',
+          contentType: inferFileType(file)
+        });
         if (upload.error) throw new Error(upload.error.message);
 
         const publicUrl = supa.storage.from('sefs-photos').getPublicUrl(path).data.publicUrl;
