@@ -1,4 +1,4 @@
-const SEFS_CACHE = 'sefs-pwa-v20260811f';
+const SEFS_CACHE = 'sefs-pwa-v20260811g';
 const SEFS_ASSETS = [
   './',
   './index.html',
@@ -13,21 +13,27 @@ const SEFS_ASSETS = [
   './privacy.html',
   './terms.html',
   './manifest.webmanifest',
-  './manifest.webmanifest?v=20260811f',
+  './manifest.webmanifest?v=20260811g',
   './employee-portal.webmanifest',
-  './employee-portal.webmanifest?v=20260811f',
+  './employee-portal.webmanifest?v=20260811g',
   './mobile-measure.webmanifest',
-  './mobile-measure.webmanifest?v=20260811f',
+  './mobile-measure.webmanifest?v=20260811g',
   './mobile-job.webmanifest',
-  './mobile-job.webmanifest?v=20260811f',
+  './mobile-job.webmanifest?v=20260811g',
   './inventory-management.webmanifest',
-  './inventory-management.webmanifest?v=20260811f',
+  './inventory-management.webmanifest?v=20260811g',
   './pwa-init.js',
-  './pwa-init.js?v=20260811f',
+  './pwa-init.js?v=20260811g',
   './assets/sefs-icon.jpeg',
   './assets/sefs-app-icon-180.png',
   './assets/sefs-app-icon-192.png',
-  './assets/sefs-app-icon-512.png'
+  './assets/sefs-app-icon-512.png',
+  './assets/sefs-inventory-icon-180.png',
+  './assets/sefs-inventory-icon-192.png',
+  './assets/sefs-inventory-icon-512.png',
+  './assets/sefs-measure-icon-180.png',
+  './assets/sefs-measure-icon-192.png',
+  './assets/sefs-measure-icon-512.png'
 ];
 
 self.addEventListener('install', event => {
