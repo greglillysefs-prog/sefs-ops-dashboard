@@ -34,25 +34,25 @@
     {
       "name": "Employee Portal",
       "short_name": "Portal",
-      "url": "employee-portal.html",
+      "url": "employee-portal.html?app=employee-portal",
       "icons": [{ "src": "assets/sefs-app-icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Field Measure",
       "short_name": "Measure",
-      "url": "mobile-measure.html",
+      "url": "mobile-measure.html?app=mobile-measure",
       "icons": [{ "src": "assets/sefs-app-icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Inventory Management",
       "short_name": "Inventory",
-      "url": "inventory-management.html",
+      "url": "inventory-management.html?app=inventory-management",
       "icons": [{ "src": "assets/sefs-app-icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Mobile Job View",
       "short_name": "Jobs",
-      "url": "mobile-job.html",
+      "url": "mobile-job.html?app=mobile-job",
       "icons": [{ "src": "assets/sefs-app-icon-192.png", "sizes": "192x192" }]
     }
   ]

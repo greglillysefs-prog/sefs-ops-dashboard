@@ -34,13 +34,13 @@
     {
       "name": "Employee Portal",
       "short_name": "Portal",
-      "url": "employee-portal.html",
+      "url": "employee-portal.html?app=employee-portal",
       "icons": [{ "src": "assets/sefs-app-icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Dashboard",
       "short_name": "Dashboard",
-      "url": "index.html",
+      "url": "index.html?app=dashboard",
       "icons": [{ "src": "assets/sefs-app-icon-192.png", "sizes": "192x192" }]
     }
   ]

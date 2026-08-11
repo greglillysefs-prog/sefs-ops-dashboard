@@ -34,13 +34,13 @@
     {
       "name": "Dashboard",
       "short_name": "Dashboard",
-      "url": "index.html",
+      "url": "index.html?app=dashboard",
       "icons": [{ "src": "assets/sefs-app-icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Mobile Measure",
       "short_name": "Measure",
-      "url": "mobile-measure.html",
+      "url": "mobile-measure.html?app=mobile-measure",
       "icons": [{ "src": "assets/sefs-app-icon-192.png", "sizes": "192x192" }]
     }
   ]
