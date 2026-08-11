@@ -150,25 +150,19 @@
       background: #0c0c0c;
     }
     .metric b { display: block; color: var(--orange); font-size: 28px; line-height: 1.1; }
-    .inventory-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 12px;
-    }
-    .item-card {
+    .inventory-table-wrap {
       border: 1px solid var(--line);
       border-radius: 8px;
+      overflow-x: auto;
       background: #090909;
-      padding: 14px;
     }
-    .item-head {
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-      align-items: flex-start;
-      margin-bottom: 10px;
-    }
-    .item-head h3 { margin: 0; font-size: 18px; }
+    .inventory-table { min-width: 860px; }
+    .inventory-table td { vertical-align: middle; }
+    .inventory-table input,
+    .inventory-table select { min-height: 40px; }
+    .inventory-table .amount-input { max-width: 120px; }
+    .inventory-table .new-count { color: var(--orange); font-weight: 900; white-space: nowrap; }
+    .item-name { font-weight: 900; }
     .pill {
       display: inline-block;
       border: 1px solid #666;
@@ -182,23 +176,13 @@
     .pill.good { border-color: var(--good); color: var(--good); }
     .pill.bad { border-color: var(--bad); color: #ff9999; }
     .pill.warn { border-color: var(--orange); color: var(--orange); }
-    .qty-line {
+    .batch-actions {
       display: flex;
-      justify-content: space-between;
+      justify-content: flex-end;
       gap: 10px;
-      border-top: 1px solid #282828;
-      padding-top: 10px;
-      margin: 10px 0;
-      color: #d8d8d8;
+      margin-top: 12px;
     }
-    .qty-line b { color: var(--orange); font-size: 22px; }
-    .change-grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 120px;
-      gap: 8px;
-      align-items: end;
-    }
-    .item-card button.primary { width: 100%; margin-top: 10px; }
+    .batch-actions button { min-width: 190px; }
     table { width: 100%; border-collapse: collapse; }
     th, td {
       border-bottom: 1px solid var(--line);
@@ -232,10 +216,10 @@
       .shell { padding: 12px; }
       .topbar { align-items: flex-start; }
       .brand img { width: 44px; height: 44px; }
-      .form-grid, .toolbar, .change-grid { grid-template-columns: 1fr; }
+      .form-grid, .toolbar { grid-template-columns: 1fr; }
       .actions { width: 100%; justify-content: stretch; }
       .actions button { flex: 1 1 100%; }
-      .inventory-grid { grid-template-columns: 1fr; }
+      .batch-actions { display: grid; grid-template-columns: 1fr; }
       table { display: block; overflow-x: auto; white-space: nowrap; }
     }
   </style>
@@ -303,7 +287,10 @@
           <div class="metric"><span class="muted">Low Items</span><b id="metricLow">0</b></div>
           <div class="metric"><span class="muted">Logged Changes</span><b id="metricChanges">0</b></div>
         </div>
-        <div id="inventoryList" class="inventory-grid"></div>
+        <div id="inventoryList"></div>
+        <div class="batch-actions">
+          <button id="saveAllInventoryBtn" class="primary" type="button">Save All Changes</button>
+        </div>
       </section>
 
       <section class="card">
@@ -327,7 +314,7 @@
     let inventoryItems = [];
     let inventoryLogs = [];
     let logUnavailable = false;
-    let activeSaves = new Set();
+    let batchSaveActive = false;
     let idleTimer = null;
     let warningTimer = null;
 
@@ -477,41 +464,31 @@
       });
     }
 
-    function renderInventoryCard(item) {
+    function renderInventoryRow(item) {
       const latest = latestLogForItem(item.id);
-      const disabled = logUnavailable ? 'disabled title="Run the inventory log SQL before saving changes."' : '';
       return `
-        <article class="item-card">
-          <div class="item-head">
-            <div>
-              <h3>${esc(item.name || 'Inventory item')}</h3>
-              <div class="muted">${esc(item.category || '')}${item.vendor_name ? ` - ${esc(item.vendor_name)}` : ''}</div>
-            </div>
-            ${itemStatus(item)}
-          </div>
-          <div class="qty-line">
-            <span>Current</span>
-            <b>${esc(item.qty ?? 0)} ${esc(item.unit || '')}</b>
-          </div>
-          <div class="muted">Minimum: ${esc(item.min_qty ?? 0)} ${esc(item.unit || '')} | Cost: ${money(item.cost)}</div>
-          ${latest ? `<div class="muted">Last change: ${esc(latest.changed_by_name || 'Unknown')} - ${fmtDateTime(latest.created_at)}</div>` : ''}
-          <div class="change-grid" style="margin-top:12px">
-            <div>
-              <label>Change Type</label>
-              <select id="action_${esc(item.id)}">
-                <option value="used">Used on job / remove</option>
-                <option value="returned">Returned / add back</option>
-                <option value="adjust">Adjustment +/-</option>
-                <option value="set">Set exact count</option>
-              </select>
-            </div>
-            <div>
-              <label>Amount</label>
-              <input id="qty_${esc(item.id)}" type="number" step="0.01" inputmode="decimal" min="0">
-            </div>
-          </div>
-          <button class="primary" type="button" ${disabled} onclick="saveInventoryChange('${esc(item.id)}', this)">Save Change</button>
-        </article>
+        <tr data-item-id="${esc(item.id)}">
+          <td>
+            <div class="item-name">${esc(item.name || 'Inventory item')}</div>
+            <div class="muted">${esc(item.category || '')}${item.vendor_name ? ` - ${esc(item.vendor_name)}` : ''}</div>
+            ${latest ? `<div class="muted">Last: ${esc(latest.changed_by_name || 'Unknown')} - ${fmtDateTime(latest.created_at)}</div>` : ''}
+          </td>
+          <td>${itemStatus(item)}</td>
+          <td><b>${esc(item.qty ?? 0)}</b> ${esc(item.unit || '')}<br><span class="muted">Min: ${esc(item.min_qty ?? 0)}</span></td>
+          <td>${money(item.cost)}</td>
+          <td>
+            <select id="action_${esc(item.id)}" onchange="updateInventoryPreview('${esc(item.id)}')">
+              <option value="used">Used / remove</option>
+              <option value="returned">Returned / add</option>
+              <option value="adjust">Adjustment +/-</option>
+              <option value="set">Set exact count</option>
+            </select>
+          </td>
+          <td>
+            <input id="qty_${esc(item.id)}" class="amount-input" type="number" step="0.01" inputmode="decimal" oninput="updateInventoryPreview('${esc(item.id)}')">
+          </td>
+          <td id="after_${esc(item.id)}" class="new-count">-</td>
+        </tr>
       `;
     }
 
@@ -557,7 +534,12 @@
       $('metricCount').textContent = inventoryItems.length;
       $('metricLow').textContent = inventoryItems.filter((item) => (+item.qty || 0) <= (+item.min_qty || 0)).length;
       $('metricChanges').textContent = inventoryLogs.length;
-      $('inventoryList').innerHTML = rows.length ? rows.map(renderInventoryCard).join('') : '<div class="muted">No matching inventory items.</div>';
+      $('inventoryList').innerHTML = rows.length
+        ? `<div class="inventory-table-wrap"><table class="inventory-table"><thead><tr><th>Material</th><th>Status</th><th>Current</th><th>Cost</th><th>Change Type</th><th>Amount</th><th>New Count</th></tr></thead><tbody>${rows.map(renderInventoryRow).join('')}</tbody></table></div>`
+        : '<div class="muted">No matching inventory items.</div>';
+      const saveBtn = $('saveAllInventoryBtn');
+      saveBtn.disabled = logUnavailable || batchSaveActive || !rows.length;
+      saveBtn.title = logUnavailable ? 'Run the inventory log SQL before saving changes.' : '';
       renderLog();
     }
 
@@ -569,72 +551,119 @@
       return before + value;
     }
 
-    async function saveInventoryChange(id, button) {
-      if (activeSaves.has(id)) return;
-      if (logUnavailable) return setMessage('appMessage', 'Run docs/inventory-management-sql.sql before saving inventory changes.', true);
+    function updateInventoryPreview(id) {
       const item = inventoryItems.find((row) => row.id === id);
-      if (!item) return;
-      const action = $(`action_${id}`).value;
-      const amountInput = $(`qty_${id}`).value;
-      const amount = num(amountInput);
-      if (action !== 'set' && amount <= 0) return setMessage('appMessage', 'Enter an amount greater than zero.', true);
-      if (action === 'set' && amount < 0) return setMessage('appMessage', 'Set count cannot be negative.', true);
+      const target = $(`after_${id}`);
+      if (!item || !target) return;
+      const rawValue = $(`qty_${id}`)?.value;
+      if (rawValue === '') {
+        target.textContent = '-';
+        return;
+      }
+      const action = $(`action_${id}`)?.value || 'used';
+      const before = num(item.qty);
+      const after = actionAmount(action, before, rawValue);
+      target.textContent = `${after} ${item.unit || ''}`;
+      target.style.color = after < 0 ? 'var(--bad)' : 'var(--orange)';
+    }
 
-      activeSaves.add(id);
-      const oldText = button.textContent;
-      button.disabled = true;
-      button.textContent = 'Checking...';
-      try {
-        const latestResult = await supa
-          .from('inventory_items')
-          .select('*')
-          .eq('id', id)
-          .single();
-        if (latestResult.error) throw latestResult.error;
-        const latest = latestResult.data;
-        const before = num(latest.qty);
-        const after = actionAmount(action, before, amountInput);
+    function collectInventoryChanges() {
+      const rows = filteredInventory();
+      const changes = [];
+      for (const item of rows) {
+        const action = $(`action_${item.id}`)?.value || 'used';
+        const rawValue = $(`qty_${item.id}`)?.value;
+        if (rawValue === '') continue;
+        const amount = num(rawValue);
+        if (action !== 'set' && amount === 0) continue;
+        if ((action === 'used' || action === 'returned') && amount < 0) throw new Error(`${item.name || 'Inventory item'} amount cannot be negative unless you use Adjustment.`);
+        if (action === 'set' && amount < 0) throw new Error(`${item.name || 'Inventory item'} cannot be set below zero.`);
+        const before = num(item.qty);
+        const after = actionAmount(action, before, rawValue);
         const change = num(after - before);
-        if (after < 0 && !confirm(`${latest.name} will go below zero. Continue?`)) return;
-        const label = action === 'set'
-          ? `set ${latest.name} to ${after} ${latest.unit || ''}`
-          : `${change > 0 ? 'add' : 'remove'} ${Math.abs(change)} ${latest.unit || ''} for ${latest.name}`;
-        if (!confirm(`Save inventory change?\n\n${label}\n\nCurrent: ${before} ${latest.unit || ''}\nNew: ${after} ${latest.unit || ''}`)) return;
-        const note = prompt('Add a note for this inventory change. You can leave this blank.', '') ?? '';
+        if (change === 0) continue;
+        changes.push({ id: item.id, item, action, amount, before, after, change });
+      }
+      return changes;
+    }
 
-        button.textContent = 'Saving...';
-        const updateResult = await supa
-          .from('inventory_items')
-          .update({ qty: after })
-          .eq('id', id)
-          .select()
-          .single();
-        if (updateResult.error) throw updateResult.error;
+    function summarizeChanges(changes) {
+      const lines = changes.slice(0, 8).map(({ item, action, before, after, change }) => {
+        const unit = item.unit || '';
+        if (action === 'set') return `${item.name}: ${before} -> ${after} ${unit}`;
+        return `${item.name}: ${change > 0 ? '+' : ''}${change} ${unit} (${before} -> ${after})`;
+      });
+      if (changes.length > 8) lines.push(`...and ${changes.length - 8} more change(s)`);
+      return lines.join('\n');
+    }
 
-        const logPayload = {
-          inventory_item_id: id,
-          inventory_item_name: latest.name || item.name || 'Inventory item',
-          action_type: action,
-          quantity_before: before,
-          quantity_change: change,
-          quantity_after: after,
-          unit: latest.unit || item.unit || null,
-          note: note.trim() || null,
-          changed_by_user_id: session.user.id,
-          changed_by_profile_id: profile?.id || session.user.id,
-          changed_by_name: profile?.full_name || employee?.name || session.user.email || 'Employee',
-          changed_by_email: session.user.email || null,
-          device_info: `${navigator.userAgent || 'unknown'} | ${Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown timezone'}`
-        };
-        const logResult = await supa.from('inventory_change_logs').insert(logPayload);
-        if (logResult.error) throw logResult.error;
-        setMessage('appMessage', 'Inventory saved and logged.');
-        if (window.sefsToast) window.sefsToast('Inventory saved');
+    async function saveAllInventoryChanges() {
+      if (batchSaveActive) return;
+      if (logUnavailable) return setMessage('appMessage', 'Run docs/inventory-management-sql.sql before saving inventory changes.', true);
+      let changes = [];
+      try {
+        changes = collectInventoryChanges();
+      } catch (error) {
+        return setMessage('appMessage', error.message || String(error), true);
+      }
+      if (!changes.length) return setMessage('appMessage', 'Enter an amount on one or more inventory rows before saving.', true);
+      const negative = changes.filter((change) => change.after < 0);
+      if (negative.length && !confirm(`${negative.length} item(s) will go below zero. Continue?`)) return;
+      if (!confirm(`Save ${changes.length} inventory change(s)?\n\n${summarizeChanges(changes)}`)) return;
+      const note = prompt('Add a note for these inventory changes. You can leave this blank.', '') ?? '';
+
+      const button = $('saveAllInventoryBtn');
+      const oldText = button.textContent;
+      batchSaveActive = true;
+      button.disabled = true;
+      button.textContent = 'Saving...';
+      try {
+        for (const change of changes) {
+          const latestResult = await supa
+            .from('inventory_items')
+            .select('*')
+            .eq('id', change.id)
+            .single();
+          if (latestResult.error) throw latestResult.error;
+          const latest = latestResult.data;
+          const before = num(latest.qty);
+          const rawAmount = change.action === 'set' ? change.after : change.amount;
+          const after = actionAmount(change.action, before, rawAmount);
+          const quantityChange = num(after - before);
+
+          const updateResult = await supa
+            .from('inventory_items')
+            .update({ qty: after })
+            .eq('id', change.id)
+            .select()
+            .single();
+          if (updateResult.error) throw updateResult.error;
+
+          const logPayload = {
+            inventory_item_id: change.id,
+            inventory_item_name: latest.name || change.item.name || 'Inventory item',
+            action_type: change.action,
+            quantity_before: before,
+            quantity_change: quantityChange,
+            quantity_after: after,
+            unit: latest.unit || change.item.unit || null,
+            note: note.trim() || null,
+            changed_by_user_id: session.user.id,
+            changed_by_profile_id: profile?.id || session.user.id,
+            changed_by_name: profile?.full_name || employee?.name || session.user.email || 'Employee',
+            changed_by_email: session.user.email || null,
+            device_info: `${navigator.userAgent || 'unknown'} | ${Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown timezone'}`
+          };
+          const logResult = await supa.from('inventory_change_logs').insert(logPayload);
+          if (logResult.error) throw logResult.error;
+        }
+        setMessage('appMessage', `Saved ${changes.length} inventory change(s).`);
+        if (window.sefsToast) window.sefsToast('Inventory changes saved');
         await refresh();
       } catch (error) {
         setMessage('appMessage', error.message || String(error), true);
       } finally {
-        activeSaves.delete(id);
+        batchSaveActive = false;
         button.disabled = false;
         button.textContent = oldText;
       }
@@ -695,6 +724,7 @@
     $('refreshBtn').addEventListener('click', refresh);
     $('inventorySearch').addEventListener('input', render);
     $('inventoryFilter').addEventListener('change', render);
+    $('saveAllInventoryBtn').addEventListener('click', saveAllInventoryChanges);
 
     supa.auth.onAuthStateChange((_event, nextSession) => {
       session = nextSession;
