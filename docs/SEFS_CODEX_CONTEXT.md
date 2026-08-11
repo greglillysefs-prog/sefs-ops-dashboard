@@ -33,6 +33,7 @@ Preserve all existing working behavior unless the user explicitly asks to change
 - `mobile-job.html`: limited mobile job view for crews; no quote pricing/admin data should be exposed.
 - `employee-portal.html`: employee login, schedule, time entry, PTO, manager review.
 - `employee-admin.html`: employee portal access management.
+- `inventory-management.html`: locked employee inventory adjustment page with no outbound navigation except Sign Out.
 - `supabase/*.ts`: Supabase Edge Functions.
 - `*.sql`: Supabase schema/setup scripts.
 - `sms-compliance-site/`: simple compliance website for Twilio A2P/SMS registration.
@@ -70,6 +71,10 @@ Important expectations:
 
 - Systems page defines system variations, options, and material recipes.
 - Inventory page should support table-style bulk material cost edits.
+- Inventory Management is a separate employee-login page for job/return material adjustments.
+- Inventory Management should not include navigation away from itself; employees sign out to leave it.
+- Inventory Management changes update `inventory_items` directly and must insert an `inventory_change_logs` accountability record with user/time/device/note context.
+- Run `docs/inventory-management-sql.sql` when setting up a Supabase project or refreshing schema so the inventory log table/policies exist.
 - Unit costs should flow from inventory into systems/material recipe displays and quote calculations.
 - System recipe materials must force either:
   - `Always`
@@ -222,6 +227,14 @@ Recent mobile navigation update:
 - Employee portal dropdown choices should show one focused panel at a time on phones. Avoid reintroducing duplicate mobile tiles/buttons for these same destinations.
 - Employee Portal/Admin links from mobile dropdown should use same-tab navigation (`location.assign`) instead of `window.open`, because mobile browsers can block dropdown-triggered popups.
 - Desktop navigation should remain full/sidebar-oriented.
+
+## Locked Inventory Management
+
+- Page: `inventory-management.html`.
+- Login: same Supabase Auth users/login options as employee portal.
+- Session safety: auto signs out after five minutes of inactivity.
+- Change safety: inventory save buttons lock while saving, require confirmation, and prompt for an optional note by default.
+- Audit: dashboard shows recent `inventory_change_logs`; App Health warns if the SQL table is missing.
 
 ## Latest Session Notes
 

@@ -44,6 +44,12 @@
       "icons": [{ "src": "assets/sefs-app-icon-192.png", "sizes": "192x192" }]
     },
     {
+      "name": "Inventory Management",
+      "short_name": "Inventory",
+      "url": "inventory-management.html",
+      "icons": [{ "src": "assets/sefs-app-icon-192.png", "sizes": "192x192" }]
+    },
+    {
       "name": "Mobile Job View",
       "short_name": "Jobs",
       "url": "mobile-job.html",

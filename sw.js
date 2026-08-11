@@ -1,4 +1,4 @@
-const SEFS_CACHE = 'sefs-pwa-v20260811d';
+const SEFS_CACHE = 'sefs-pwa-v20260811e';
 const SEFS_ASSETS = [
   './',
   './index.html',
@@ -6,21 +6,24 @@ const SEFS_ASSETS = [
   './employee-admin.html',
   './mobile-job.html',
   './mobile-measure.html',
+  './inventory-management.html',
   './quote-builder.html',
   './quote-print.html',
   './weekly-timesheet-pdf.html',
   './privacy.html',
   './terms.html',
   './manifest.webmanifest',
-  './manifest.webmanifest?v=20260811d',
+  './manifest.webmanifest?v=20260811e',
   './employee-portal.webmanifest',
-  './employee-portal.webmanifest?v=20260811d',
+  './employee-portal.webmanifest?v=20260811e',
   './mobile-measure.webmanifest',
-  './mobile-measure.webmanifest?v=20260811d',
+  './mobile-measure.webmanifest?v=20260811e',
   './mobile-job.webmanifest',
-  './mobile-job.webmanifest?v=20260811d',
+  './mobile-job.webmanifest?v=20260811e',
+  './inventory-management.webmanifest',
+  './inventory-management.webmanifest?v=20260811e',
   './pwa-init.js',
-  './pwa-init.js?v=20260811d',
+  './pwa-init.js?v=20260811e',
   './assets/sefs-icon.jpeg',
   './assets/sefs-app-icon-180.png',
   './assets/sefs-app-icon-192.png',
@@ -53,6 +56,7 @@ self.addEventListener('fetch', event => {
     const page = url.pathname.endsWith('/employee-portal.html') ? './employee-portal.html'
       : url.pathname.endsWith('/mobile-job.html') ? './mobile-job.html'
       : url.pathname.endsWith('/mobile-measure.html') ? './mobile-measure.html'
+      : url.pathname.endsWith('/inventory-management.html') ? './inventory-management.html'
       : url.pathname.endsWith('/employee-admin.html') ? './employee-admin.html'
       : './index.html';
     event.respondWith(

@@ -1,0 +1,724 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>SEFS Inventory Management</title>
+  <link rel="manifest" href="inventory-management.webmanifest?v=20260811e">
+  <meta name="theme-color" content="#050505">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="SEFS Inventory">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="icon" href="assets/sefs-icon.jpeg">
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/sefs-app-icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="assets/sefs-app-icon-512.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/sefs-app-icon-180.png">
+  <script defer src="pwa-init.js?v=20260811e"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --bg: #050505;
+      --panel: #111;
+      --panel2: #181818;
+      --line: #333;
+      --text: #f4f4f4;
+      --muted: #aaa;
+      --orange: #ff7a00;
+      --good: #15c77a;
+      --bad: #ff6262;
+      --warn: #ffd166;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { max-width: 100%; overflow-x: hidden; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at top left, rgba(255, 122, 0, .13), transparent 30rem), var(--bg);
+      color: var(--text);
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    button, input, select, textarea { font: inherit; }
+    button {
+      min-height: 44px;
+      border: 1px solid var(--orange);
+      border-radius: 8px;
+      background: linear-gradient(180deg, #222, #141414);
+      color: var(--text);
+      padding: 10px 14px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    button.primary { background: var(--orange); color: #111; border-color: var(--orange); }
+    button.ghost { border-color: var(--line); color: var(--muted); }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    input, select, textarea {
+      width: 100%;
+      min-height: 44px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #101010;
+      color: var(--text);
+      padding: 10px 12px;
+    }
+    select option { background: #050505; color: #fff; }
+    textarea { min-height: 80px; resize: vertical; }
+    label {
+      display: block;
+      margin: 0 0 6px;
+      color: #d8d8d8;
+      font-size: 12px;
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+
+    .shell {
+      width: min(1180px, 100%);
+      margin: 0 auto;
+      padding: 16px;
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 10px 0 18px;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .brand img {
+      width: 48px;
+      height: 48px;
+      border-radius: 8px;
+      object-fit: cover;
+      border: 1px solid #292929;
+    }
+    h1 { margin: 0; font-size: clamp(23px, 5vw, 34px); line-height: 1; }
+    h2 { margin: 0 0 14px; }
+    h2:after {
+      content: "";
+      display: block;
+      width: 52px;
+      height: 3px;
+      background: var(--orange);
+      margin-top: 9px;
+    }
+    .brand p, .muted { color: var(--muted); font-size: 13px; }
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.015));
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      box-shadow: 0 14px 40px rgba(0,0,0,.28);
+      min-width: 0;
+    }
+    .card + .card { margin-top: 16px; }
+    .notice {
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--orange);
+      border-radius: 8px;
+      background: #101010;
+      color: #d8d8d8;
+      padding: 12px;
+      margin: 0 0 14px;
+    }
+    .notice.hidden, .hidden { display: none !important; }
+    .notice.error { border-color: rgba(255, 98, 98, .65); border-left-color: var(--bad); background: #1b0808; color: #ffb7b7; }
+    .notice.good { border-color: rgba(21, 199, 122, .55); border-left-color: var(--good); background: #07140e; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: end; }
+    .full { grid-column: 1 / -1; }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .password-control { display: grid; grid-template-columns: minmax(0, 1fr) 92px; gap: 8px; }
+    .toolbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(150px, 220px) auto;
+      gap: 10px;
+      margin-bottom: 14px;
+      align-items: end;
+    }
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #0c0c0c;
+    }
+    .metric b { display: block; color: var(--orange); font-size: 28px; line-height: 1.1; }
+    .inventory-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 12px;
+    }
+    .item-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #090909;
+      padding: 14px;
+    }
+    .item-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: flex-start;
+      margin-bottom: 10px;
+    }
+    .item-head h3 { margin: 0; font-size: 18px; }
+    .pill {
+      display: inline-block;
+      border: 1px solid #666;
+      border-radius: 999px;
+      padding: 5px 9px;
+      color: #aaa;
+      font-size: 12px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .pill.good { border-color: var(--good); color: var(--good); }
+    .pill.bad { border-color: var(--bad); color: #ff9999; }
+    .pill.warn { border-color: var(--orange); color: var(--orange); }
+    .qty-line {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      border-top: 1px solid #282828;
+      padding-top: 10px;
+      margin: 10px 0;
+      color: #d8d8d8;
+    }
+    .qty-line b { color: var(--orange); font-size: 22px; }
+    .change-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 120px;
+      gap: 8px;
+      align-items: end;
+    }
+    .item-card button.primary { width: 100%; margin-top: 10px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 8px;
+      text-align: left;
+      vertical-align: top;
+      font-size: 14px;
+    }
+    th {
+      background: #111;
+      color: #bbb;
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+    .logout-warning {
+      position: fixed;
+      left: 50%;
+      bottom: max(16px, env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      z-index: 30;
+      border: 1px solid var(--orange);
+      border-radius: 999px;
+      background: #111;
+      color: #fff;
+      padding: 10px 14px;
+      font-weight: 900;
+      box-shadow: 0 14px 32px rgba(0,0,0,.45);
+    }
+
+    @media (max-width: 760px) {
+      .shell { padding: 12px; }
+      .topbar { align-items: flex-start; }
+      .brand img { width: 44px; height: 44px; }
+      .form-grid, .toolbar, .change-grid { grid-template-columns: 1fr; }
+      .actions { width: 100%; justify-content: stretch; }
+      .actions button { flex: 1 1 100%; }
+      .inventory-grid { grid-template-columns: 1fr; }
+      table { display: block; overflow-x: auto; white-space: nowrap; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <img src="assets/sefs-icon.jpeg" alt="SEFS">
+        <div>
+          <h1>Inventory Management</h1>
+          <p id="userLine">Sign in to update inventory after jobs and returns.</p>
+        </div>
+      </div>
+      <div class="actions">
+        <button id="signOutBtn" class="ghost hidden" type="button">Sign Out</button>
+      </div>
+    </header>
+
+    <section id="authCard" class="card">
+      <h2>Sign In</h2>
+      <div id="authMessage" class="notice hidden"></div>
+      <form id="loginForm" class="form-grid">
+        <div class="full">
+          <label>Login Name</label>
+          <select id="loginEmail" required>
+            <option value="">Loading logins...</option>
+          </select>
+        </div>
+        <div class="full">
+          <label>Password</label>
+          <div class="password-control">
+            <input id="password" type="password" autocomplete="current-password" required>
+            <button id="togglePasswordBtn" class="ghost" type="button">Show</button>
+          </div>
+        </div>
+        <div class="actions full">
+          <button id="signInBtn" class="primary" type="submit">Sign In</button>
+        </div>
+      </form>
+    </section>
+
+    <main id="app" class="hidden">
+      <div id="appMessage" class="notice hidden"></div>
+      <section class="card">
+        <h2>Inventory Adjustments</h2>
+        <div class="notice">Confirm every change before it saves. A note prompt appears on every save; notes are optional, but the change is still logged with your login and time stamp.</div>
+        <div class="toolbar">
+          <div>
+            <label>Search Inventory</label>
+            <input id="inventorySearch" placeholder="Search material, category, vendor, notes">
+          </div>
+          <div>
+            <label>Filter</label>
+            <select id="inventoryFilter">
+              <option value="all">All Items</option>
+              <option value="low">Low Items</option>
+              <option value="changed">Changed Recently</option>
+            </select>
+          </div>
+          <button id="refreshBtn" class="ghost" type="button">Refresh</button>
+        </div>
+        <div class="metric-grid">
+          <div class="metric"><span class="muted">Materials</span><b id="metricCount">0</b></div>
+          <div class="metric"><span class="muted">Low Items</span><b id="metricLow">0</b></div>
+          <div class="metric"><span class="muted">Logged Changes</span><b id="metricChanges">0</b></div>
+        </div>
+        <div id="inventoryList" class="inventory-grid"></div>
+      </section>
+
+      <section class="card">
+        <h2>Recent Inventory Log</h2>
+        <div id="logList"></div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const SB_URL = 'https://wjfewzutxvjbbnnvbylo.supabase.co';
+    const SB_KEY = 'sb_publishable_YWRQJz8q1lDdSz_304AUyA_YskIiTBT';
+    const ADMIN_FUNCTION_URL = `${SB_URL}/functions/v1/employee-admin`;
+    const supa = supabase.createClient(SB_URL, SB_KEY);
+    const IDLE_LIMIT_MS = 5 * 60 * 1000;
+
+    let session = null;
+    let profile = null;
+    let employee = null;
+    let loginOptions = [];
+    let inventoryItems = [];
+    let inventoryLogs = [];
+    let logUnavailable = false;
+    let activeSaves = new Set();
+    let idleTimer = null;
+    let warningTimer = null;
+
+    const $ = (id) => document.getElementById(id);
+    const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    const money = (value) => `$${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const num = (value) => Math.round((Number(value || 0)) * 100) / 100;
+    const fmtDateTime = (value) => value ? new Date(value).toLocaleString() : '-';
+
+    function setMessage(id, text, isError = false) {
+      const el = $(id);
+      if (!el) return;
+      el.textContent = text || '';
+      el.classList.toggle('hidden', !text);
+      el.classList.toggle('error', !!text && isError);
+      el.classList.toggle('good', !!text && !isError);
+    }
+
+    function setAuthBusy(isBusy) {
+      $('signInBtn').disabled = isBusy;
+      $('signInBtn').textContent = isBusy ? 'Signing In...' : 'Sign In';
+    }
+
+    function togglePasswordField() {
+      const input = $('password');
+      const hidden = input.type === 'password';
+      input.type = hidden ? 'text' : 'password';
+      $('togglePasswordBtn').textContent = hidden ? 'Hide' : 'Show';
+      input.focus();
+    }
+
+    async function withTimeout(promise, message) {
+      let timer;
+      const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), 15000);
+      });
+      try {
+        return await Promise.race([promise, timeout]);
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    async function loadLoginOptions() {
+      try {
+        const response = await fetch(ADMIN_FUNCTION_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'login_options' })
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload.error) throw new Error(payload.error || `Could not load logins (${response.status})`);
+        loginOptions = payload.options || [];
+        $('loginEmail').innerHTML = '<option value="">Choose login...</option>' + loginOptions
+          .map((option) => `<option value="${esc(option.email)}">${esc(option.name)}${option.role ? ` - ${esc(option.role)}` : ''}</option>`)
+          .join('');
+      } catch (error) {
+        $('loginEmail').innerHTML = '<option value="">Logins unavailable</option>';
+        setMessage('authMessage', `Could not load login names: ${error.message}`, true);
+      }
+    }
+
+    async function signIn(email, password) {
+      if (!email) throw new Error('Choose a login name.');
+      if (!password) throw new Error('Enter your password.');
+      const result = await withTimeout(
+        supa.auth.signInWithPassword({ email, password }),
+        'Login timed out. Check the connection and try again.'
+      );
+      if (result.error) throw result.error;
+      if (!result.data?.session) throw new Error('Supabase did not return a login session.');
+      session = result.data.session;
+      await refresh();
+      startIdleTimer();
+    }
+
+    async function loadProfile() {
+      const result = await supa
+        .from('profiles')
+        .select('id, employee_id, role, full_name, active')
+        .eq('id', session.user.id)
+        .maybeSingle();
+      if (result.error) throw result.error;
+      profile = result.data;
+      if (!profile?.active) throw new Error('This employee portal profile is inactive.');
+      if (profile?.employee_id) {
+        const employeeResult = await supa
+          .from('employees')
+          .select('id, name, active')
+          .eq('id', profile.employee_id)
+          .maybeSingle();
+        if (!employeeResult.error) employee = employeeResult.data;
+      }
+    }
+
+    async function loadInventory() {
+      const result = await supa
+        .from('inventory_items')
+        .select('*')
+        .order('name', { ascending: true });
+      if (result.error) throw result.error;
+      inventoryItems = result.data || [];
+    }
+
+    async function loadInventoryLogs() {
+      const result = await supa
+        .from('inventory_change_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(80);
+      logUnavailable = !!result.error;
+      inventoryLogs = result.error ? [] : (result.data || []);
+    }
+
+    async function refresh() {
+      if (!session) return;
+      try {
+        await loadProfile();
+        await Promise.all([loadInventory(), loadInventoryLogs()]);
+        render();
+        setMessage('appMessage', logUnavailable ? 'Inventory log table is not installed yet. Run docs/inventory-management-sql.sql before saving changes.' : '');
+      } catch (error) {
+        setMessage('appMessage', error.message, true);
+      }
+    }
+
+    function itemStatus(item) {
+      return (+item.qty || 0) <= (+item.min_qty || 0)
+        ? '<span class="pill bad">Low</span>'
+        : '<span class="pill good">OK</span>';
+    }
+
+    function latestLogForItem(id) {
+      return inventoryLogs.find((log) => log.inventory_item_id === id);
+    }
+
+    function filteredInventory() {
+      const query = $('inventorySearch').value.trim().toLowerCase();
+      const filter = $('inventoryFilter').value;
+      return inventoryItems.filter((item) => {
+        const recent = latestLogForItem(item.id);
+        const text = [item.name, item.category, item.unit, item.vendor_name, item.vendor_phone, item.notes].join(' ').toLowerCase();
+        if (query && !text.includes(query)) return false;
+        if (filter === 'low' && (+item.qty || 0) > (+item.min_qty || 0)) return false;
+        if (filter === 'changed' && !recent) return false;
+        return true;
+      });
+    }
+
+    function renderInventoryCard(item) {
+      const latest = latestLogForItem(item.id);
+      const disabled = logUnavailable ? 'disabled title="Run the inventory log SQL before saving changes."' : '';
+      return `
+        <article class="item-card">
+          <div class="item-head">
+            <div>
+              <h3>${esc(item.name || 'Inventory item')}</h3>
+              <div class="muted">${esc(item.category || '')}${item.vendor_name ? ` - ${esc(item.vendor_name)}` : ''}</div>
+            </div>
+            ${itemStatus(item)}
+          </div>
+          <div class="qty-line">
+            <span>Current</span>
+            <b>${esc(item.qty ?? 0)} ${esc(item.unit || '')}</b>
+          </div>
+          <div class="muted">Minimum: ${esc(item.min_qty ?? 0)} ${esc(item.unit || '')} | Cost: ${money(item.cost)}</div>
+          ${latest ? `<div class="muted">Last change: ${esc(latest.changed_by_name || 'Unknown')} - ${fmtDateTime(latest.created_at)}</div>` : ''}
+          <div class="change-grid" style="margin-top:12px">
+            <div>
+              <label>Change Type</label>
+              <select id="action_${esc(item.id)}">
+                <option value="used">Used on job / remove</option>
+                <option value="returned">Returned / add back</option>
+                <option value="adjust">Adjustment +/-</option>
+                <option value="set">Set exact count</option>
+              </select>
+            </div>
+            <div>
+              <label>Amount</label>
+              <input id="qty_${esc(item.id)}" type="number" step="0.01" inputmode="decimal" min="0">
+            </div>
+          </div>
+          <button class="primary" type="button" ${disabled} onclick="saveInventoryChange('${esc(item.id)}', this)">Save Change</button>
+        </article>
+      `;
+    }
+
+    function renderLogRow(log) {
+      const change = +log.quantity_change || 0;
+      const changeText = log.action_type === 'set'
+        ? `Set to ${log.quantity_after ?? 0} ${log.unit || ''}`
+        : `${change > 0 ? '+' : ''}${change} ${log.unit || ''}`;
+      return `
+        <tr>
+          <td>${fmtDateTime(log.created_at)}</td>
+          <td><b>${esc(log.inventory_item_name || 'Inventory item')}</b><br><span class="muted">${esc(log.note || '')}</span></td>
+          <td>${esc(log.changed_by_name || log.changed_by_email || 'Unknown')}</td>
+          <td>${esc(log.action_type || '')}</td>
+          <td>${esc(log.quantity_before ?? '')} -> ${esc(log.quantity_after ?? '')}</td>
+          <td>${esc(changeText)}</td>
+        </tr>
+      `;
+    }
+
+    function renderLog() {
+      if (logUnavailable) {
+        $('logList').innerHTML = '<div class="notice error">Inventory log table is not installed yet. Run docs/inventory-management-sql.sql.</div>';
+        return;
+      }
+      if (!inventoryLogs.length) {
+        $('logList').innerHTML = '<div class="muted">No inventory changes logged yet.</div>';
+        return;
+      }
+      $('logList').innerHTML = `<table><thead><tr><th>Time</th><th>Material</th><th>User</th><th>Action</th><th>Qty</th><th>Change</th></tr></thead><tbody>${inventoryLogs.slice(0, 20).map(renderLogRow).join('')}</tbody></table>`;
+    }
+
+    function render() {
+      const signedIn = !!session;
+      $('authCard').classList.toggle('hidden', signedIn);
+      $('app').classList.toggle('hidden', !signedIn);
+      $('signOutBtn').classList.toggle('hidden', !signedIn);
+      $('userLine').textContent = signedIn
+        ? `${profile?.full_name || employee?.name || session?.user?.email || 'Signed in'} - inventory access`
+        : 'Sign in to update inventory after jobs and returns.';
+      if (!signedIn) return;
+      const rows = filteredInventory();
+      $('metricCount').textContent = inventoryItems.length;
+      $('metricLow').textContent = inventoryItems.filter((item) => (+item.qty || 0) <= (+item.min_qty || 0)).length;
+      $('metricChanges').textContent = inventoryLogs.length;
+      $('inventoryList').innerHTML = rows.length ? rows.map(renderInventoryCard).join('') : '<div class="muted">No matching inventory items.</div>';
+      renderLog();
+    }
+
+    function actionAmount(action, before, inputValue) {
+      const value = num(inputValue);
+      if (action === 'set') return value;
+      if (action === 'used') return before - value;
+      if (action === 'returned') return before + value;
+      return before + value;
+    }
+
+    async function saveInventoryChange(id, button) {
+      if (activeSaves.has(id)) return;
+      if (logUnavailable) return setMessage('appMessage', 'Run docs/inventory-management-sql.sql before saving inventory changes.', true);
+      const item = inventoryItems.find((row) => row.id === id);
+      if (!item) return;
+      const action = $(`action_${id}`).value;
+      const amountInput = $(`qty_${id}`).value;
+      const amount = num(amountInput);
+      if (action !== 'set' && amount <= 0) return setMessage('appMessage', 'Enter an amount greater than zero.', true);
+      if (action === 'set' && amount < 0) return setMessage('appMessage', 'Set count cannot be negative.', true);
+
+      activeSaves.add(id);
+      const oldText = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Checking...';
+      try {
+        const latestResult = await supa
+          .from('inventory_items')
+          .select('*')
+          .eq('id', id)
+          .single();
+        if (latestResult.error) throw latestResult.error;
+        const latest = latestResult.data;
+        const before = num(latest.qty);
+        const after = actionAmount(action, before, amountInput);
+        const change = num(after - before);
+        if (after < 0 && !confirm(`${latest.name} will go below zero. Continue?`)) return;
+        const label = action === 'set'
+          ? `set ${latest.name} to ${after} ${latest.unit || ''}`
+          : `${change > 0 ? 'add' : 'remove'} ${Math.abs(change)} ${latest.unit || ''} for ${latest.name}`;
+        if (!confirm(`Save inventory change?\n\n${label}\n\nCurrent: ${before} ${latest.unit || ''}\nNew: ${after} ${latest.unit || ''}`)) return;
+        const note = prompt('Add a note for this inventory change. You can leave this blank.', '') ?? '';
+
+        button.textContent = 'Saving...';
+        const updateResult = await supa
+          .from('inventory_items')
+          .update({ qty: after })
+          .eq('id', id)
+          .select()
+          .single();
+        if (updateResult.error) throw updateResult.error;
+
+        const logPayload = {
+          inventory_item_id: id,
+          inventory_item_name: latest.name || item.name || 'Inventory item',
+          action_type: action,
+          quantity_before: before,
+          quantity_change: change,
+          quantity_after: after,
+          unit: latest.unit || item.unit || null,
+          note: note.trim() || null,
+          changed_by_user_id: session.user.id,
+          changed_by_profile_id: profile?.id || session.user.id,
+          changed_by_name: profile?.full_name || employee?.name || session.user.email || 'Employee',
+          changed_by_email: session.user.email || null,
+          device_info: `${navigator.userAgent || 'unknown'} | ${Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown timezone'}`
+        };
+        const logResult = await supa.from('inventory_change_logs').insert(logPayload);
+        if (logResult.error) throw logResult.error;
+        setMessage('appMessage', 'Inventory saved and logged.');
+        if (window.sefsToast) window.sefsToast('Inventory saved');
+        await refresh();
+      } catch (error) {
+        setMessage('appMessage', error.message || String(error), true);
+      } finally {
+        activeSaves.delete(id);
+        button.disabled = false;
+        button.textContent = oldText;
+      }
+    }
+
+    function clearIdleTimers() {
+      clearTimeout(idleTimer);
+      clearTimeout(warningTimer);
+      document.getElementById('idleWarning')?.remove();
+    }
+
+    function showIdleWarning() {
+      if (!session || document.getElementById('idleWarning')) return;
+      const el = document.createElement('div');
+      el.id = 'idleWarning';
+      el.className = 'logout-warning';
+      el.textContent = 'Auto sign out soon';
+      document.body.appendChild(el);
+    }
+
+    function startIdleTimer() {
+      clearIdleTimers();
+      if (!session) return;
+      warningTimer = setTimeout(showIdleWarning, Math.max(0, IDLE_LIMIT_MS - 30000));
+      idleTimer = setTimeout(async () => {
+        await supa.auth.signOut();
+        setMessage('authMessage', 'Signed out after five minutes of inactivity.');
+      }, IDLE_LIMIT_MS);
+    }
+
+    function resetIdleTimer() {
+      if (!session) return;
+      startIdleTimer();
+    }
+
+    ['click', 'input', 'keydown', 'touchstart', 'scroll'].forEach((eventName) => {
+      document.addEventListener(eventName, resetIdleTimer, { passive: true });
+    });
+
+    $('loginForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      setAuthBusy(true);
+      setMessage('authMessage', 'Signing in...');
+      try {
+        await signIn($('loginEmail').value, $('password').value);
+        setMessage('authMessage', '');
+      } catch (error) {
+        setMessage('authMessage', error.message, true);
+      } finally {
+        setAuthBusy(false);
+      }
+    });
+    $('togglePasswordBtn').addEventListener('click', togglePasswordField);
+    $('signOutBtn').addEventListener('click', async () => {
+      clearIdleTimers();
+      await supa.auth.signOut();
+    });
+    $('refreshBtn').addEventListener('click', refresh);
+    $('inventorySearch').addEventListener('input', render);
+    $('inventoryFilter').addEventListener('change', render);
+
+    supa.auth.onAuthStateChange((_event, nextSession) => {
+      session = nextSession;
+      if (!session) {
+        profile = null;
+        employee = null;
+        inventoryItems = [];
+        inventoryLogs = [];
+        clearIdleTimers();
+      }
+      render();
+    });
+
+    (async function init() {
+      await loadLoginOptions();
+      const result = await supa.auth.getSession();
+      session = result.data.session;
+      if (session) {
+        await refresh();
+        startIdleTimer();
+      } else {
+        render();
+      }
+    })();
+  </script>
+</body>
+</html>
