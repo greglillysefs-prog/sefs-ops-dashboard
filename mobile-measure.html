@@ -74,6 +74,11 @@
     function today(){return new Date().toISOString().slice(0,10)}
     function safeStorageName(name){return String(name||'file').replace(/[^a-zA-Z0-9._-]/g,'_')}
     function inferFileType(file){let name=String(file?.name||'').toLowerCase();if(file?.type)return file.type;if(name.endsWith('.pdf'))return 'application/pdf';if(/\.(jpe?g)$/i.test(name))return 'image/jpeg';if(name.endsWith('.png'))return 'image/png';if(name.endsWith('.heic'))return 'image/heic';if(name.endsWith('.webp'))return 'image/webp';return 'application/octet-stream'}
+    const IMAGE_UPLOAD_MAX_SIDE=2400,IMAGE_UPLOAD_QUALITY=.78,LARGE_UPLOAD_WARN_BYTES=10*1024*1024;
+    function isCompressibleImage(file){let type=String(file?.type||'').toLowerCase(),name=String(file?.name||'').toLowerCase();return (type.startsWith('image/')||/\.(jpe?g|png|webp|heic)$/i.test(name))&&!/image\/(gif|svg\+xml)/i.test(type)}
+    function compressedImageName(name){return safeStorageName(name||'photo.jpg').replace(/\.[^.]+$/,'')+'.jpg'}
+    async function prepareUploadFile(file){if(!isCompressibleImage(file))return file;try{let url=URL.createObjectURL(file),img=await new Promise((resolve,reject)=>{let image=new Image();image.onload=()=>{URL.revokeObjectURL(url);resolve(image)};image.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('Image could not be compressed'))};image.src=url});let width=img.naturalWidth||img.width,height=img.naturalHeight||img.height,scale=Math.min(1,IMAGE_UPLOAD_MAX_SIDE/Math.max(width,height));if(scale>=1&&file.size<900*1024)return file;let canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(width*scale));canvas.height=Math.max(1,Math.round(height*scale));canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);let blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',IMAGE_UPLOAD_QUALITY));if(!blob)return file;let compressed=new File([blob],compressedImageName(file.name),{type:'image/jpeg',lastModified:Date.now()});return compressed.size<file.size?compressed:file}catch(e){console.warn('Image compression skipped',e?.message||e);return file}}
+    function confirmLargeUploads(files){let large=Array.from(files||[]).filter(file=>!isCompressibleImage(file)&&file.size>LARGE_UPLOAD_WARN_BYTES);return !large.length||confirm(`${large.length} large non-photo file${large.length===1?' is':'s are'} over 10 MB and may upload slowly. Continue?`)}
     function targetName(item){return item?.customer||item?.job_name||'Untitled'}
     function targetAddress(item){return item?.address||''}
     function targetPhone(item){return item?.phone||''}
@@ -209,12 +214,15 @@
     async function uploadAreaPhotos(measurementId,areaId,i,area){
       const input=$(`files_${i}`);
       if(!input||!input.files.length)return;
-      for(const file of input.files){
-        const path=`${targetType}/${targetId}/measurements/${areaId}/${Date.now()}_${safeStorageName(file.name)}`;
-        const up=await supa.storage.from('sefs-photos').upload(path,file,{upsert:false,cacheControl:'3600',contentType:inferFileType(file)});
+      const files=Array.from(input.files);
+      if(!confirmLargeUploads(files))throw new Error('Upload canceled.');
+      for(const file of files){
+        const uploadFile=await prepareUploadFile(file);
+        const path=`${targetType}/${targetId}/measurements/${areaId}/${Date.now()}_${safeStorageName(uploadFile.name)}`;
+        const up=await supa.storage.from('sefs-photos').upload(path,uploadFile,{upsert:false,cacheControl:'3600',contentType:inferFileType(uploadFile)});
         if(up.error)throw new Error(up.error.message);
         const pub=supa.storage.from('sefs-photos').getPublicUrl(path).data.publicUrl;
-        const saved=await supa.from('photo_attachments').insert({entity_type:targetType,entity_id:targetId,file_name:file.name,storage_path:path,public_url:pub,caption:`${area.area_name||'Measured area'} - ${area.area_type||'Area'}`,category:area.area_type||'Area',field_measurement_id:measurementId,field_measurement_area_id:areaId,uploaded_by:'mobile-measure'});
+        const saved=await supa.from('photo_attachments').insert({entity_type:targetType,entity_id:targetId,file_name:uploadFile.name,storage_path:path,public_url:pub,caption:`${area.area_name||'Measured area'} - ${area.area_type||'Area'}`,category:area.area_type||'Area',field_measurement_id:measurementId,field_measurement_area_id:areaId,uploaded_by:'mobile-measure'});
         if(saved.error)throw new Error(saved.error.message);
       }
     }

@@ -532,8 +532,9 @@
     }
 
     .portal-calendar-event.active {
-      background: var(--orange);
-      color: #111;
+      outline: 2px solid var(--orange);
+      outline-offset: 1px;
+      color: #fff;
     }
 
     .portal-calendar-event.task-event {
@@ -1557,6 +1558,8 @@
     let scheduleJobs = [];
     let scheduleTasks = [];
     let scheduleJobPhotos = [];
+    let scheduleEmployees = [];
+    let scheduleAssignments = [];
     let portalTasks = [];
     let taskAuditLogs = [];
     let taskSearch = '';
@@ -1602,6 +1605,7 @@
     const itemKey = (item) => `${item.kind}:${item.id}`;
     const taskTitle = (task) => task.title || task.job_name || 'Assigned task';
     const taskAssignedToCurrentEmployee = (task) => currentEmployeeNames().includes(cleanName(task?.assigned_to));
+    const SCHEDULE_EMPLOYEE_COLORS = ['#ff7a00', '#2f80ed', '#27ae60', '#bb6bd9', '#eb5757', '#f2c94c', '#00b8a9', '#f2994a', '#56ccf2', '#9b51e0', '#6fcf97', '#ff5c8a'];
 
     function setMessage(id, text, isError = false) {
       const el = $(id);
@@ -1713,6 +1717,65 @@
       return target >= start && target <= (end || start);
     }
 
+    function colorHashIndex(value) {
+      let hash = 0;
+      const text = String(value || '');
+      for (let i = 0; i < text.length; i += 1) hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
+      return Math.abs(hash);
+    }
+
+    function hexToRgba(hex, alpha) {
+      let value = String(hex || '').replace('#', '');
+      if (value.length === 3) value = value.split('').map((ch) => ch + ch).join('');
+      const number = parseInt(value, 16);
+      if (Number.isNaN(number)) return `rgba(255,122,0,${alpha})`;
+      return `rgba(${(number >> 16) & 255},${(number >> 8) & 255},${number & 255},${alpha})`;
+    }
+
+    function employeeNameForId(employeeId) {
+      return scheduleEmployees.find((employee) => String(employee.id) === String(employeeId))?.name || '';
+    }
+
+    function assignedEmployeeIdForJob(job) {
+      return job?.assigned_employee_id
+        || scheduleAssignments.find((assignment) => String(assignment.id || assignment.job_id) === String(job?.id))?.assigned_employee_id
+        || '';
+    }
+
+    function scheduleLeadForJob(job) {
+      return employeeNameForId(assignedEmployeeIdForJob(job)) || job?.crew || 'Unassigned';
+    }
+
+    function scheduleOwnerName(item) {
+      if (item?.kind === 'task') return item.assigned_to || item.crew || 'Unassigned';
+      return scheduleLeadForJob(item);
+    }
+
+    function scheduleColorForOwner(owner) {
+      const name = String(owner || 'Unassigned');
+      const names = scheduleEmployees
+        .filter((employee) => employee.active !== false && !String(employee.name || '').toLowerCase().startsWith('removed employee'))
+        .map((employee) => employee.name)
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b));
+      let index = names.findIndex((item) => cleanName(item) === cleanName(name));
+      if (index < 0) index = colorHashIndex(name);
+      return SCHEDULE_EMPLOYEE_COLORS[index % SCHEDULE_EMPLOYEE_COLORS.length];
+    }
+
+    function portalCalendarColorStyle(item) {
+      const color = scheduleColorForOwner(scheduleOwnerName(item));
+      return `border-left-color:${color};background:linear-gradient(180deg,${hexToRgba(color, .88)},${hexToRgba(color, .35)});box-shadow:0 0 0 1px ${hexToRgba(color, .55)} inset`;
+    }
+
+    function canUpdateScheduleJob(job) {
+      if (canReviewTime()) return true;
+      if (!profile?.employee_id) return false;
+      const assignedId = assignedEmployeeIdForJob(job);
+      if (assignedId && String(assignedId) === String(profile.employee_id)) return true;
+      return currentEmployeeNames().includes(cleanName(scheduleLeadForJob(job)));
+    }
+
     function compactMaterialList(job) {
       return Array.isArray(job?.material_list)
         ? job.material_list.filter((item) => item && String(item.name || '').trim())
@@ -1765,6 +1828,59 @@
       if (name.endsWith('.heic')) return 'image/heic';
       if (name.endsWith('.webp')) return 'image/webp';
       return 'application/octet-stream';
+    }
+
+    const IMAGE_UPLOAD_MAX_SIDE = 2400;
+    const IMAGE_UPLOAD_QUALITY = 0.78;
+    const LARGE_UPLOAD_WARN_BYTES = 10 * 1024 * 1024;
+
+    function isCompressibleImage(file) {
+      const type = String(file?.type || '').toLowerCase();
+      const name = String(file?.name || '').toLowerCase();
+      return (type.startsWith('image/') || /\.(jpe?g|png|webp|heic)$/i.test(name)) && !/image\/(gif|svg\+xml)/i.test(type);
+    }
+
+    function compressedImageName(name) {
+      return safeStorageName(name || 'photo.jpg').replace(/\.[^.]+$/, '') + '.jpg';
+    }
+
+    async function prepareUploadFile(file) {
+      if (!isCompressibleImage(file)) return file;
+      try {
+        const url = URL.createObjectURL(file);
+        const img = await new Promise((resolve, reject) => {
+          const image = new Image();
+          image.onload = () => {
+            URL.revokeObjectURL(url);
+            resolve(image);
+          };
+          image.onerror = () => {
+            URL.revokeObjectURL(url);
+            reject(new Error('Image could not be compressed'));
+          };
+          image.src = url;
+        });
+        const width = img.naturalWidth || img.width;
+        const height = img.naturalHeight || img.height;
+        const scale = Math.min(1, IMAGE_UPLOAD_MAX_SIDE / Math.max(width, height));
+        if (scale >= 1 && file.size < 900 * 1024) return file;
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(width * scale));
+        canvas.height = Math.max(1, Math.round(height * scale));
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', IMAGE_UPLOAD_QUALITY));
+        if (!blob) return file;
+        const compressed = new File([blob], compressedImageName(file.name), { type: 'image/jpeg', lastModified: Date.now() });
+        return compressed.size < file.size ? compressed : file;
+      } catch (error) {
+        console.warn('Image compression skipped', error?.message || error);
+        return file;
+      }
+    }
+
+    function confirmLargeUploads(files) {
+      const large = Array.from(files || []).filter((file) => !isCompressibleImage(file) && file.size > LARGE_UPLOAD_WARN_BYTES);
+      return !large.length || confirm(`${large.length} large non-photo file${large.length === 1 ? ' is' : 's are'} over 10 MB and may upload slowly. Continue?`);
     }
 
     function isPdfAttachment(photo, url = '') {
@@ -1972,6 +2088,8 @@
       scheduleTasks = [];
       portalTasks = [];
       taskAuditLogs = [];
+      scheduleEmployees = [];
+      scheduleAssignments = [];
       selectedScheduleItemKey = '';
       entries = [];
       entryAuditLogs = [];
@@ -2106,17 +2224,27 @@
       jobs = result.data || [];
     }
 
-    async function loadScheduleJobs() {
+    async function loadScheduleEmployees() {
       const result = await supa
+        .from('employees')
+        .select('id, name, active')
+        .order('name', { ascending: true });
+      scheduleEmployees = result.error ? [] : (result.data || []);
+    }
+
+    async function loadScheduleJobs() {
+      const assignmentsResult = await supa
         .from('employee_job_schedule')
         .select('*')
-        .eq('assigned_employee_id', profile.employee_id)
         .order('start_date', { ascending: true, nullsFirst: false })
         .order('start_time', { ascending: true });
-      const assignedJobs = result.error ? [] : (result.data || []);
-      const crewFallbackJobs = jobs.filter(jobMatchesCurrentEmployee);
+      scheduleAssignments = assignmentsResult.error ? [] : (assignmentsResult.data || []);
       const fullJobsById = new Map(jobs.map((job) => [job.id, job]));
-      const byId = new Map([...assignedJobs, ...crewFallbackJobs].map((job) => [job.id, { ...(fullJobsById.get(job.id) || {}), ...job }]));
+      const assignedRows = scheduleAssignments.map((job) => ({
+        ...(fullJobsById.get(job.id || job.job_id) || {}),
+        ...job
+      }));
+      const byId = new Map([...jobs, ...assignedRows].map((job) => [job.id || job.job_id, { ...(fullJobsById.get(job.id || job.job_id) || {}), ...job }]));
       scheduleJobs = Array.from(byId.values())
         .filter((job) => job.start_date)
         .sort((a, b) => String(a.start_date || '9999').localeCompare(String(b.start_date || '9999')) || String(a.start_time || '').localeCompare(String(b.start_time || '')));
@@ -2414,7 +2542,7 @@
         await loadProfile();
         if (profile?.active) {
           await loadJobs();
-          await Promise.all([loadScheduleJobs(), loadScheduleTasks(), loadEntries(), loadPtoEntries()]);
+          await Promise.all([loadScheduleEmployees(), loadScheduleJobs(), loadScheduleTasks(), loadEntries(), loadPtoEntries()]);
           await loadScheduleJobPhotos();
           await loadEntryAuditLogs();
           await loadManagerReviewData();
@@ -2490,7 +2618,7 @@
       ].sort((a, b) => String(a.start_date || '9999').localeCompare(String(b.start_date || '9999')) || String(a.start_time || '').localeCompare(String(b.start_time || '')));
       if (!scheduleItems.length) {
         $('scheduleList').innerHTML = `
-          <div class="muted">No jobs or tasks assigned to you yet. Time can still be entered below as Other / No job or against an active job.</div>
+          <div class="muted">No scheduled jobs or assigned tasks are on the calendar yet. Time can still be entered below as Other / No job or against an active job.</div>
         `;
         return;
       }
@@ -2560,11 +2688,12 @@
           }
           const top = (compactCalendar ? 25 : 32) + lane * (compactCalendar ? 21 : 30);
           const item = segment.item;
+          const eventStyle = portalCalendarColorStyle(item);
           return `
             <button
               type="button"
               class="portal-calendar-event portal-calendar-bar ${item.kind === 'task' ? 'task-event' : ''} ${itemKey(item) === selectedScheduleItemKey ? 'active' : ''}"
-              style="grid-column:${segment.col}/span ${segment.span};grid-row:${segment.week + 2};margin-top:${top}px;"
+              style="grid-column:${segment.col}/span ${segment.span};grid-row:${segment.week + 2};margin-top:${top}px;${eventStyle}"
               onclick="selectScheduleItem('${esc(itemKey(item))}')">
               ${esc(segment.name)}
               <small>${esc(item.kind === 'task' ? ['Task', formatTime(item.start_time), item.status].filter(Boolean).join(' - ') : [formatTime(item.start_time), item.address].filter(Boolean).join(' - ') || item.status || 'Scheduled')}</small>
@@ -2589,6 +2718,7 @@
       }).join('') + bars;
 
       const selectedItem = scheduleItems.find((item) => itemKey(item) === selectedScheduleItemKey) || scheduleItems[0];
+      const canEditSelectedJob = selectedItem.kind === 'job' && canUpdateScheduleJob(selectedItem);
       const selectedDetail = selectedItem.kind === 'task'
         ? `
         <article class="job-card portal-schedule-detail">
@@ -2619,7 +2749,7 @@
             <div class="fact"><b>When</b>${esc(formatRange(selectedItem))}</div>
             <div class="fact"><b>Address</b>${addressLinkHTML(selectedItem.address)}</div>
             <div class="fact"><b>Square Feet</b>${Number(selectedItem.square_feet || 0).toLocaleString()}</div>
-            <div class="fact"><b>Crew</b>${esc(selectedItem.crew || '-')}</div>
+            <div class="fact"><b>Crew Lead</b>${esc(scheduleLeadForJob(selectedItem))}</div>
           </div>
           ${scheduleMapHTML(selectedItem.address)}
           ${selectedItem.notes ? `<p class="muted">${esc(selectedItem.notes)}</p>` : ''}
@@ -2629,19 +2759,23 @@
           </div>
           ${compactMaterialListHTML(selectedItem)}
           ${jobPhotosHTML(selectedItem)}
-          <div class="schedule-update-form">
-            <label for="scheduleNote_${esc(selectedItem.id)}">Add Job Note</label>
-            <textarea id="scheduleNote_${esc(selectedItem.id)}" placeholder="Crew notes, job progress, prep concerns, or anything the office should know."></textarea>
-            <label for="schedulePhotos_${esc(selectedItem.id)}">Add Job Photos / Files</label>
-            <input id="schedulePhotos_${esc(selectedItem.id)}" type="file" accept="image/*,application/pdf,.pdf" multiple>
-            <div class="actions">
-              <button class="primary" type="button" onclick="saveScheduleJobUpdate('${esc(selectedItem.id)}')">Save Note / Files</button>
+          ${canEditSelectedJob ? `
+            <div class="schedule-update-form">
+              <label for="scheduleNote_${esc(selectedItem.id)}">Add Job Note</label>
+              <textarea id="scheduleNote_${esc(selectedItem.id)}" placeholder="Crew notes, job progress, prep concerns, or anything the office should know."></textarea>
+              <label for="schedulePhotos_${esc(selectedItem.id)}">Add Job Photos / Files</label>
+              <input id="schedulePhotos_${esc(selectedItem.id)}" type="file" accept="image/*,application/pdf,.pdf" multiple>
+              <div class="actions">
+                <button class="primary" type="button" onclick="saveScheduleJobUpdate('${esc(selectedItem.id)}')">Save Note / Files</button>
+              </div>
+              <p class="muted">Schedule dates and job details are read-only in the employee portal.</p>
             </div>
-            <p class="muted">Schedule dates and job details are read-only in the employee portal.</p>
-          </div>
+          ` : `
+            <p class="muted">This job is read-only here. The assigned lead, managers, and admins can add job notes or files from the employee portal.</p>
+          `}
         </article>`;
       $('scheduleList').innerHTML = `
-        <div class="portal-calendar" aria-label="Assigned job calendar">
+        <div class="portal-calendar" aria-label="Production schedule calendar">
           <div class="portal-calendar-month"><span>${esc(scheduleMonthName(scheduleCalendarMonth))}</span><small>Swipe to change month</small></div>
           <div class="portal-calendar-grid" ontouchstart="scheduleSwipeBegin(event)" ontouchmove="scheduleSwipeMove(event)" ontouchend="scheduleSwipeEnd(event)" ontouchcancel="scheduleSwipeEnd(event)">${heads}${days}</div>
         </div>
@@ -3693,16 +3827,18 @@
       if (!input?.files?.length) return '';
 
       const files = Array.from(input.files);
+      if (!confirmLargeUploads(files)) return 'Upload canceled.';
       const targetType = jobId ? 'job' : 'time_entry';
       const targetId = jobId || entry.id;
       const uploadedBy = profile?.full_name || session?.user?.email || 'employee-portal';
 
       for (const file of files) {
-        const path = `${targetType}/${targetId}/time-entry/${entry.id}/${Date.now()}_${safeStorageName(file.name)}`;
-        const upload = await supa.storage.from('sefs-photos').upload(path, file, {
+        const uploadFile = await prepareUploadFile(file);
+        const path = `${targetType}/${targetId}/time-entry/${entry.id}/${Date.now()}_${safeStorageName(uploadFile.name)}`;
+        const upload = await supa.storage.from('sefs-photos').upload(path, uploadFile, {
           upsert: false,
           cacheControl: '3600',
-          contentType: inferFileType(file)
+          contentType: inferFileType(uploadFile)
         });
         if (upload.error) throw new Error(upload.error.message);
 
@@ -3713,7 +3849,7 @@
         const saved = await supa.from('photo_attachments').insert({
           entity_type: targetType,
           entity_id: targetId,
-          file_name: file.name,
+          file_name: uploadFile.name,
           storage_path: path,
           public_url: publicUrl,
           caption,
@@ -3731,14 +3867,16 @@
       if (!input?.files?.length) return '';
 
       const files = Array.from(input.files);
+      if (!confirmLargeUploads(files)) return 'Upload canceled.';
       const uploadedBy = profile?.full_name || session?.user?.email || 'employee-portal';
 
       for (const file of files) {
-        const path = `job/${jobId}/employee-portal/${Date.now()}_${safeStorageName(file.name)}`;
-        const upload = await supa.storage.from('sefs-photos').upload(path, file, {
+        const uploadFile = await prepareUploadFile(file);
+        const path = `job/${jobId}/employee-portal/${Date.now()}_${safeStorageName(uploadFile.name)}`;
+        const upload = await supa.storage.from('sefs-photos').upload(path, uploadFile, {
           upsert: false,
           cacheControl: '3600',
-          contentType: inferFileType(file)
+          contentType: inferFileType(uploadFile)
         });
         if (upload.error) throw new Error(upload.error.message);
 
@@ -3746,7 +3884,7 @@
         const saved = await supa.from('photo_attachments').insert({
           entity_type: 'job',
           entity_id: jobId,
-          file_name: file.name,
+          file_name: uploadFile.name,
           storage_path: path,
           public_url: publicUrl,
           caption: `Employee portal attachment - ${formatDate(today())}`,
@@ -3763,6 +3901,9 @@
       try {
         const job = scheduleJobs.find((item) => item.id === jobId);
         if (!job) throw new Error('Select a scheduled job first.');
+        if (!canUpdateScheduleJob(job)) {
+          throw new Error('Only the assigned lead, a manager, or an admin can add notes or files to this job from the employee portal.');
+        }
 
         const noteInput = $(`scheduleNote_${jobId}`);
         const note = noteInput?.value.trim() || '';

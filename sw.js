@@ -1,4 +1,4 @@
-const SEFS_CACHE = 'sefs-pwa-v20260810b';
+const SEFS_CACHE = 'sefs-pwa-v20260811a';
 const SEFS_ASSETS = [
   './',
   './index.html',
