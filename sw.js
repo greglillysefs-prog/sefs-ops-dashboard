@@ -1,4 +1,4 @@
-const SEFS_CACHE = 'sefs-pwa-v20260811b';
+const SEFS_CACHE = 'sefs-pwa-v20260811c';
 const SEFS_ASSETS = [
   './',
   './index.html',
@@ -12,15 +12,15 @@ const SEFS_ASSETS = [
   './privacy.html',
   './terms.html',
   './manifest.webmanifest',
-  './manifest.webmanifest?v=20260811b',
+  './manifest.webmanifest?v=20260811c',
   './employee-portal.webmanifest',
-  './employee-portal.webmanifest?v=20260811b',
+  './employee-portal.webmanifest?v=20260811c',
   './mobile-measure.webmanifest',
-  './mobile-measure.webmanifest?v=20260811b',
+  './mobile-measure.webmanifest?v=20260811c',
   './mobile-job.webmanifest',
-  './mobile-job.webmanifest?v=20260811b',
+  './mobile-job.webmanifest?v=20260811c',
   './pwa-init.js',
-  './pwa-init.js?v=20260811b',
+  './pwa-init.js?v=20260811c',
   './assets/sefs-icon.jpeg',
   './assets/sefs-app-icon-180.png',
   './assets/sefs-app-icon-192.png',

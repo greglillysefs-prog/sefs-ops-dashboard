@@ -1,5 +1,5 @@
 (function () {
-  var SEFS_PWA_VERSION = '20260811b';
+  var SEFS_PWA_VERSION = '20260811c';
 
   function toast(text) {
     var el = document.getElementById('sefsPwaToast');
@@ -30,6 +30,7 @@
       el.remove();
     }, 2200);
   }
+  window.sefsToast = toast;
 
   function installPullToRefresh() {
     var isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
@@ -148,6 +149,111 @@
   }
 
   installPullToRefresh();
+
+  function installWorkflowPolish() {
+    if (window.__SEFS_WORKFLOW_POLISH__) return;
+    window.__SEFS_WORKFLOW_POLISH__ = true;
+
+    var style = document.createElement('style');
+    style.textContent = [
+      '.sefs-file-summary{margin-top:7px;color:#bdbdbd;font-size:12px;line-height:1.35}',
+      '.sefs-file-summary strong{color:#fff}',
+      'button[disabled]{cursor:not-allowed;opacity:.58}'
+    ].join('\n');
+    document.head.appendChild(style);
+
+    function formatBytes(bytes) {
+      if (!bytes) return '0 KB';
+      var units = ['B', 'KB', 'MB', 'GB'];
+      var value = bytes;
+      var unit = 0;
+      while (value >= 1024 && unit < units.length - 1) {
+        value /= 1024;
+        unit += 1;
+      }
+      return value.toFixed(unit > 1 ? 1 : 0) + ' ' + units[unit];
+    }
+
+    function summarizeFiles(input) {
+      if (!input || input.type !== 'file') return;
+      if (!input.hasAttribute('multiple') && input.dataset.sefsSingle !== 'true') {
+        input.setAttribute('multiple', 'multiple');
+      }
+      var accept = (input.getAttribute('accept') || '').trim();
+      if (!accept || accept === 'image/*') {
+        input.setAttribute('accept', 'image/*,application/pdf,.pdf');
+      }
+      var note = input.parentElement && input.parentElement.querySelector('.sefs-file-summary');
+      if (!note) {
+        note = document.createElement('div');
+        note.className = 'sefs-file-summary';
+        input.insertAdjacentElement('afterend', note);
+      }
+      var files = Array.prototype.slice.call(input.files || []);
+      if (!files.length) {
+        note.textContent = '';
+        return;
+      }
+      var total = files.reduce(function(sum, file) { return sum + (file.size || 0); }, 0);
+      var names = files.slice(0, 3).map(function(file) { return file.name; }).join(', ');
+      var extra = files.length > 3 ? ' +' + (files.length - 3) + ' more' : '';
+      note.innerHTML = '<strong>' + files.length + ' selected</strong> - ' + formatBytes(total) + '<br>' + names + extra;
+    }
+
+    function rememberButtonText(button) {
+      if (!button || button.dataset.sefsOriginalText) return;
+      button.dataset.sefsOriginalText = (button.textContent || '').trim();
+      button.dataset.sefsClickedAt = String(Date.now());
+    }
+
+    function unlockStaleControls(force) {
+      var now = Date.now();
+      document.querySelectorAll('button:disabled').forEach(function(button) {
+        var text = (button.textContent || '').toLowerCase();
+        var clickedAt = Number(button.dataset.sefsClickedAt || 0);
+        var looksTransient = /saving|uploading|loading|working|syncing|creating/.test(text);
+        if (!looksTransient) return;
+        if (!force && clickedAt && now - clickedAt < 20000) return;
+        button.disabled = false;
+        if (button.dataset.sefsOriginalText) {
+          button.textContent = button.dataset.sefsOriginalText;
+        } else if (/uploading/.test(text)) {
+          button.textContent = 'Upload File';
+        } else if (/creating/.test(text)) {
+          button.textContent = 'Create';
+        } else {
+          button.textContent = 'Save';
+        }
+      });
+    }
+
+    document.addEventListener('change', function(event) {
+      if (event.target && event.target.matches && event.target.matches('input[type="file"]')) {
+        summarizeFiles(event.target);
+      }
+    }, true);
+
+    document.addEventListener('click', function(event) {
+      var button = event.target && event.target.closest && event.target.closest('button');
+      if (!button) return;
+      var text = (button.textContent || '').toLowerCase();
+      if (/save|submit|upload|create|add|sync|approve|reject|delete/.test(text)) {
+        rememberButtonText(button);
+      }
+    }, true);
+
+    window.addEventListener('pageshow', function() { unlockStaleControls(true); });
+    window.addEventListener('focus', function() { unlockStaleControls(true); });
+    document.addEventListener('visibilitychange', function() {
+      if (!document.hidden) unlockStaleControls(true);
+    });
+    window.setInterval(function() { unlockStaleControls(false); }, 15000);
+
+    document.querySelectorAll('input[type="file"]').forEach(summarizeFiles);
+    window.sefsUnlockStaleControls = function() { unlockStaleControls(true); };
+  }
+
+  installWorkflowPolish();
 
   var canUseServiceWorker = 'serviceWorker' in navigator;
   var secureHost = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
