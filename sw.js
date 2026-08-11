@@ -1,4 +1,4 @@
-const SEFS_CACHE = 'sefs-pwa-v20260811a';
+const SEFS_CACHE = 'sefs-pwa-v20260811b';
 const SEFS_ASSETS = [
   './',
   './index.html',
@@ -12,10 +12,15 @@ const SEFS_ASSETS = [
   './privacy.html',
   './terms.html',
   './manifest.webmanifest',
+  './manifest.webmanifest?v=20260811b',
   './employee-portal.webmanifest',
+  './employee-portal.webmanifest?v=20260811b',
   './mobile-measure.webmanifest',
+  './mobile-measure.webmanifest?v=20260811b',
   './mobile-job.webmanifest',
+  './mobile-job.webmanifest?v=20260811b',
   './pwa-init.js',
+  './pwa-init.js?v=20260811b',
   './assets/sefs-icon.jpeg',
   './assets/sefs-app-icon-180.png',
   './assets/sefs-app-icon-192.png',
@@ -32,6 +37,10 @@ self.addEventListener('activate', event => {
       .then(keys => Promise.all(keys.filter(key => key !== SEFS_CACHE).map(key => caches.delete(key))))
       .then(() => self.clients.claim())
   );
+});
+
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SEFS_SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('fetch', event => {

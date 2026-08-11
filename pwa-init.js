@@ -1,4 +1,36 @@
 (function () {
+  var SEFS_PWA_VERSION = '20260811b';
+
+  function toast(text) {
+    var el = document.getElementById('sefsPwaToast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'sefsPwaToast';
+      el.style.cssText = [
+        'position:fixed',
+        'left:50%',
+        'bottom:max(18px,env(safe-area-inset-bottom))',
+        'z-index:999999',
+        'transform:translateX(-50%)',
+        'background:#111',
+        'color:#fff',
+        'border:1px solid #22c55e',
+        'border-radius:999px',
+        'padding:10px 16px',
+        'font:800 13px system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
+        'box-shadow:0 14px 32px rgba(0,0,0,.45)',
+        'max-width:calc(100vw - 32px)',
+        'text-align:center'
+      ].join(';');
+      document.body.appendChild(el);
+    }
+    el.textContent = text;
+    window.clearTimeout(el._sefsTimer);
+    el._sefsTimer = window.setTimeout(function () {
+      el.remove();
+    }, 2200);
+  }
+
   function installPullToRefresh() {
     var isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
     if (!isTouch) return;
@@ -120,9 +152,46 @@
   var canUseServiceWorker = 'serviceWorker' in navigator;
   var secureHost = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
   if (!canUseServiceWorker || !secureHost) return;
+
+  function askWorkerToActivate(worker) {
+    if (!worker) return;
+    worker.postMessage({ type: 'SEFS_SKIP_WAITING', version: SEFS_PWA_VERSION });
+  }
+
+  function watchRegistration(registration) {
+    if (registration.waiting) askWorkerToActivate(registration.waiting);
+    registration.addEventListener('updatefound', function () {
+      var worker = registration.installing;
+      if (!worker) return;
+      worker.addEventListener('statechange', function () {
+        if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+          toast('Updating SEFS...');
+          askWorkerToActivate(worker);
+        }
+      });
+    });
+  }
+
+  var reloadingForUpdate = false;
+  navigator.serviceWorker.addEventListener('controllerchange', function () {
+    if (reloadingForUpdate) return;
+    reloadingForUpdate = true;
+    toast('SEFS updated. Reloading...');
+    window.setTimeout(function () {
+      location.reload();
+    }, 350);
+  });
+
   window.addEventListener('load', function () {
     navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(function (registration) {
+      watchRegistration(registration);
       registration.update();
+      document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'visible') registration.update();
+      });
+      window.addEventListener('pageshow', function () {
+        registration.update();
+      });
     }).catch(function (err) {
       console.warn('SEFS service worker registration skipped:', err);
     });
