@@ -77,6 +77,8 @@
     let targetType=params.get('type')||params.get('entity')||'lead', targetId=params.get('id')||params.get('lead')||params.get('job')||'', leads=[], jobs=[], customerProfiles=[], target=null, areas=[], selectedCustomerId='';
     function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
     function setStatus(t,c=''){$('status').textContent=t;$('status').className=c}
+    function setButtonBusy(button,busy,label='Saving...'){if(!button)return true;if(busy){if(button.dataset.busy==='1')return false;button.dataset.busy='1';button.dataset.busyText=button.textContent;button.disabled=true;button.textContent=label;return true}button.disabled=false;button.textContent=button.dataset.busyText||button.textContent;delete button.dataset.busy;delete button.dataset.busyText;return true}
+    async function withButtonBusy(button,label,action){if(button&&setButtonBusy(button,true,label)===false)return;try{return await action()}finally{if(button)setButtonBusy(button,false)}}
     function val(id){return $(id)?.value||''}
     function num(id){return parseFloat(val(id))||0}
     function today(){return new Date().toISOString().slice(0,10)}
@@ -270,7 +272,7 @@
         <div class=total><span id=totalSqft>${totalSqft().toLocaleString(undefined,{maximumFractionDigits:2})}</span></div>
         <div class=muted>${areas.length} measured area(s)</div>
         <div id=areas>${areas.map(areaCard).join('')||'<div class=muted>Add an area to start measuring.</div>'}</div>
-        <button class=primary type=button onclick="saveMeasurement()">Save Measurement</button>
+        <button class=primary type=button onclick="saveMeasurement(this)">Save Measurement</button>
         ${targetType==='job'&&targetId?`<a class=secondary href="mobile-job.html?job=${encodeURIComponent(targetId)}">Back to Job</a>`:''}
       </div>`;
     }
@@ -289,7 +291,8 @@
         if(saved.error)throw new Error(saved.error.message);
       }
     }
-    async function saveMeasurement(){
+    async function saveMeasurement(button){
+      return withButtonBusy(button,'Saving...',async()=>{
       try{
         if(!targetId||!target)throw new Error('Choose a lead or job first.');
         captureAll();
@@ -318,6 +321,7 @@
       }catch(e){
         setStatus(e.message||String(e),'bad');
       }
+      })
     }
     async function syncTargetCustomerProfile(customerProfile){
       if(!customerProfile?.id||!targetId)return;

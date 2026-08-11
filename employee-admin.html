@@ -629,6 +629,23 @@
       $('adminLoginBtn').textContent = isBusy ? 'Signing In...' : 'Sign In';
     }
 
+    function setButtonBusy(button, isBusy, busyText = 'Saving...') {
+      if (!button) return true;
+      if (isBusy) {
+        if (button.dataset.busy === '1') return false;
+        button.dataset.busy = '1';
+        button.dataset.busyText = button.textContent;
+        button.disabled = true;
+        button.textContent = busyText;
+        return true;
+      }
+      button.disabled = false;
+      button.textContent = button.dataset.busyText || button.textContent;
+      delete button.dataset.busy;
+      delete button.dataset.busyText;
+      return true;
+    }
+
     function togglePassword(inputId, button) {
       const input = $(inputId);
       const hidden = input.type === 'password';
@@ -874,6 +891,8 @@
         setMessage('Type REMOVE to confirm employee removal.', 'error');
         return;
       }
+      const button = $('confirmRemoveBtn');
+      if (setButtonBusy(button, true, 'Removing...') === false) return;
       try {
         await callAdmin('remove_employee', {
           employee_id: pendingRemoval.employeeId,
@@ -887,6 +906,8 @@
         await refreshPeople();
       } catch (error) {
         setMessage(error.message, 'error');
+      } finally {
+        setButtonBusy(button, false);
       }
     }
 
@@ -902,6 +923,8 @@
         setMessage('New passwords do not match.', 'error');
         return;
       }
+      const button = $('confirmPasswordResetBtn');
+      if (setButtonBusy(button, true, 'Saving...') === false) return;
       try {
         await callAdmin('reset_password', {
           user_id: pendingPasswordReset.userId,
@@ -917,11 +940,15 @@
         await refreshPeople();
       } catch (error) {
         setMessage(error.message, 'error');
+      } finally {
+        setButtonBusy(button, false);
       }
     }
 
     $('employeeForm').addEventListener('submit', async (event) => {
       event.preventDefault();
+      const button = event.submitter || event.target.querySelector('button[type="submit"]');
+      if (setButtonBusy(button, true, 'Saving...') === false) return;
       try {
         const payload = {
           full_name: $('fullName').value.trim(),
@@ -945,11 +972,15 @@
         await refreshPeople();
       } catch (error) {
         setMessage(error.message, 'error');
+      } finally {
+        setButtonBusy(button, false);
       }
     });
 
     $('timeEntryForm').addEventListener('submit', async (event) => {
       event.preventDefault();
+      const button = event.submitter || event.target.querySelector('button[type="submit"]');
+      if (setButtonBusy(button, true, 'Saving...') === false) return;
       try {
         await callAdmin('update_time_entry', {
           id: $('timeEntryId').value,
@@ -968,6 +999,8 @@
         await refreshPeople();
       } catch (error) {
         setMessage(error.message, 'error');
+      } finally {
+        setButtonBusy(button, false);
       }
     });
 
@@ -990,10 +1023,13 @@
     });
 
     $('refreshBtn').addEventListener('click', async () => {
+      if (setButtonBusy($('refreshBtn'), true, 'Loading...') === false) return;
       try {
         await refreshPeople();
       } catch (error) {
         setMessage(error.message, 'error');
+      } finally {
+        setButtonBusy($('refreshBtn'), false);
       }
     });
 

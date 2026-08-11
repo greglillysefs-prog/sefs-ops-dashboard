@@ -1580,6 +1580,7 @@
     let crewOptions = [];
     let selectedCrewIds = new Set();
     let timeSaveInFlight = false;
+    let ptoSaveInFlight = false;
     let ptoEntries = [];
     let ptoBalance = { accrued: 0, ledger: 0, pending: 0, balance: 0, available: 0 };
     let payRatesColumnAvailable = true;
@@ -1620,6 +1621,32 @@
       $('submitNowBtn').disabled = isBusy;
       saveButton.textContent = isBusy ? 'Saving...' : 'Save Draft';
       $('submitNowBtn').textContent = isBusy ? 'Submitting...' : 'Submit Time';
+    }
+
+    function setPtoSaveBusy(isBusy) {
+      ptoSaveInFlight = isBusy;
+      const button = $('ptoRequestBtn');
+      if (!button) return;
+      const available = Math.max(0, Number(ptoBalance.available || 0));
+      button.disabled = isBusy || available <= 0;
+      button.textContent = isBusy ? 'Submitting...' : 'Request PTO';
+    }
+
+    function setActionButtonBusy(button, isBusy, busyText = 'Saving...') {
+      if (!button) return true;
+      if (isBusy) {
+        if (button.dataset.busy === '1') return false;
+        button.dataset.busy = '1';
+        button.dataset.busyText = button.textContent;
+        button.disabled = true;
+        button.textContent = busyText;
+        return true;
+      }
+      button.disabled = false;
+      button.textContent = button.dataset.busyText || button.textContent;
+      delete button.dataset.busy;
+      delete button.dataset.busyText;
+      return true;
     }
 
     function setAuthBusy(isBusy) {
@@ -2735,7 +2762,7 @@
           ${selectedItem.details ? `<p class="muted">${esc(selectedItem.details)}</p>` : ''}
           ${selectedItem.completed_at ? `<p class="muted">Completed ${esc(new Date(selectedItem.completed_at).toLocaleString())} by ${esc(selectedItem.completed_by_name || 'Unknown')}</p>` : ''}
           <div class="actions">
-            ${selectedItem.status !== 'Done' ? `<button class="primary" type="button" onclick="completePortalTask('${esc(selectedItem.id)}')">Mark Complete</button>` : ''}
+            ${selectedItem.status !== 'Done' ? `<button class="primary" type="button" onclick="completePortalTask('${esc(selectedItem.id)}', this)">Mark Complete</button>` : ''}
           </div>
           <p class="muted">Tasks can only be completed from the employee portal. Use the dashboard to edit task details.</p>
         </article>`
@@ -2766,7 +2793,7 @@
               <label for="schedulePhotos_${esc(selectedItem.id)}">Add Job Photos / Files</label>
               <input id="schedulePhotos_${esc(selectedItem.id)}" type="file" accept="image/*,application/pdf,.pdf" multiple>
               <div class="actions">
-                <button class="primary" type="button" onclick="saveScheduleJobUpdate('${esc(selectedItem.id)}')">Save Note / Files</button>
+                <button class="primary" type="button" onclick="saveScheduleJobUpdate('${esc(selectedItem.id)}', this)">Save Note / Files</button>
               </div>
               <p class="muted">Schedule dates and job details are read-only in the employee portal.</p>
             </div>
@@ -2826,7 +2853,7 @@
             ${task.completed_at ? `<p class="muted">Completed ${esc(new Date(task.completed_at).toLocaleString())} by ${esc(task.completed_by_name || 'Unknown')}</p>` : ''}
             ${logs.length ? `<details><summary>Changes</summary>${logs.map((log) => `<p class="muted">${esc(new Date(log.created_at).toLocaleString())} - ${esc(log.action_type)} by ${esc(log.actor_name || 'Unknown')}${log.reason ? `: ${esc(log.reason)}` : ''}</p>`).join('')}</details>` : ''}
             <div class="actions">
-              ${task.status !== 'Done' ? `<button class="primary" type="button" onclick="completePortalTask('${esc(task.id)}')">Mark Complete</button>` : ''}
+              ${task.status !== 'Done' ? `<button class="primary" type="button" onclick="completePortalTask('${esc(task.id)}', this)">Mark Complete</button>` : ''}
             </div>
           </article>
         `;
@@ -2838,9 +2865,10 @@
       renderTasksPanel();
     };
 
-    window.completePortalTask = async function completePortalTask(id) {
+    window.completePortalTask = async function completePortalTask(id, button = null) {
       const task = portalTasks.find((item) => item.id === id);
       if (!task || task.status === 'Done') return;
+      if (setActionButtonBusy(button, true, 'Completing...') === false) return;
       const actorName = profile?.full_name || session?.user?.email || 'Employee';
       const stamp = new Date().toISOString();
       const payload = {
@@ -2870,6 +2898,8 @@
         setActiveTab('tasks');
       } catch (error) {
         setMessage('appMessage', error.message, true);
+      } finally {
+        setActionButtonBusy(button, false);
       }
     };
 
@@ -3001,7 +3031,7 @@
             ${entry.rejection_reason ? `<p class="muted">Rejected: ${esc(entry.rejection_reason)}</p>` : ''}
             ${timeEntryPhotosHTML([entry])}
             <div class="actions">
-              ${canEdit ? `<button type="button" onclick="editEntry('${entry.id}')">Edit</button><button type="button" onclick="submitEntry('${entry.id}')">Submit</button>` : ''}
+              ${canEdit ? `<button type="button" onclick="editEntry('${entry.id}')">Edit</button><button type="button" onclick="submitEntry('${entry.id}', this)">Submit</button>` : ''}
               ${entry.status === 'draft' ? `<button class="ghost" type="button" onclick="deleteEntry('${entry.id}')">Delete</button>` : ''}
             </div>
           </article>
@@ -3156,7 +3186,7 @@
           ${entry.rejection_reason ? `<p class="muted">Rejected: ${esc(entry.rejection_reason)}</p>` : ''}
           ${timeEntryPhotosHTML(group.entries)}
           <div class="actions">
-            ${entry.status !== 'approved' ? `<button class="primary" type="button" onclick="approveManagerGroup('${esc(group.id)}')">Approve Group</button>` : ''}
+            ${entry.status !== 'approved' ? `<button class="primary" type="button" onclick="approveManagerGroup('${esc(group.id)}', this)">Approve Group</button>` : ''}
             <button type="button" onclick="editManagerGroup('${esc(group.id)}')">Edit Group</button>
           </div>
         </article>
@@ -3540,7 +3570,7 @@
       const available = Math.max(0, Number(ptoBalance.available || 0));
       $('ptoHours').max = available.toFixed(2);
       $('ptoHours').placeholder = `${available.toFixed(2)} available`;
-      $('ptoRequestBtn').disabled = available <= 0;
+      $('ptoRequestBtn').disabled = ptoSaveInFlight || available <= 0;
       $('ptoSummary').innerHTML = `
         <div class="totals">
           <div class="total"><span class="muted">Available</span><b>${available.toFixed(2)}</b></div>
@@ -3732,7 +3762,8 @@
       window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
-    window.submitEntry = async function submitEntry(id) {
+    window.submitEntry = async function submitEntry(id, button = null) {
+      if (setActionButtonBusy(button, true, 'Submitting...') === false) return;
       try {
         const result = await supa
           .from('time_entries')
@@ -3746,6 +3777,8 @@
         await refresh();
       } catch (error) {
         setMessage('appMessage', error.message, true);
+      } finally {
+        setActionButtonBusy(button, false);
       }
     };
 
@@ -3808,7 +3841,8 @@
       return result.time_entries || [];
     }
 
-    window.approveManagerGroup = async function approveManagerGroup(groupId) {
+    window.approveManagerGroup = async function approveManagerGroup(groupId, button = null) {
+      if (setActionButtonBusy(button, true, 'Approving...') === false) return;
       try {
         await updateManagerTimeEntries(groupId, {
           status: 'approved',
@@ -3819,6 +3853,8 @@
         await refresh();
       } catch (error) {
         setMessage('appMessage', error.message, true);
+      } finally {
+        setActionButtonBusy(button, false);
       }
     };
 
@@ -3897,7 +3933,8 @@
       return `${files.length} file${files.length === 1 ? '' : 's'} uploaded and attached to the job.`;
     }
 
-    window.saveScheduleJobUpdate = async function saveScheduleJobUpdate(jobId) {
+    window.saveScheduleJobUpdate = async function saveScheduleJobUpdate(jobId, button = null) {
+      if (setActionButtonBusy(button, true, 'Saving...') === false) return;
       try {
         const job = scheduleJobs.find((item) => item.id === jobId);
         if (!job) throw new Error('Select a scheduled job first.');
@@ -3927,6 +3964,8 @@
         setMessage('appMessage', photoStatus || 'Job note saved.');
       } catch (error) {
         setMessage('appMessage', error.message, true);
+      } finally {
+        setActionButtonBusy(button, false);
       }
     };
 
@@ -4117,9 +4156,18 @@
       const id = button.dataset.ptoId;
       const status = button.dataset.ptoStatus;
       const noteInput = Array.from(document.querySelectorAll('[data-pto-note]')).find((input) => input.dataset.ptoNote === id);
+      if (button.dataset.busy === '1') return;
+      const oldText = button.textContent;
+      button.dataset.busy = '1';
       button.disabled = true;
-      await window.decidePto(id, status, noteInput?.value?.trim() || '');
-      button.disabled = false;
+      button.textContent = status === 'approved' ? 'Approving...' : 'Rejecting...';
+      try {
+        await window.decidePto(id, status, noteInput?.value?.trim() || '');
+      } finally {
+        button.disabled = false;
+        button.textContent = oldText;
+        delete button.dataset.busy;
+      }
     });
 
     $('loginForm').addEventListener('submit', async (event) => {
@@ -4171,6 +4219,8 @@
 
     $('ptoForm').addEventListener('submit', async (event) => {
       event.preventDefault();
+      if (ptoSaveInFlight) return;
+      setPtoSaveBusy(true);
       try {
         await requestPto();
         $('ptoHours').value = '';
@@ -4179,11 +4229,15 @@
         await refresh();
       } catch (error) {
         setMessage('appMessage', error.message, true);
+      } finally {
+        setPtoSaveBusy(false);
       }
     });
 
     $('managerTimeForm').addEventListener('submit', async (event) => {
       event.preventDefault();
+      const button = event.submitter || event.target.querySelector('button[type="submit"]');
+      if (setActionButtonBusy(button, true, 'Saving...') === false) return;
       try {
         const id = $('managerEntryId').value;
         const status = $('managerEntryStatus').value;
@@ -4201,6 +4255,8 @@
         await refresh();
       } catch (error) {
         setMessage('appMessage', error.message, true);
+      } finally {
+        setActionButtonBusy(button, false);
       }
     });
 
