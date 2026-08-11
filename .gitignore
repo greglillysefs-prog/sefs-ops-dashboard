@@ -1,4 +1,5 @@
 supabase/.temp/
 .vite/
 .wrangler/
+.cloudflare-deploy-*/
 *.log
