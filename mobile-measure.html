@@ -50,6 +50,14 @@
     .total{font-size:38px;font-weight:900;color:var(--o);line-height:1}
     .summary{display:grid;gap:8px}
     .summary-item{border:1px solid #333;border-radius:8px;background:#0b0b0b;padding:10px}
+    .customerPicker{position:relative;margin-bottom:10px}
+    .customerMatches{display:grid;gap:8px;margin-top:8px}
+    .customerMatch{width:100%;display:flex;justify-content:space-between;gap:10px;text-align:left;border:1px solid #444;border-radius:9px;background:#0b0b0b;color:#eee;padding:11px 12px}
+    .customerMatch strong{display:block;color:#fff}
+    .customerMatch small{display:block;color:#aaa;margin-top:3px;line-height:1.35}
+    .customerMatch span{color:var(--o);font-weight:900;white-space:nowrap}
+    .linkedCustomer{border:1px solid var(--g);color:var(--g);border-radius:8px;padding:9px 10px;margin-top:8px;font-size:13px}
+    .customerLookupHint{color:#aaa;font-size:13px;margin-top:8px;line-height:1.35}
     .area-flash{position:fixed;left:12px;right:12px;bottom:12px;z-index:5;border:1px solid var(--o);border-radius:10px;background:#1a1007;color:#fff;padding:12px 14px;font-weight:900;text-align:center;box-shadow:0 12px 30px rgba(0,0,0,.45)}
     .hidden{display:none!important}
     @media(max-width:520px){main{padding:10px}.two,.quick{grid-template-columns:1fr}header{padding:12px}}
@@ -66,7 +74,7 @@
     const SB_URL='https://wjfewzutxvjbbnnvbylo.supabase.co', SB_KEY='sb_publishable_YWRQJz8q1lDdSz_304AUyA_YskIiTBT', supa=supabase.createClient(SB_URL,SB_KEY);
     const $=id=>document.getElementById(id), params=new URLSearchParams(location.search);
     const AREA_TYPES=['Garage','Patio','Basement','Pool Deck','Porch','Driveway','Room','Other'];
-    let targetType=params.get('type')||params.get('entity')||'lead', targetId=params.get('id')||params.get('lead')||params.get('job')||'', leads=[], jobs=[], target=null, areas=[];
+    let targetType=params.get('type')||params.get('entity')||'lead', targetId=params.get('id')||params.get('lead')||params.get('job')||'', leads=[], jobs=[], customerProfiles=[], target=null, areas=[], selectedCustomerId='';
     function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
     function setStatus(t,c=''){$('status').textContent=t;$('status').className=c}
     function val(id){return $(id)?.value||''}
@@ -82,22 +90,76 @@
     function targetName(item){return item?.customer||item?.job_name||'Untitled'}
     function targetAddress(item){return item?.address||''}
     function targetPhone(item){return item?.phone||''}
+    function customerLookupLabel(c){return [c?.name,c?.phone,c?.address].filter(Boolean).join(' - ')||'Customer'}
+    function customerLookupText(c){return [c?.name,c?.phone,c?.email,c?.address,c?.notes].filter(Boolean).join(' ').toLowerCase()}
+    function customerLookupRaw(includeSearch=true){return [includeSearch?val('customerSearch'):'',val('customer'),val('phone'),val('address')].filter(Boolean).join(' ').trim()}
+    function currentCustomer(){return customerProfiles.find(c=>c.id===selectedCustomerId)||null}
+    function customerStatusHTML(){
+      const c=currentCustomer();
+      return c?`<div class=linkedCustomer>Linked to existing customer: ${esc(customerLookupLabel(c))}</div>`:'<div class=customerLookupHint>Start typing to find an existing customer, or keep entering details to save this measurement with a new customer profile.</div>';
+    }
+    function customerLookupHTML(){
+      const c=currentCustomer();
+      const seed=c?customerLookupLabel(c):[targetName(target),targetPhone(target),targetAddress(target)].filter(Boolean).join(' ');
+      return `<div class=customerPicker>
+        <label>Customer Lookup</label>
+        <input type=hidden id=customerId value="${esc(selectedCustomerId||'')}">
+        <input id=customerSearch type=text autocomplete=off placeholder="Search existing customers by name, phone, email, or address" value="${esc(seed)}" oninput="customerSearchChanged()" onfocus="updateCustomerMatches()" onblur="hideCustomerMatchesSoon()">
+        <div id=customerMatches class="customerMatches hidden"></div>
+        <div id=customerStatus>${customerStatusHTML()}</div>
+      </div>`;
+    }
+    function clearCustomerLink(){
+      selectedCustomerId='';
+      if($('customerId'))$('customerId').value='';
+      if($('customerStatus'))$('customerStatus').innerHTML=customerStatusHTML();
+    }
+    function customerSearchChanged(){clearCustomerLink();updateCustomerMatches()}
+    function customerFieldsChanged(){clearCustomerLink();updateCustomerMatches(false)}
+    function hideCustomerMatches(){if($('customerMatches'))$('customerMatches').classList.add('hidden')}
+    function hideCustomerMatchesSoon(){setTimeout(hideCustomerMatches,160)}
+    function updateCustomerMatches(includeSearch=true){
+      const box=$('customerMatches');
+      if(!box)return;
+      const q=customerLookupRaw(includeSearch).toLowerCase();
+      const parts=q.split(/\s+/).filter(Boolean);
+      if(!parts.length){box.classList.add('hidden');box.innerHTML='';return}
+      const matches=customerProfiles.filter(c=>parts.every(p=>customerLookupText(c).includes(p))).slice(0,8);
+      if(!matches.length){box.innerHTML='<div class=customerLookupHint>No existing customer matches yet.</div>';box.classList.remove('hidden');return}
+      box.innerHTML=matches.map(c=>`<button class=customerMatch type=button onmousedown="selectCustomer('${esc(c.id)}')"><div><strong>${esc(c.name||'Unnamed customer')}</strong><small>${esc([c.phone,c.email,c.address].filter(Boolean).join(' - '))}</small></div><span>Use</span></button>`).join('');
+      box.classList.remove('hidden');
+    }
+    function selectCustomer(id){
+      const c=customerProfiles.find(x=>x.id===id);
+      if(!c)return;
+      selectedCustomerId=c.id;
+      if($('customerId'))$('customerId').value=c.id;
+      if($('customerSearch'))$('customerSearch').value=customerLookupLabel(c);
+      if($('customer'))$('customer').value=c.name||'';
+      if($('phone'))$('phone').value=c.phone||'';
+      if($('address'))$('address').value=c.address||'';
+      if($('customerStatus'))$('customerStatus').innerHTML=customerStatusHTML();
+      hideCustomerMatches();
+    }
     function recordOptions(){
       const list=targetType==='job'?jobs:leads;
       return list.map(item=>`<option value="${esc(item.id)}" ${item.id===targetId?'selected':''}>${esc(targetName(item))}${targetAddress(item)?' - '+esc(targetAddress(item)):''}</option>`).join('');
     }
     function selectedList(){return targetType==='job'?jobs:leads}
-    function setTargetFromLists(){target=selectedList().find(item=>item.id===targetId)||null}
+    function setTargetFromLists(){target=selectedList().find(item=>item.id===targetId)||null;selectedCustomerId=target?.customer_id||''}
     async function loadData(){
       setStatus('Loading records...');
-      let [lr,jr]=await Promise.all([
-        supa.from('leads').select('id,customer,phone,address,stage,created_at').order('created_at',{ascending:false}).limit(200),
-        supa.from('jobs').select('id,customer,phone,address,job_name,status,start_date,system_type,square_feet').order('start_date',{ascending:true,nullsFirst:false}).limit(200)
+      let [lr,jr,cr]=await Promise.all([
+        supa.from('leads').select('id,customer_id,customer,phone,address,stage,created_at').order('created_at',{ascending:false}).limit(200),
+        supa.from('jobs').select('id,customer_id,customer,phone,address,job_name,status,start_date,system_type,square_feet').order('start_date',{ascending:true,nullsFirst:false}).limit(200),
+        supa.from('customers').select('id,name,phone,email,address,status,notes').order('name',{ascending:true}).limit(500)
       ]);
       if(lr.error){setStatus(lr.error.message,'bad');return}
       if(jr.error){setStatus(jr.error.message,'bad');return}
+      if(cr.error)console.warn('Customer lookup unavailable',cr.error.message);
       leads=lr.data||[];
       jobs=jr.data||[];
+      customerProfiles=cr.data||[];
       if(!targetId){
         const list=selectedList();
         targetId=list[0]?.id||'';
@@ -195,9 +257,10 @@
       </div>
       <div class=card>
         <h2>Measurement</h2>
-        <label>Customer</label><input id=customer value="${esc(targetName(target))}">
-        <label>Phone</label><input id=phone type=tel value="${esc(targetPhone(target))}">
-        <label>Address</label><textarea id=address autocomplete="street-address" rows="3">${esc(targetAddress(target))}</textarea>
+        ${customerLookupHTML()}
+        <label>Customer</label><input id=customer value="${esc(targetName(target))}" oninput="customerFieldsChanged()" onfocus="updateCustomerMatches(false)" onblur="hideCustomerMatchesSoon()">
+        <label>Phone</label><input id=phone type=tel value="${esc(targetPhone(target))}" oninput="customerFieldsChanged()" onfocus="updateCustomerMatches(false)" onblur="hideCustomerMatchesSoon()">
+        <label>Address</label><textarea id=address autocomplete="street-address" rows="3" oninput="customerFieldsChanged()" onfocus="updateCustomerMatches(false)" onblur="hideCustomerMatchesSoon()">${esc(targetAddress(target))}</textarea>
         <label>Measurement Notes</label><textarea id=measureNotes></textarea>
         <div class=quick>${AREA_TYPES.slice(0,6).map(t=>`<button class=secondary type=button onclick="addArea('${esc(t)}')">${esc(t)}</button>`).join('')}</div>
         <button class=secondary type=button onclick="addArea('Room')">Add Blank Area</button>
@@ -235,7 +298,9 @@
         const total=totalSqft();
         if(total<=0)throw new Error('Enter square footage or length and width for at least one area.');
         setStatus('Saving measurement...');
-        const measurePayload={customer:val('customer'),phone:val('phone'),address:val('address'),notes:val('measureNotes'),total_square_feet:total,status:'Complete',source:'mobile'};
+        const customerProfile=await ensureCustomerProfile();
+        await syncTargetCustomerProfile(customerProfile);
+        const measurePayload={customer_id:customerProfile?.id||null,customer:val('customer'),phone:val('phone'),address:val('address'),notes:val('measureNotes'),total_square_feet:total,status:'Complete',source:'mobile'};
         measurePayload[targetType==='job'?'job_id':'lead_id']=targetId;
         const m=await supa.from('field_measurements').insert(measurePayload).select().single();
         if(m.error)throw new Error(m.error.message);
@@ -253,6 +318,29 @@
       }catch(e){
         setStatus(e.message||String(e),'bad');
       }
+    }
+    async function syncTargetCustomerProfile(customerProfile){
+      if(!customerProfile?.id||!targetId)return;
+      const payload={customer_id:customerProfile.id,customer:val('customer').trim(),phone:val('phone').trim()||null,address:val('address').trim()||null};
+      const table=targetType==='job'?'jobs':'leads';
+      const up=await supa.from(table).update(payload).eq('id',targetId);
+      if(up.error)throw new Error(up.error.message);
+      if(target)Object.assign(target,payload);
+    }
+    async function ensureCustomerProfile(){
+      const name=val('customer').trim(),phone=val('phone').trim(),address=val('address').trim();
+      if(!name)return null;
+      const selected=currentCustomer();
+      if(selected)return selected;
+      const cleanPhone=phone.replace(/\D/g,'');
+      const existing=customerProfiles.find(c=>(cleanPhone&&String(c.phone||'').replace(/\D/g,'')===cleanPhone)||(name&&address&&String(c.name||'').toLowerCase()===name.toLowerCase()&&String(c.address||'').toLowerCase()===address.toLowerCase()));
+      if(existing){selectedCustomerId=existing.id;return existing}
+      const payload={name,phone:phone||null,address:address||null,status:'Active',notes:'Created automatically from mobile field measure.'};
+      const ins=await supa.from('customers').insert(payload).select().single();
+      if(ins.error)throw new Error(ins.error.message);
+      customerProfiles.push(ins.data);
+      selectedCustomerId=ins.data.id;
+      return ins.data;
     }
     loadData();
   </script>
