@@ -156,7 +156,7 @@
       overflow-x: auto;
       background: #090909;
     }
-    .inventory-table { min-width: 860px; }
+    .inventory-table { min-width: 760px; }
     .inventory-table td { vertical-align: middle; }
     .inventory-table input,
     .inventory-table select { min-height: 40px; }
@@ -266,7 +266,6 @@
       <div id="appMessage" class="notice hidden"></div>
       <section class="card">
         <h2>Inventory Adjustments</h2>
-        <div class="notice">Confirm every change before it saves. A note prompt appears on every save; notes are optional, but the change is still logged with your login and time stamp.</div>
         <div class="toolbar">
           <div>
             <label>Search Inventory</label>
@@ -320,7 +319,6 @@
 
     const $ = (id) => document.getElementById(id);
     const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-    const money = (value) => `$${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const num = (value) => Math.round((Number(value || 0)) * 100) / 100;
     const fmtDateTime = (value) => value ? new Date(value).toLocaleString() : '-';
 
@@ -475,7 +473,6 @@
           </td>
           <td>${itemStatus(item)}</td>
           <td><b>${esc(item.qty ?? 0)}</b> ${esc(item.unit || '')}<br><span class="muted">Min: ${esc(item.min_qty ?? 0)}</span></td>
-          <td>${money(item.cost)}</td>
           <td>
             <select id="action_${esc(item.id)}" onchange="updateInventoryPreview('${esc(item.id)}')">
               <option value="used">Used / remove</option>
@@ -535,7 +532,7 @@
       $('metricLow').textContent = inventoryItems.filter((item) => (+item.qty || 0) <= (+item.min_qty || 0)).length;
       $('metricChanges').textContent = inventoryLogs.length;
       $('inventoryList').innerHTML = rows.length
-        ? `<div class="inventory-table-wrap"><table class="inventory-table"><thead><tr><th>Material</th><th>Status</th><th>Current</th><th>Cost</th><th>Change Type</th><th>Amount</th><th>New Count</th></tr></thead><tbody>${rows.map(renderInventoryRow).join('')}</tbody></table></div>`
+        ? `<div class="inventory-table-wrap"><table class="inventory-table"><thead><tr><th>Material</th><th>Status</th><th>Current</th><th>Change Type</th><th>Amount</th><th>New Count</th></tr></thead><tbody>${rows.map(renderInventoryRow).join('')}</tbody></table></div>`
         : '<div class="muted">No matching inventory items.</div>';
       const saveBtn = $('saveAllInventoryBtn');
       saveBtn.disabled = logUnavailable || batchSaveActive || !rows.length;
