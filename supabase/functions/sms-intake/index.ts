@@ -283,6 +283,82 @@ function allowedSender(fromPhone: string) {
   return set.has(normalizePhone(fromPhone));
 }
 
+function normalizeName(value: unknown) {
+  return clean(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function removeMissing(intake: Intake, fields: string[]) {
+  const fieldSet = new Set(fields);
+  intake.missing_fields = intake.missing_fields.filter((field) => !fieldSet.has(field));
+  intake.missing_questions = intake.missing_questions.filter((question) => {
+    const q = question.toLowerCase();
+    if (fieldSet.has("phone") && q.includes("phone")) return false;
+    if (fieldSet.has("address") && q.includes("address")) return false;
+    if (fieldSet.has("email") && q.includes("email")) return false;
+    if (fieldSet.has("customer_name") && q.includes("customer name")) return false;
+    return true;
+  });
+}
+
+async function findExistingCustomer(supa: ReturnType<typeof createClient>, intake: Intake) {
+  const phone = normalizePhone(intake.phone);
+  if (phone) {
+    const digits = phone.replace(/\D/g, "");
+    const { data, error } = await supa
+      .from("customers")
+      .select("id, name, phone, email, address")
+      .or(`phone.eq.${phone},phone.ilike.%${digits}%`)
+      .limit(2);
+    if (error) throw error;
+    if ((data || []).length === 1) return data[0];
+  }
+
+  const name = normalizeName(intake.customer_name);
+  if (!name || name.length < 3) return null;
+  const words = name.split(" ").filter((word) => word.length > 1);
+  if (!words.length) return null;
+
+  const { data, error } = await supa
+    .from("customers")
+    .select("id, name, phone, email, address")
+    .ilike("name", `%${words.join("%")}%`)
+    .limit(10);
+  if (error) throw error;
+
+  const matches = (data || []).filter((customer) => {
+    const customerName = normalizeName(customer.name);
+    return customerName === name || words.every((word) => customerName.includes(word));
+  });
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function applyCustomerMatch(intake: Intake, customer: Record<string, unknown> | null) {
+  if (!customer) return intake;
+  const filled: string[] = [];
+  if (!intake.customer_name && clean(customer.name)) {
+    intake.customer_name = clean(customer.name);
+    filled.push("customer_name");
+  }
+  if (!intake.phone && clean(customer.phone)) {
+    intake.phone = normalizePhone(customer.phone);
+    filled.push("phone");
+  }
+  if (!intake.email && clean(customer.email)) {
+    intake.email = clean(customer.email);
+    filled.push("email");
+  }
+  if (!intake.address && clean(customer.address)) {
+    intake.address = clean(customer.address);
+    filled.push("address");
+  }
+  if (filled.length) removeMissing(intake, filled);
+  return intake;
+}
+
 function leadNotes(rawMessages: string, intake: Intake, fromPhone: string) {
   return [
     `Created from SMS intake from ${fromPhone}.`,
@@ -401,35 +477,15 @@ Deno.serve(async (req) => {
 
     const combinedText = (messageRows || []).map((row) => clean(row.body)).filter(Boolean).join("\n");
     const intake = localIntakeParse(combinedText);
+    const matchedCustomer = await findExistingCustomer(supa, intake);
+    applyCustomerMatch(intake, matchedCustomer);
     const nextQuestion = intake.missing_questions[0] || "";
     let reply = "";
 
     if (nextQuestion) {
       reply = `Southeast Flooring Solutions: Got it so far. ${nextQuestion}`;
     } else {
-      let existingCustomer = null;
-      if (intake.phone) {
-        const { data, error } = await supa
-          .from("customers")
-          .select("id, name, phone, email, address")
-          .eq("phone", intake.phone)
-          .limit(1)
-          .maybeSingle();
-        if (error) throw error;
-        existingCustomer = data;
-      }
-      if (!existingCustomer && intake.customer_name) {
-        const { data, error } = await supa
-          .from("customers")
-          .select("id, name, phone, email, address")
-          .ilike("name", intake.customer_name)
-          .limit(1)
-          .maybeSingle();
-        if (error) throw error;
-        existingCustomer = data;
-      }
-
-      let customerId = existingCustomer?.id;
+      let customerId = matchedCustomer?.id;
       if (!customerId) {
         const { data: insertedCustomer, error: insertedCustomerError } = await supa
           .from("customers")
@@ -490,6 +546,7 @@ Deno.serve(async (req) => {
           latest_analysis: intake,
           pending_fields: intake.missing_fields,
           pending_questions: intake.missing_questions,
+          created_customer_id: matchedCustomer?.id || null,
           latest_message_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
