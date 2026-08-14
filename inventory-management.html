@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>SEFS Inventory Management</title>
-  <link rel="manifest" href="inventory-management.webmanifest?v=20260811g">
+  <link rel="manifest" href="inventory-management.webmanifest?v=20260814a">
   <meta name="theme-color" content="#050505">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -13,7 +13,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="assets/sefs-inventory-icon-192.png">
   <link rel="icon" type="image/png" sizes="512x512" href="assets/sefs-inventory-icon-512.png">
   <link rel="apple-touch-icon" sizes="180x180" href="assets/sefs-inventory-icon-180.png">
-  <script defer src="pwa-init.js?v=20260811g"></script>
+  <script defer src="pwa-init.js?v=20260814a"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root {
@@ -161,6 +161,12 @@
     .inventory-table select { min-height: 40px; }
     .inventory-table .amount-input { max-width: 120px; }
     .inventory-table .new-count { color: var(--orange); font-weight: 900; white-space: nowrap; }
+    .log-table-wrap {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow-x: auto;
+      background: #090909;
+    }
     .item-name { font-weight: 900; }
     .pill {
       display: inline-block;
@@ -219,7 +225,70 @@
       .actions { width: 100%; justify-content: stretch; }
       .actions button { flex: 1 1 100%; }
       .batch-actions { display: grid; grid-template-columns: 1fr; }
-      table { display: block; overflow-x: auto; white-space: nowrap; }
+      .inventory-table-wrap,
+      .log-table-wrap {
+        border: 0;
+        overflow: visible;
+        background: transparent;
+      }
+      .inventory-table,
+      .log-table {
+        min-width: 0;
+        display: block;
+      }
+      .inventory-table thead,
+      .log-table thead {
+        display: none;
+      }
+      .inventory-table tbody,
+      .log-table tbody {
+        display: grid;
+        gap: 12px;
+      }
+      .inventory-table tr,
+      .log-table tr {
+        display: grid;
+        gap: 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px;
+        background: #0b0b0b;
+      }
+      .inventory-table td,
+      .log-table td {
+        display: grid;
+        grid-template-columns: minmax(92px, 34%) minmax(0, 1fr);
+        gap: 10px;
+        align-items: center;
+        border-bottom: 0;
+        padding: 0;
+        white-space: normal;
+      }
+      .inventory-table td::before,
+      .log-table td::before {
+        content: attr(data-label);
+        color: #aaa;
+        font-size: 11px;
+        font-weight: 900;
+        text-transform: uppercase;
+      }
+      .inventory-table td:first-child,
+      .log-table td:nth-child(2) {
+        display: block;
+      }
+      .inventory-table td:first-child::before,
+      .log-table td:nth-child(2)::before {
+        content: none;
+      }
+      .inventory-table .amount-input,
+      .inventory-table input,
+      .inventory-table select {
+        max-width: none;
+        width: 100%;
+      }
+      .inventory-table .new-count {
+        white-space: normal;
+      }
     }
   </style>
 </head>
@@ -465,14 +534,14 @@
       const latest = latestLogForItem(item.id);
       return `
         <tr data-item-id="${esc(item.id)}">
-          <td>
+          <td data-label="Material">
             <div class="item-name">${esc(item.name || 'Inventory item')}</div>
             <div class="muted">${esc(item.category || '')}${item.vendor_name ? ` - ${esc(item.vendor_name)}` : ''}</div>
             ${latest ? `<div class="muted">Last: ${esc(latest.changed_by_name || 'Unknown')} - ${fmtDateTime(latest.created_at)}</div>` : ''}
           </td>
-          <td>${itemStatus(item)}</td>
-          <td><b>${esc(item.qty ?? 0)}</b> ${esc(item.unit || '')}<br><span class="muted">Min: ${esc(item.min_qty ?? 0)}</span></td>
-          <td>
+          <td data-label="Status">${itemStatus(item)}</td>
+          <td data-label="Current"><b>${esc(item.qty ?? 0)}</b> ${esc(item.unit || '')}<br><span class="muted">Min: ${esc(item.min_qty ?? 0)}</span></td>
+          <td data-label="Change">
             <select id="action_${esc(item.id)}" onchange="updateInventoryPreview('${esc(item.id)}')">
               <option value="used">Used / remove</option>
               <option value="returned">Returned / add</option>
@@ -480,10 +549,10 @@
               <option value="set">Set exact count</option>
             </select>
           </td>
-          <td>
+          <td data-label="Amount">
             <input id="qty_${esc(item.id)}" class="amount-input" type="number" step="0.01" inputmode="decimal" oninput="updateInventoryPreview('${esc(item.id)}')">
           </td>
-          <td id="after_${esc(item.id)}" class="new-count">-</td>
+          <td data-label="New Count" id="after_${esc(item.id)}" class="new-count">-</td>
         </tr>
       `;
     }
@@ -495,12 +564,12 @@
         : `${change > 0 ? '+' : ''}${change} ${log.unit || ''}`;
       return `
         <tr>
-          <td>${fmtDateTime(log.created_at)}</td>
-          <td><b>${esc(log.inventory_item_name || 'Inventory item')}</b><br><span class="muted">${esc(log.note || '')}</span></td>
-          <td>${esc(log.changed_by_name || log.changed_by_email || 'Unknown')}</td>
-          <td>${esc(log.action_type || '')}</td>
-          <td>${esc(log.quantity_before ?? '')} -> ${esc(log.quantity_after ?? '')}</td>
-          <td>${esc(changeText)}</td>
+          <td data-label="Time">${fmtDateTime(log.created_at)}</td>
+          <td data-label="Material"><b>${esc(log.inventory_item_name || 'Inventory item')}</b><br><span class="muted">${esc(log.note || '')}</span></td>
+          <td data-label="User">${esc(log.changed_by_name || log.changed_by_email || 'Unknown')}</td>
+          <td data-label="Action">${esc(log.action_type || '')}</td>
+          <td data-label="Qty">${esc(log.quantity_before ?? '')} -> ${esc(log.quantity_after ?? '')}</td>
+          <td data-label="Change">${esc(changeText)}</td>
         </tr>
       `;
     }
@@ -514,7 +583,7 @@
         $('logList').innerHTML = '<div class="muted">No inventory changes logged yet.</div>';
         return;
       }
-      $('logList').innerHTML = `<table><thead><tr><th>Time</th><th>Material</th><th>User</th><th>Action</th><th>Qty</th><th>Change</th></tr></thead><tbody>${inventoryLogs.slice(0, 20).map(renderLogRow).join('')}</tbody></table>`;
+      $('logList').innerHTML = `<div class="log-table-wrap"><table class="log-table"><thead><tr><th>Time</th><th>Material</th><th>User</th><th>Action</th><th>Qty</th><th>Change</th></tr></thead><tbody>${inventoryLogs.slice(0, 20).map(renderLogRow).join('')}</tbody></table></div>`;
     }
 
     function render() {
