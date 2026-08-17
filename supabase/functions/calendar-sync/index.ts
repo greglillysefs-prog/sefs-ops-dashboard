@@ -15,6 +15,15 @@ function json(body: unknown, status = 200) {
   });
 }
 
+function supabaseAdmin() {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!supabaseUrl || !serviceRoleKey) throw new Error("Supabase service secrets are not configured.");
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
+
 function clean(value: unknown) {
   return String(value ?? "").trim();
 }
@@ -515,13 +524,35 @@ async function pushJob(supa: ReturnType<typeof createClient>, token: string, job
   stats.pushed++;
 }
 
+async function deleteGoogleEventIfLinked(token: string, eventId: string) {
+  if (!eventId) return { attempted: false, deleted: false };
+  const response = await googleFetch(token, `/${encodeURIComponent(eventId)}`, { method: "DELETE" });
+  if (response.ok || response.status === 404) return { attempted: true, deleted: true };
+  const data = await response.json().catch(() => ({}));
+  throw new Error(data?.error?.message || `Google delete failed (${response.status})`);
+}
+
+async function deleteCalendarLinkedJob(jobId: string) {
+  if (!jobId) throw new Error("Missing job_id.");
+  const supa = supabaseAdmin();
+  const token = await googleAccessToken();
+  const jobResult = await supa.from("jobs").select("*").eq("id", jobId).single();
+  if (jobResult.error) throw new Error(jobResult.error.message);
+  const job = jobResult.data || {};
+  const google = await deleteGoogleEventIfLinked(token, clean(job.google_calendar_event_id));
+
+  await supa.from("employee_job_assignments").delete().eq("job_id", jobId);
+  await supa.from("photo_attachments").delete().eq("entity_type", "job").eq("entity_id", jobId);
+  await supa.from("field_measurement_areas").delete().eq("job_id", jobId);
+  await supa.from("field_measurements").delete().eq("job_id", jobId);
+
+  const deleted = await supa.from("jobs").delete().eq("id", jobId);
+  if (deleted.error) throw new Error(deleted.error.message);
+  return { deleted: true, google_event_attempted: google.attempted, google_event_deleted: google.deleted };
+}
+
 async function syncCalendar() {
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!supabaseUrl || !serviceRoleKey) throw new Error("Supabase service secrets are not configured.");
-  const supa = createClient(supabaseUrl, serviceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  const supa = supabaseAdmin();
   const token = await googleAccessToken();
   const syncState = await readSyncState(supa);
   const stats: AnyRecord = { pulled: 0, imported: 0, pushed: 0, deleted: 0, conflicts: 0, errors: 0 };
@@ -565,6 +596,11 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "POST required" }, 405);
 
   try {
+    const body = await req.json().catch(() => ({}));
+    if (clean(body?.action) === "delete_job") {
+      const result = await deleteCalendarLinkedJob(clean(body?.job_id || body?.id));
+      return json({ ok: true, ...result });
+    }
     const stats = await syncCalendar();
     return json({ ok: true, stats });
   } catch (error) {

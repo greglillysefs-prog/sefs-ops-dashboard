@@ -1,5 +1,5 @@
 (function () {
-  var SEFS_PWA_VERSION = '20260817a';
+  var SEFS_PWA_VERSION = '20260817b';
 
   function toast(text) {
     var el = document.getElementById('sefsPwaToast');
