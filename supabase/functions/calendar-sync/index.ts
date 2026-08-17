@@ -91,6 +91,15 @@ function titleParts(summary: string) {
   return { customer: "", job_name: summary, system_type: parseSystem(summary) };
 }
 
+function importCustomerName(fields: AnyRecord) {
+  return clean(fields.customer) || clean(fields.job_name) || "Google Calendar Import";
+}
+
+function displayCustomerName(job: AnyRecord) {
+  const customer = clean(job.customer);
+  return customer === "Google Calendar Import" ? "" : customer;
+}
+
 function googleEventToJobFields(event: AnyRecord, currentJob: AnyRecord | null = null) {
   const start = googleEventDateParts(event.start, false);
   const end = googleEventDateParts(event.end, true);
@@ -119,7 +128,7 @@ function googleEventToJobFields(event: AnyRecord, currentJob: AnyRecord | null =
 }
 
 function jobScheduleTitle(job: AnyRecord) {
-  return clean(job.customer) || clean(job.job_name) || "Unknown";
+  return displayCustomerName(job) || clean(job.job_name) || "Unknown";
 }
 
 function googleCalendarTitle(job: AnyRecord) {
@@ -365,17 +374,18 @@ async function ensureCustomer(supa: ReturnType<typeof createClient>, payload: An
 
 async function importGoogleEvent(supa: ReturnType<typeof createClient>, event: AnyRecord, stats: AnyRecord) {
   const fields = googleEventToJobFields(event);
+  const customerName = importCustomerName(fields);
   const customerPayload = {
-    customer: fields.customer || "Google Calendar Import",
+    customer: customerName,
     phone: fields.phone,
     address: fields.address,
   };
   const customer = await ensureCustomer(supa, customerPayload);
   const payload = {
     customer_id: customer?.id || null,
-    customer: customer?.name || customerPayload.customer,
+    customer: customer?.name || customerName,
     phone: fields.phone || customer?.phone || "",
-    job_name: fields.job_name || event.summary || "Imported Google Calendar Event",
+    job_name: fields.job_name || fields.customer || clean(event.summary) || "Imported Google Calendar Event",
     address: fields.address || customer?.address || "",
     system_type: fields.system_type || "",
     square_feet: fields.square_feet || 0,
