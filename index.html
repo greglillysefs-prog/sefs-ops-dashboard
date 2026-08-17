@@ -179,7 +179,7 @@ const SB_URL='https://wjfewzutxvjbbnnvbylo.supabase.co', SB_KEY='sb_publishable_
 const EMPLOYEE_ADMIN_FUNCTION_URL=`${SB_URL}/functions/v1/employee-admin`;
 const AI_INTAKE_FUNCTION_URL=`${SB_URL}/functions/v1/ai-intake`;
 const CALENDAR_SYNC_FUNCTION_URL=`${SB_URL}/functions/v1/calendar-sync`;
-const GOOGLE_CALENDAR_CLIENT_ID='68310380883-qsgo9jevptt84u2jfch0lgfptsqvrmul.apps.googleusercontent.com', GOOGLE_CALENDAR_ID='primary', GOOGLE_CALENDAR_SCOPE='https://www.googleapis.com/auth/calendar.events', SEFS_TIME_ZONE='America/Chicago';
+const GOOGLE_CALENDAR_CLIENT_ID='915918010059-ok8f5b9qcst5o8tdik3hg44kn3b11ol3.apps.googleusercontent.com', GOOGLE_CALENDAR_ID='primary', GOOGLE_CALENDAR_SCOPE='https://www.googleapis.com/auth/calendar.events', SEFS_TIME_ZONE='America/Chicago';
 let googleCalendarAccessToken='', calendarSyncMessage='Google Calendar has not been synced this session.', calendarAutoSyncActive=false, calendarAutoSyncBusy=false, calendarAutoSyncTimer=null, calendarLastAutoSync=0;
 const tables=['customers','employees','profiles','employee_job_assignments','personal_time_entries','leads','jobs','quotes','tasks','task_audit_logs','field_measurements','field_measurement_areas','field_scan_uploads','inventory_items','inventory_change_logs','system_recipes','system_recipe_items','quote_settings','equipment_items','vehicles','inspections','callbacks','photo_attachments'];
 const state={}; const errors={}; tables.forEach(t=>{state[t]=[]});
