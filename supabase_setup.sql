@@ -118,6 +118,7 @@ alter table jobs add column if not exists other_cost numeric default 0;
 alter table jobs add column if not exists notes text;
 alter table jobs add column if not exists material_notes text;
 alter table jobs add column if not exists material_list jsonb;
+alter table jobs add column if not exists custom_materials jsonb default '[]'::jsonb;
 alter table jobs add column if not exists floor_scopes jsonb;
 alter table jobs add column if not exists source_lead_id uuid;
 alter table jobs add column if not exists customer_id uuid;
@@ -183,6 +184,7 @@ alter table inventory_items add column if not exists unit text default 'each';
 alter table inventory_items add column if not exists qty numeric default 0;
 alter table inventory_items add column if not exists min_qty numeric default 0;
 alter table inventory_items add column if not exists cost numeric default 0;
+alter table inventory_items add column if not exists tracked_quantity boolean default true;
 alter table inventory_items add column if not exists notes text;
 alter table inventory_items add column if not exists vendor_name text;
 alter table inventory_items add column if not exists vendor_phone text;
@@ -190,6 +192,35 @@ alter table inventory_items add column if not exists vendor_address text;
 alter table inventory_items add column if not exists vendor_contact text;
 alter table inventory_items add column if not exists vendor_email text;
 alter table inventory_items add column if not exists created_at timestamptz default now();
+
+create table if not exists incoming_inventory (
+  id uuid primary key default gen_random_uuid(),
+  inventory_item_id uuid references public.inventory_items(id) on delete set null,
+  item_name text,
+  qty numeric default 0,
+  unit text,
+  vendor_name text,
+  order_date date default current_date,
+  expected_date date,
+  status text default 'Ordered',
+  notes text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+alter table incoming_inventory add column if not exists inventory_item_id uuid;
+alter table incoming_inventory add column if not exists item_name text;
+alter table incoming_inventory add column if not exists qty numeric default 0;
+alter table incoming_inventory add column if not exists unit text;
+alter table incoming_inventory add column if not exists vendor_name text;
+alter table incoming_inventory add column if not exists order_date date default current_date;
+alter table incoming_inventory add column if not exists expected_date date;
+alter table incoming_inventory add column if not exists status text default 'Ordered';
+alter table incoming_inventory add column if not exists notes text;
+alter table incoming_inventory add column if not exists created_at timestamptz default now();
+alter table incoming_inventory add column if not exists updated_at timestamptz default now();
+create index if not exists incoming_inventory_inventory_item_id_idx on public.incoming_inventory(inventory_item_id);
+create index if not exists incoming_inventory_expected_date_idx on public.incoming_inventory(expected_date);
+create index if not exists incoming_inventory_status_idx on public.incoming_inventory(status);
 
 create table if not exists equipment_items (id uuid primary key default gen_random_uuid(), name text not null, category text, status text not null default 'Available', assigned_to text, job_id uuid, due_back date, notes text, created_at timestamptz default now());
 alter table equipment_items add column if not exists name text;
