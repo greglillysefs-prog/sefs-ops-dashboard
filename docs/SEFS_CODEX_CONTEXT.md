@@ -69,6 +69,21 @@ Important expectations:
 
 Important expectations:
 
+2026-08-22 update:
+
+- Inventory now has a bottom `Add New Material` entry point so users do not need to scroll back to the top after reviewing the table.
+- The Inventory page `Save Table Changes` button uses the shared busy/lock behavior and displays `Saving...` to prevent double taps during batch saves.
+- The editable inventory change table is responsive on phone screens:
+  - Desktop keeps the normal wide table.
+  - Mobile converts editable rows into labeled card-style rows with full-width inputs/buttons and no left/right table scrolling.
+- Inventory Management remains the employee-facing quantity adjustment page:
+  - It should list the same material records as the dashboard inventory.
+  - It should not expose cost fields.
+  - Users batch-edit quantities and save all changes together.
+  - Changes are logged with the signed-in user and timestamp.
+- Keep dashboard inventory, employee inventory management, projected inventory, incoming inventory, and job material lists tied to the same inventory/material data so new dashboard materials appear everywhere they are relevant.
+- For phone testing, recheck both the dashboard Inventory tab and `inventory-management.html` because they intentionally use different layouts.
+
 - Systems page defines system variations, options, and material recipes.
 - Inventory page should support table-style bulk material cost edits.
 - Inventory Management is a separate employee-login page for job/return material adjustments.
