@@ -1804,9 +1804,9 @@
     }
 
     function compactMaterialList(job) {
-      return Array.isArray(job?.material_list)
-        ? job.material_list.filter((item) => item && String(item.name || '').trim())
-        : [];
+      const base = Array.isArray(job?.material_list) ? job.material_list : [];
+      const custom = Array.isArray(job?.custom_materials) ? job.custom_materials : [];
+      return [...base, ...custom].filter((item) => item && String(item.name || '').trim());
     }
 
     function materialQtyText(item) {
@@ -1822,7 +1822,7 @@
           <h4>Material List</h4>
           ${list.map((item) => `
             <div>
-              <span>${esc(item.name || 'Material')}</span>
+              <span>${item.custom ? 'Custom: ' : ''}${esc(item.name || 'Material')}</span>
               <b>${esc(materialQtyText(item))}</b>
             </div>
           `).join('')}
@@ -2244,7 +2244,7 @@
     async function loadJobs() {
       const result = await supa
         .from('jobs')
-        .select('id, customer_id, source_lead_id, source_quote_id, customer, phone, job_name, address, system_type, square_feet, status, start_date, end_date, start_time, end_time, crew, notes, material_notes, material_list, floor_scopes')
+        .select('id, customer_id, source_lead_id, source_quote_id, customer, phone, job_name, address, system_type, square_feet, status, start_date, end_date, start_time, end_time, crew, notes, material_notes, material_list, custom_materials, floor_scopes')
         .order('start_date', { ascending: true, nullsFirst: false })
         .order('start_time', { ascending: true });
       if (result.error) throw result.error;
