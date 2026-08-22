@@ -223,7 +223,7 @@ const QUOTE_SETTINGS_DEFAULTS={minimum_job_price:1500,minimum_margin_dollars:200
 function quoteSettingValue(key){let row=(state.quote_settings||[]).find(x=>x.key===key),fallback=QUOTE_SETTINGS_DEFAULTS[key]||0;if(row&&row.value!=null&&row.value!=='')return +row.value||fallback;try{let local=JSON.parse(localStorage.getItem('sefs_quote_pricing_settings')||'{}');return +(local[key]??fallback)||fallback}catch(e){return fallback}}
 function syncQuotePricingLocal(){let payload={minimum_job_price:quoteSettingValue('minimum_job_price'),minimum_margin_dollars:quoteSettingValue('minimum_margin_dollars')};localStorage.setItem('sefs_quote_pricing_settings',JSON.stringify(payload))}
 async function loadTable(t){ const r=await supa.from(t).select('*').order('created_at',{ascending:false}); if(r.error){state[t]=t==='tasks'?localTasks():[]; if(optionalTables.has(t)){unavailableOptionalTables.add(t);delete errors[t];return} errors[t]=r.error.message;} else {unavailableOptionalTables.delete(t);delete errors[t]; state[t]=r.data||[];} }
-async function refresh(){setStatus('Syncing...'); await Promise.all(tables.map(t=>loadTable(t))); syncQuotePricingLocal(); await autoLinkCustomerHistory(); const bad=Object.keys(errors).length; setStatus(bad?`Loaded with ${bad} table issue(s)`:'Cloud connected', bad?'bad':'ok'); renderAll(); handleInitialRoute();}
+async function refresh(){setStatus('Syncing...'); await Promise.all(tables.map(t=>loadTable(t))); syncQuotePricingLocal(); await autoLinkCustomerHistory(); await autoUpdateJobStatuses(); const bad=Object.keys(errors).length; setStatus(bad?`Loaded with ${bad} table issue(s)`:'Cloud connected', bad?'bad':'ok'); renderAll(); handleInitialRoute();}
 function err(t){return errors[t]?`<div class=err><b>${t}</b>: ${esc(errors[t])}</div>`:''}
 function table(head,rows){ if(!rows.length)return '<div class=muted>No records yet.</div>'; return `<table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`;}
 function actions(t,id){return `<div class=rowact><button class=secondary onclick="edit('${t}','${id}')">Edit</button><button class=danger onclick="del('${t}','${id}')">Delete</button></div>`}
@@ -417,28 +417,43 @@ function field(f,val,rec={},tableName=''){
   let changeAttr=tableName==='jobs'&&n==='status'?' onchange="handleJobStatusChange(this)"':'';
   return `<label>${l}</label><select name="${n}"${changeAttr}>${opts.map(o=>`<option ${val===o?'selected':''}>${o}</option>`).join('')}</select>`
  }
- let inputAttr=tableName==='jobs'&&n==='start_date'?` onchange="handleJobStartDateChange(this)" data-schedule-span-days="${scheduleSpanDays(rec)}"`:'';
+ let inputAttr='';
+ if(tableName==='jobs'&&n==='start_date')inputAttr=` onchange="handleJobStartDateChange(this)" data-schedule-span-days="${scheduleSpanDays(rec)}"`;
+ if(tableName==='jobs'&&n==='end_date')inputAttr=` onchange="handleJobEndDateChange(this)"`;
  return `<label>${l}</label><input name="${n}" type="${t}" value="${esc(val)}"${inputAttr}>`
 }
 function googleCalendarConfigured(){return GOOGLE_CALENDAR_CLIENT_ID&&!GOOGLE_CALENDAR_CLIENT_ID.startsWith('PASTE_')}
 function ensureGoogleCalendarToken(interactive=true){return new Promise(resolve=>{if(googleCalendarAccessToken)return resolve(googleCalendarAccessToken);if(!googleCalendarConfigured()){if(interactive)alert('Google Calendar Client ID is not configured yet.');return resolve('')}if(!window.google?.accounts?.oauth2){if(interactive)alert('Google Calendar auth is still loading. Try again in a moment.');return resolve('')}if(!interactive)return resolve('');let client=google.accounts.oauth2.initTokenClient({client_id:GOOGLE_CALENDAR_CLIENT_ID,scope:GOOGLE_CALENDAR_SCOPE,callback:r=>{googleCalendarAccessToken=r?.access_token||'';if(r?.error)alert(r.error);resolve(googleCalendarAccessToken)}});client.requestAccessToken({prompt:'consent'});})}
 function nowIso(){return new Date().toISOString()}
 function cleanTime(t){return String(t||'').slice(0,5)||''}
+function jobManualTerminalStatus(status){return ['Lost','Canceled','Needs Review','Sync Conflict'].includes(status)}
+function jobScheduleStatusFromDates(p={},rec={}){
+ let status=p.status||rec.status||'',start=p.start_date||rec.start_date||'',end=p.end_date||rec.end_date||start;
+ if(!start||status==='Awaiting Schedule'||jobManualTerminalStatus(status))return status;
+ return (end||start)<today()?'Complete':'Scheduled'
+}
 function normalizeJobScheduleState(p={},rec={}){
- let status=p.status||rec.status||'',start=p.start_date||'',terminal=['Complete','Lost','Canceled','Needs Review','Sync Conflict'];
- if(start&&start>=today()&&!terminal.includes(status)){p.status='Scheduled';if(!p.end_date)p.end_date=start;return p}
+ let status=p.status||rec.status||'',start=p.start_date||rec.start_date||'';
  if(status==='Awaiting Schedule'){
   p.status='Awaiting Schedule';p.start_date=null;p.start_time=null;p.end_date=null;p.end_time=null;return p;
  }
- if(p.start_date&&!p.end_date)p.end_date=p.start_date;
+ if(start){if(!p.start_date)p.start_date=start;if(!p.end_date)p.end_date=rec.end_date||start;p.status=jobScheduleStatusFromDates(p,rec)}
  return p;
 }
 function jobScheduleTerminalStatus(status){return ['Complete','Lost','Canceled','Needs Review','Sync Conflict'].includes(status)}
+async function autoUpdateJobStatuses(){
+ if(errors.jobs||!Array.isArray(state.jobs))return;
+ let changes=state.jobs.map(j=>{let status=jobScheduleStatusFromDates(j,j);return status&&status!==j.status?{j,status}:null}).filter(Boolean);
+ if(!changes.length)return;
+ let results=await Promise.all(changes.map(({j,status})=>supa.from('jobs').update({status}).eq('id',j.id).select().single()));
+ results.forEach((r,i)=>{if(r.error){console.warn('Auto job status update failed',r.error.message);return}Object.assign(changes[i].j,r.data||{status:changes[i].status})});
+}
 function scheduleSpanDays(rec){return rec?.start_date?Math.max(0,dateDiff(rec.start_date,rec.end_date||rec.start_date)):0}
 function syncEndDateToScheduleSpan(input){let end=input.form?.querySelector('[name="end_date"]'),span=Number(input.dataset.scheduleSpanDays||0);if(input.value&&end)end.value=isoDate(addDays(dateObj(input.value),span))}
 function clearJobScheduleInputs(form){['start_date','start_time','end_date','end_time'].forEach(name=>{let el=form?.querySelector(`[name="${name}"]`);if(el)el.value=''})}
 function handleJobStatusChange(sel){if(sel.value==='Awaiting Schedule')clearJobScheduleInputs(sel.form)}
-function handleJobStartDateChange(input){syncEndDateToScheduleSpan(input);let status=input.form?.querySelector('[name="status"]');if(input.value&&input.value>=today()&&status&&!jobScheduleTerminalStatus(status.value))status.value='Scheduled'}
+function handleJobStartDateChange(input){syncEndDateToScheduleSpan(input);let form=input.form,status=form?.querySelector('[name="status"]'),end=form?.querySelector('[name="end_date"]');if(input.value&&status&&!jobManualTerminalStatus(status.value))status.value=jobScheduleStatusFromDates({start_date:input.value,end_date:end?.value,status:status.value},{})}
+function handleJobEndDateChange(input){let form=input.form,status=form?.querySelector('[name="status"]'),start=form?.querySelector('[name="start_date"]');if((start?.value||input.value)&&status&&!jobManualTerminalStatus(status.value))status.value=jobScheduleStatusFromDates({start_date:start?.value,end_date:input.value,status:status.value},{})}
 function timePlus(t,min=60){let [h,m]=cleanTime(t||'08:00').split(':').map(Number),d=new Date(2000,0,1,h||0,m||0);d.setMinutes(d.getMinutes()+min);return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')}
 function jobShouldSyncCalendar(j){return !!(j&&j.start_date&&jobCanBeScheduled(j)&&!['Complete','Lost','Canceled','Needs Quote','Needs Review','Sync Conflict'].includes(j.status))}
 function safeJobCalendarFields(j){return {job_name:googleCalendarTitle(j),address:j.address||'',notes:j.notes||'',start_date:j.start_date||'',start_time:cleanTime(j.start_time),end_date:j.end_date||'',end_time:cleanTime(j.end_time)}}
