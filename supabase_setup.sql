@@ -191,7 +191,42 @@ alter table inventory_items add column if not exists vendor_phone text;
 alter table inventory_items add column if not exists vendor_address text;
 alter table inventory_items add column if not exists vendor_contact text;
 alter table inventory_items add column if not exists vendor_email text;
+alter table inventory_items add column if not exists track_variants boolean default false;
 alter table inventory_items add column if not exists created_at timestamptz default now();
+
+create table if not exists inventory_item_variants (
+  id uuid primary key default gen_random_uuid(),
+  inventory_item_id uuid references public.inventory_items(id) on delete cascade,
+  variant_name text not null,
+  variant_type text default 'Color',
+  color text,
+  size text,
+  unit text default 'each',
+  qty numeric default 0,
+  min_qty numeric default 0,
+  cost numeric default 0,
+  tracked_quantity boolean default true,
+  active boolean default true,
+  notes text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+alter table inventory_item_variants add column if not exists inventory_item_id uuid references public.inventory_items(id) on delete cascade;
+alter table inventory_item_variants add column if not exists variant_name text;
+alter table inventory_item_variants add column if not exists variant_type text default 'Color';
+alter table inventory_item_variants add column if not exists color text;
+alter table inventory_item_variants add column if not exists size text;
+alter table inventory_item_variants add column if not exists unit text default 'each';
+alter table inventory_item_variants add column if not exists qty numeric default 0;
+alter table inventory_item_variants add column if not exists min_qty numeric default 0;
+alter table inventory_item_variants add column if not exists cost numeric default 0;
+alter table inventory_item_variants add column if not exists tracked_quantity boolean default true;
+alter table inventory_item_variants add column if not exists active boolean default true;
+alter table inventory_item_variants add column if not exists notes text;
+alter table inventory_item_variants add column if not exists created_at timestamptz default now();
+alter table inventory_item_variants add column if not exists updated_at timestamptz default now();
+create index if not exists inventory_item_variants_item_idx on public.inventory_item_variants(inventory_item_id);
+create index if not exists inventory_item_variants_active_idx on public.inventory_item_variants(active);
 
 create table if not exists incoming_inventory (
   id uuid primary key default gen_random_uuid(),

@@ -71,3 +71,53 @@ create policy "inventory authenticated update"
   to authenticated
   using (true)
   with check (true);
+
+-- Optional color/size/finish variants under inventory items.
+-- The locked inventory page can adjust these rows the same way it adjusts parent materials.
+alter table public.inventory_items
+  add column if not exists track_variants boolean default false;
+
+create table if not exists public.inventory_item_variants (
+  id uuid primary key default gen_random_uuid(),
+  inventory_item_id uuid references public.inventory_items(id) on delete cascade,
+  variant_name text not null,
+  variant_type text default 'Color',
+  color text,
+  size text,
+  unit text default 'each',
+  qty numeric default 0,
+  min_qty numeric default 0,
+  cost numeric default 0,
+  tracked_quantity boolean default true,
+  active boolean default true,
+  notes text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create index if not exists inventory_item_variants_item_idx
+  on public.inventory_item_variants (inventory_item_id);
+
+create index if not exists inventory_item_variants_active_idx
+  on public.inventory_item_variants (active);
+
+alter table public.inventory_item_variants enable row level security;
+
+grant select, insert, update, delete on public.inventory_item_variants to authenticated;
+grant select, insert, update, delete on public.inventory_item_variants to anon;
+grant select, update on public.inventory_items to anon;
+
+drop policy if exists "inventory variants dashboard read" on public.inventory_item_variants;
+create policy "inventory variants dashboard read"
+  on public.inventory_item_variants
+  for select
+  to anon, authenticated
+  using (true);
+
+drop policy if exists "inventory variants dashboard write" on public.inventory_item_variants;
+create policy "inventory variants dashboard write"
+  on public.inventory_item_variants
+  for all
+  to anon, authenticated
+  using (true)
+  with check (true);
