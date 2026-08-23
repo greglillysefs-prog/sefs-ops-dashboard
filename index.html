@@ -508,6 +508,7 @@ function ensureGoogleCalendarToken(interactive=true){return new Promise(resolve=
 function nowIso(){return new Date().toISOString()}
 function cleanTime(t){return String(t||'').slice(0,5)||''}
 function jobManualTerminalStatus(status){return ['Lost','Canceled','Needs Review','Sync Conflict'].includes(status)}
+function jobScheduleClearingStatus(status){return ['Awaiting Schedule','Lost','Canceled'].includes(status)}
 function jobScheduleStatusFromDates(p={},rec={}){
  let status=p.status||rec.status||'',start=p.start_date||rec.start_date||'',end=p.end_date||rec.end_date||start;
  if(!start||status==='Awaiting Schedule'||jobManualTerminalStatus(status))return status;
@@ -515,8 +516,8 @@ function jobScheduleStatusFromDates(p={},rec={}){
 }
 function normalizeJobScheduleState(p={},rec={}){
  let status=p.status||rec.status||'',start=p.start_date||rec.start_date||'';
- if(status==='Awaiting Schedule'){
-  p.status='Awaiting Schedule';p.start_date=null;p.start_time=null;p.end_date=null;p.end_time=null;return p;
+ if(jobScheduleClearingStatus(status)){
+  p.status=status;p.start_date=null;p.start_time=null;p.end_date=null;p.end_time=null;return p;
  }
  if(start){if(!p.start_date)p.start_date=start;if(!p.end_date)p.end_date=rec.end_date||start;p.status=jobScheduleStatusFromDates(p,rec)}
  return p;
@@ -532,7 +533,7 @@ async function autoUpdateJobStatuses(){
 function scheduleSpanDays(rec){return rec?.start_date?Math.max(0,dateDiff(rec.start_date,rec.end_date||rec.start_date)):0}
 function syncEndDateToScheduleSpan(input){let end=input.form?.querySelector('[name="end_date"]'),span=Number(input.dataset.scheduleSpanDays||0);if(input.value&&end)end.value=isoDate(addDays(dateObj(input.value),span))}
 function clearJobScheduleInputs(form){['start_date','start_time','end_date','end_time'].forEach(name=>{let el=form?.querySelector(`[name="${name}"]`);if(el)el.value=''})}
-function handleJobStatusChange(sel){if(sel.value==='Awaiting Schedule')clearJobScheduleInputs(sel.form)}
+function handleJobStatusChange(sel){if(jobScheduleClearingStatus(sel.value))clearJobScheduleInputs(sel.form)}
 function handleJobStartDateChange(input){syncEndDateToScheduleSpan(input);let form=input.form,status=form?.querySelector('[name="status"]'),end=form?.querySelector('[name="end_date"]');if(input.value&&status&&!jobManualTerminalStatus(status.value))status.value=jobScheduleStatusFromDates({start_date:input.value,end_date:end?.value,status:status.value},{})}
 function handleJobEndDateChange(input){let form=input.form,status=form?.querySelector('[name="status"]'),start=form?.querySelector('[name="start_date"]');if((start?.value||input.value)&&status&&!jobManualTerminalStatus(status.value))status.value=jobScheduleStatusFromDates({start_date:start?.value,end_date:input.value,status:status.value},{})}
 function timePlus(t,min=60){let [h,m]=cleanTime(t||'08:00').split(':').map(Number),d=new Date(2000,0,1,h||0,m||0);d.setMinutes(d.getMinutes()+min);return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')}
