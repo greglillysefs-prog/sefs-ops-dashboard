@@ -409,7 +409,7 @@ Deno.serve(async (req) => {
         notes: cleanText(payload.notes) || null,
         status: cleanText(payload.status) || "draft",
         device_info: cleanText(payload.device_info) || null,
-        change_reason: `Crew time entered by ${actor.profile.full_name || actor.user.email || "crew lead"}`,
+        change_reason: cleanText(payload.change_reason) || `Crew time entered by ${actor.profile.full_name || actor.user.email || "crew lead"}`,
       };
 
       if (!basePayload.work_date || !basePayload.start_time || !basePayload.end_time) {
@@ -702,6 +702,7 @@ Deno.serve(async (req) => {
         if (Object.hasOwn(updates, field)) updateBody[field] = cleanText(updates[field]);
       }
       if (Object.hasOwn(updates, "notes")) updateBody.notes = cleanText(updates.notes) || null;
+      if (Object.hasOwn(updates, "deleted_at")) updateBody.deleted_at = cleanText(updates.deleted_at) || null;
       if (status) updateBody.status = status;
       if (Object.hasOwn(updates, "rejection_reason") || status === "rejected") {
         updateBody.rejection_reason = status === "rejected" ? cleanText(updates.rejection_reason) || "Rejected from employee portal review." : null;

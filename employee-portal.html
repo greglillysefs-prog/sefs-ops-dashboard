@@ -1379,9 +1379,10 @@
             <h2>Time Review</h2>
             <form id="managerTimeForm" class="form-grid hidden">
               <input id="managerEntryId" type="hidden">
-              <div>
+              <div class="full">
                 <label>Employee(s)</label>
                 <input id="managerEntryEmployee" disabled>
+                <div id="managerEntryEmployeePicker" class="crew-check-list"></div>
               </div>
               <div>
                 <label>Job</label>
@@ -3121,6 +3122,30 @@
       return group.employees.length > 1 ? `${group.employees.length} employees` : group.employees[0] || 'Employee';
     }
 
+    function renderManagerGroupEmployeePicker(group) {
+      const currentIds = new Set((group?.entries || []).map((entry) => String(entry.employee_id || '')).filter(Boolean));
+      const employees = payrollEmployees();
+      if (!employees.length) {
+        $('managerEntryEmployeePicker').innerHTML = '<div class="muted">No hourly employees available.</div>';
+        return;
+      }
+      $('managerEntryEmployeePicker').innerHTML = employees.map((employee) => `
+        <label class="crew-check">
+          <input type="checkbox" data-manager-employee-id="${esc(employee.id)}" ${currentIds.has(String(employee.id)) ? 'checked' : ''}>
+          <span>
+            <b>${esc(employeeName(employee.id))}</b>
+            <span class="muted">${esc(employeeProfile(employee.id)?.role || 'employee')}</span>
+          </span>
+        </label>
+      `).join('');
+    }
+
+    function selectedManagerGroupEmployeeIds() {
+      return Array.from(document.querySelectorAll('#managerEntryEmployeePicker input[data-manager-employee-id]:checked'))
+        .map((input) => input.dataset.managerEmployeeId)
+        .filter(Boolean);
+    }
+
     function renderManagerReview() {
       $('managerReviewCard').classList.toggle('hidden', !canReviewTime());
       if (!canReviewTime()) {
@@ -3804,6 +3829,7 @@
       if (!entry) return;
       $('managerEntryId').value = group.id;
       $('managerEntryEmployee').value = group.employees.join(', ');
+      renderManagerGroupEmployeePicker(group);
       $('managerEntryJob').value = timeEntryJobLabel(entry);
       $('managerEntryDate').value = entry.work_date || today();
       $('managerEntryStatus').value = entry.status || 'draft';
@@ -3839,6 +3865,42 @@
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result.error) throw new Error(result.error || `Time review update failed (${response.status})`);
       return result.time_entries || [];
+    }
+
+    async function reconcileManagerGroupEmployees(group, updates) {
+      const selectedIds = selectedManagerGroupEmployeeIds();
+      if (!selectedIds.length) throw new Error('Choose at least one employee for this time group.');
+      const currentByEmployee = new Map((group.entries || []).map((entry) => [String(entry.employee_id || ''), entry]));
+      const selectedSet = new Set(selectedIds.map(String));
+      const retainedIds = selectedIds
+        .map((employeeId) => currentByEmployee.get(String(employeeId))?.id)
+        .filter(Boolean);
+      const removedIds = (group.entries || [])
+        .filter((entry) => !selectedSet.has(String(entry.employee_id || '')))
+        .map((entry) => entry.id)
+        .filter(Boolean);
+      const addedIds = selectedIds.filter((employeeId) => !currentByEmployee.has(String(employeeId)));
+
+      if (retainedIds.length) await updateManagerTimeEntries(retainedIds, updates);
+      if (addedIds.length) {
+        await saveCrewTimeEntries({
+          job_id: group.entry.job_id || null,
+          work_date: updates.work_date,
+          start_time: updates.start_time,
+          end_time: updates.end_time,
+          notes: updates.notes,
+          status: updates.status || group.entry.status || 'submitted',
+          device_info: updates.device_info || deviceInfo(),
+          change_reason: updates.change_reason || `Added employee to time group from employee portal by ${profile?.full_name || session?.user?.email || 'manager'}`
+        }, addedIds);
+      }
+      if (removedIds.length) {
+        await updateManagerTimeEntries(removedIds, {
+          deleted_at: new Date().toISOString(),
+          change_reason: `Removed employee from time group by ${profile?.full_name || session?.user?.email || 'manager'}`,
+          device_info: deviceInfo()
+        });
+      }
     }
 
     window.approveManagerGroup = async function approveManagerGroup(groupId, button = null) {
@@ -4015,7 +4077,8 @@
           end_time: payload.end_time,
           notes: payload.notes,
           status: payload.status,
-          device_info: payload.device_info
+          device_info: payload.device_info,
+          change_reason: payload.change_reason
         })
       });
       const result = await response.json().catch(() => ({}));
@@ -4240,16 +4303,20 @@
       if (setActionButtonBusy(button, true, 'Saving...') === false) return;
       try {
         const id = $('managerEntryId').value;
+        const group = managerGroupById(id);
+        if (!group) throw new Error('Could not find this time group. Refresh and try again.');
         const status = $('managerEntryStatus').value;
-        await updateManagerTimeEntries(id, {
+        const updates = {
           work_date: $('managerEntryDate').value,
           start_time: $('managerEntryStart').value,
           end_time: $('managerEntryEnd').value,
           notes: $('managerEntryNotes').value.trim() || null,
           status,
           rejection_reason: status === 'rejected' ? $('managerEntryRejectReason').value.trim() || null : null,
-          change_reason: $('managerEntryChangeReason').value.trim() || `Manager edit from employee portal by ${profile?.full_name || session?.user?.email || 'manager'}`
-        });
+          change_reason: $('managerEntryChangeReason').value.trim() || `Manager edit from employee portal by ${profile?.full_name || session?.user?.email || 'manager'}`,
+          device_info: deviceInfo()
+        };
+        await reconcileManagerGroupEmployees(group, updates);
         $('managerTimeForm').classList.add('hidden');
         setMessage('appMessage', 'Time entry saved and logged.');
         await refresh();
