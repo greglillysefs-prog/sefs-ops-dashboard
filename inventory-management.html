@@ -379,10 +379,8 @@
     let employee = null;
     let loginOptions = [];
     let inventoryItems = [];
-    let inventoryVariants = [];
     let inventoryLogs = [];
     let logUnavailable = false;
-    let variantsUnavailable = false;
     let batchSaveActive = false;
     let idleTimer = null;
     let warningTimer = null;
@@ -487,15 +485,6 @@
       inventoryItems = result.data || [];
     }
 
-    async function loadInventoryVariants() {
-      const result = await supa
-        .from('inventory_item_variants')
-        .select('*')
-        .order('variant_name', { ascending: true });
-      variantsUnavailable = !!result.error;
-      inventoryVariants = result.error ? [] : (result.data || []);
-    }
-
     async function loadInventoryLogs() {
       const result = await supa
         .from('inventory_change_logs')
@@ -510,19 +499,15 @@
       if (!session) return;
       try {
         await loadProfile();
-        await Promise.all([loadInventory(), loadInventoryVariants(), loadInventoryLogs()]);
+        await Promise.all([loadInventory(), loadInventoryLogs()]);
         render();
-        setMessage('appMessage', logUnavailable ? 'Inventory log table is not installed yet. Run docs/inventory-management-sql.sql before saving changes.' : variantsUnavailable ? 'Inventory variants are not installed yet. Run docs/inventory-variants-sql.sql to track colors and sizes.' : '');
+        setMessage('appMessage', logUnavailable ? 'Inventory log table is not installed yet. Run docs/inventory-management-sql.sql before saving changes.' : '');
       } catch (error) {
         setMessage('appMessage', error.message, true);
       }
     }
 
     function itemStatus(item) {
-      if (item.track_variants && !variantsUnavailable) {
-        const low = variantsForItem(item.id).some((variant) => variant.tracked_quantity !== false && (+variant.qty || 0) <= (+variant.min_qty || 0));
-        return low ? '<span class="pill bad">Variant low</span>' : '<span class="pill good">OK</span>';
-      }
       return (+item.qty || 0) <= (+item.min_qty || 0)
         ? '<span class="pill bad">Low</span>'
         : '<span class="pill good">OK</span>';
@@ -537,86 +522,38 @@
       const filter = $('inventoryFilter').value;
       return inventoryItems.filter((item) => {
         const recent = latestLogForItem(item.id);
-        const variants = variantsForItem(item.id, true);
-        const text = [item.name, item.category, item.unit, item.vendor_name, item.vendor_phone, item.notes, ...variants.map((v) => [v.variant_name, v.variant_type, v.color, v.size, v.unit].join(' '))].join(' ').toLowerCase();
+        const text = [item.name, item.category, item.unit, item.vendor_name, item.vendor_phone, item.notes].join(' ').toLowerCase();
         if (query && !text.includes(query)) return false;
-        if (filter === 'low' && !itemStatus(item).includes('bad')) return false;
+        if (filter === 'low' && (+item.qty || 0) > (+item.min_qty || 0)) return false;
         if (filter === 'changed' && !recent) return false;
         return true;
       });
     }
 
-    function variantsForItem(itemId, includeInactive = false) {
-      return inventoryVariants
-        .filter((variant) => variant.inventory_item_id === itemId && (includeInactive || variant.active !== false))
-        .sort((a, b) => String(a.variant_name || '').localeCompare(String(b.variant_name || '')));
-    }
-
-    function variantLabel(item, variant) {
-      return `${item.name || 'Inventory item'} - ${variant.variant_name || [variant.size, variant.color].filter(Boolean).join(' ') || 'Variant'}`;
-    }
-
-    function renderVariantRows(item) {
-      if (!item.track_variants || variantsUnavailable) return '';
-      const variants = variantsForItem(item.id);
-      if (!variants.length) {
-        return `<tr class="variant-row"><td data-label="Variants" colspan="6"><span class="muted">No active variants set up for ${esc(item.name || 'this item')}.</span></td></tr>`;
-      }
-      return variants.map((variant) => {
-        const latest = latestLogForItem(variant.id);
-        return `
-          <tr class="variant-row" data-variant-id="${esc(variant.id)}">
-            <td data-label="Material">
-              <div class="item-name">- ${esc(variant.variant_name || 'Variant')}</div>
-              <div class="muted">${esc([item.name, variant.size, variant.color].filter(Boolean).join(' - '))}</div>
-              ${latest ? `<div class="muted">Last: ${esc(latest.changed_by_name || 'Unknown')} - ${fmtDateTime(latest.created_at)}</div>` : ''}
-            </td>
-            <td data-label="Status">${(+variant.qty || 0) <= (+variant.min_qty || 0) ? '<span class="pill bad">Low</span>' : '<span class="pill good">OK</span>'}</td>
-            <td data-label="Current"><b>${esc(variant.qty ?? 0)}</b> ${esc(variant.unit || item.unit || '')}<br><span class="muted">Min: ${esc(variant.min_qty ?? 0)}</span></td>
-            <td data-label="Change">
-              <select id="action_v_${esc(variant.id)}" onchange="updateInventoryPreview('v_${esc(variant.id)}')">
-                <option value="used">Used / remove</option>
-                <option value="returned">Returned / add</option>
-                <option value="adjust">Adjustment +/-</option>
-                <option value="set">Set exact count</option>
-              </select>
-            </td>
-            <td data-label="Amount">
-              <input id="qty_v_${esc(variant.id)}" class="amount-input" type="number" step="0.01" inputmode="decimal" oninput="updateInventoryPreview('v_${esc(variant.id)}')">
-            </td>
-            <td data-label="New Count" id="after_v_${esc(variant.id)}" class="new-count">-</td>
-          </tr>
-        `;
-      }).join('');
-    }
-
     function renderInventoryRow(item) {
       const latest = latestLogForItem(item.id);
-      const variantCount = item.track_variants && !variantsUnavailable ? variantsForItem(item.id).length : 0;
-      const isVariantParent = variantCount > 0;
       return `
-        <tr data-item-id="${esc(item.id)}" class="${item.track_variants && !variantsUnavailable ? 'variant-parent-row' : ''}">
+        <tr data-item-id="${esc(item.id)}">
           <td data-label="Material">
             <div class="item-name">${esc(item.name || 'Inventory item')}</div>
-            <div class="muted">${esc(item.category || '')}${item.vendor_name ? ` - ${esc(item.vendor_name)}` : ''}${item.track_variants && !variantsUnavailable ? ` - ${variantCount} active variant(s)` : ''}</div>
+            <div class="muted">${esc(item.category || '')}${item.vendor_name ? ` - ${esc(item.vendor_name)}` : ''}</div>
             ${latest ? `<div class="muted">Last: ${esc(latest.changed_by_name || 'Unknown')} - ${fmtDateTime(latest.created_at)}</div>` : ''}
           </td>
           <td data-label="Status">${itemStatus(item)}</td>
-          <td data-label="Current">${isVariantParent ? '<span class="muted">Tracked by variants</span>' : `<b>${esc(item.qty ?? 0)}</b> ${esc(item.unit || '')}<br><span class="muted">Min: ${esc(item.min_qty ?? 0)}</span>`}</td>
+          <td data-label="Current"><b>${esc(item.qty ?? 0)}</b> ${esc(item.unit || '')}<br><span class="muted">Min: ${esc(item.min_qty ?? 0)}</span></td>
           <td data-label="Change">
-            ${isVariantParent ? '<span class="muted">Use rows below</span>' : `<select id="action_${esc(item.id)}" onchange="updateInventoryPreview('${esc(item.id)}')">
-                <option value="used">Used / remove</option>
-                <option value="returned">Returned / add</option>
-                <option value="adjust">Adjustment +/-</option>
-                <option value="set">Set exact count</option>
-              </select>`}
+            <select id="action_${esc(item.id)}" onchange="updateInventoryPreview('${esc(item.id)}')">
+              <option value="used">Used / remove</option>
+              <option value="returned">Returned / add</option>
+              <option value="adjust">Adjustment +/-</option>
+              <option value="set">Set exact count</option>
+            </select>
           </td>
           <td data-label="Amount">
-            ${isVariantParent ? '' : `<input id="qty_${esc(item.id)}" class="amount-input" type="number" step="0.01" inputmode="decimal" oninput="updateInventoryPreview('${esc(item.id)}')">`}
+            <input id="qty_${esc(item.id)}" class="amount-input" type="number" step="0.01" inputmode="decimal" oninput="updateInventoryPreview('${esc(item.id)}')">
           </td>
-          <td data-label="New Count" id="after_${esc(item.id)}" class="new-count">${isVariantParent ? '<span class="muted">-</span>' : '-'}</td>
+          <td data-label="New Count" id="after_${esc(item.id)}" class="new-count">-</td>
         </tr>
-        ${renderVariantRows(item)}
       `;
     }
 
@@ -660,7 +597,7 @@
       if (!signedIn) return;
       const rows = filteredInventory();
       $('metricCount').textContent = inventoryItems.length;
-      $('metricLow').textContent = inventoryItems.filter((item) => itemStatus(item).includes('bad')).length;
+      $('metricLow').textContent = inventoryItems.filter((item) => (+item.qty || 0) <= (+item.min_qty || 0)).length;
       $('metricChanges').textContent = inventoryLogs.length;
       $('inventoryList').innerHTML = rows.length
         ? `<div class="inventory-table-wrap"><table class="inventory-table"><thead><tr><th>Material</th><th>Status</th><th>Current</th><th>Change Type</th><th>Amount</th><th>New Count</th></tr></thead><tbody>${rows.map(renderInventoryRow).join('')}</tbody></table></div>`
@@ -680,10 +617,7 @@
     }
 
     function updateInventoryPreview(id) {
-      const isVariant = String(id).startsWith('v_');
-      const cleanId = isVariant ? String(id).slice(2) : id;
-      const item = isVariant ? inventoryVariants.find((row) => row.id === cleanId) : inventoryItems.find((row) => row.id === cleanId);
-      const parent = isVariant ? inventoryItems.find((row) => row.id === item?.inventory_item_id) : null;
+      const item = inventoryItems.find((row) => row.id === id);
       const target = $(`after_${id}`);
       if (!item || !target) return;
       const rawValue = $(`qty_${id}`)?.value;
@@ -694,7 +628,7 @@
       const action = $(`action_${id}`)?.value || 'used';
       const before = num(item.qty);
       const after = actionAmount(action, before, rawValue);
-      target.textContent = `${after} ${item.unit || parent?.unit || ''}`;
+      target.textContent = `${after} ${item.unit || ''}`;
       target.style.color = after < 0 ? 'var(--bad)' : 'var(--orange)';
     }
 
@@ -702,35 +636,27 @@
       const rows = filteredInventory();
       const changes = [];
       for (const item of rows) {
-        const variantRows = item.track_variants && !variantsUnavailable ? variantsForItem(item.id) : [];
-        const targets = variantRows.length ? variantRows.map((variant) => ({ kind: 'variant', id: variant.id, item, variant })) : [{ kind: 'item', id: item.id, item }];
-        for (const targetRow of targets) {
-          const inputId = targetRow.kind === 'variant' ? `v_${targetRow.id}` : targetRow.id;
-          const action = $(`action_${inputId}`)?.value || 'used';
-          const rawValue = $(`qty_${inputId}`)?.value;
-          if (rawValue === '') continue;
-          const amount = num(rawValue);
-          const label = targetRow.kind === 'variant' ? variantLabel(item, targetRow.variant) : (item.name || 'Inventory item');
-          if (action !== 'set' && amount === 0) continue;
-          if ((action === 'used' || action === 'returned') && amount < 0) throw new Error(`${label} amount cannot be negative unless you use Adjustment.`);
-          if (action === 'set' && amount < 0) throw new Error(`${label} cannot be set below zero.`);
-          const source = targetRow.kind === 'variant' ? targetRow.variant : item;
-          const before = num(source.qty);
-          const after = actionAmount(action, before, rawValue);
-          const change = num(after - before);
-          if (change === 0) continue;
-          changes.push({ id: targetRow.id, kind: targetRow.kind, item, variant: targetRow.variant || null, action, amount, before, after, change });
-        }
+        const action = $(`action_${item.id}`)?.value || 'used';
+        const rawValue = $(`qty_${item.id}`)?.value;
+        if (rawValue === '') continue;
+        const amount = num(rawValue);
+        if (action !== 'set' && amount === 0) continue;
+        if ((action === 'used' || action === 'returned') && amount < 0) throw new Error(`${item.name || 'Inventory item'} amount cannot be negative unless you use Adjustment.`);
+        if (action === 'set' && amount < 0) throw new Error(`${item.name || 'Inventory item'} cannot be set below zero.`);
+        const before = num(item.qty);
+        const after = actionAmount(action, before, rawValue);
+        const change = num(after - before);
+        if (change === 0) continue;
+        changes.push({ id: item.id, item, action, amount, before, after, change });
       }
       return changes;
     }
 
     function summarizeChanges(changes) {
-      const lines = changes.slice(0, 8).map(({ item, variant, action, before, after, change }) => {
-        const unit = variant?.unit || item.unit || '';
-        const label = variant ? variantLabel(item, variant) : item.name;
-        if (action === 'set') return `${label}: ${before} -> ${after} ${unit}`;
-        return `${label}: ${change > 0 ? '+' : ''}${change} ${unit} (${before} -> ${after})`;
+      const lines = changes.slice(0, 8).map(({ item, action, before, after, change }) => {
+        const unit = item.unit || '';
+        if (action === 'set') return `${item.name}: ${before} -> ${after} ${unit}`;
+        return `${item.name}: ${change > 0 ? '+' : ''}${change} ${unit} (${before} -> ${after})`;
       });
       if (changes.length > 8) lines.push(`...and ${changes.length - 8} more change(s)`);
       return lines.join('\n');
@@ -758,9 +684,8 @@
       button.textContent = 'Saving...';
       try {
         for (const change of changes) {
-          const tableName = change.kind === 'variant' ? 'inventory_item_variants' : 'inventory_items';
           const latestResult = await supa
-            .from(tableName)
+            .from('inventory_items')
             .select('*')
             .eq('id', change.id)
             .single();
@@ -772,7 +697,7 @@
           const quantityChange = num(after - before);
 
           const updateResult = await supa
-            .from(tableName)
+            .from('inventory_items')
             .update({ qty: after })
             .eq('id', change.id)
             .select()
@@ -781,12 +706,12 @@
 
           const logPayload = {
             inventory_item_id: change.id,
-            inventory_item_name: change.kind === 'variant' ? variantLabel(change.item, latest) : (latest.name || change.item.name || 'Inventory item'),
+            inventory_item_name: latest.name || change.item.name || 'Inventory item',
             action_type: change.action,
             quantity_before: before,
             quantity_change: quantityChange,
             quantity_after: after,
-            unit: latest.unit || change.variant?.unit || change.item.unit || null,
+            unit: latest.unit || change.item.unit || null,
             note: note.trim() || null,
             changed_by_user_id: session.user.id,
             changed_by_profile_id: profile?.id || session.user.id,
