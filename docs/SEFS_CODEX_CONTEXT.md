@@ -22,7 +22,7 @@ Preserve all existing working behavior unless the user explicitly asks to change
 - Inventory/material costs
 - Systems/material recipes
 - Pull sheets
-- Calendar and Google Calendar sync behavior
+- Calendar schedule and subscribed calendar feed behavior
 - Employee portal, time tracking, PTO, audit logs
 - Cloudflare/static deploy compatibility
 
@@ -121,38 +121,21 @@ Important expectations:
 - Employee portal schedule should be calendar-like and read-only for schedule changes.
 - Employees can still add photos/notes and access material lists for assigned jobs.
 
-## Google Calendar Sync
+## Calendar Subscription Feed
 
-Supabase/dashboard remains source of truth for full job records.
+Supabase/dashboard is the only editable schedule source.
 
-Google Calendar can sync schedule-related fields only:
+The old two-way Google Calendar OAuth sync is retired and should not be shown in the dashboard UI.
+The schedule is shared to Apple/Google calendars through the read-only Supabase `calendar-feed` Edge Function.
 
-- Date/time
-- Title/customer/system
-- Location/address
-- Notes/description
+Calendar feed expectations:
 
-Do not allow Google Calendar to overwrite:
-
-- Quotes
-- Materials
-- Pull sheets
-- Inventory
-- Pricing
-- Customer financials
-- Admin/labor/waste calculations
-
-Calendar event descriptions should not expose quote pricing or quote access. Calendar links should open the limited mobile job page only.
-
-Current Google OAuth test note:
-
-- If Google Calendar sync shows `Error 400: origin_mismatch`, the dashboard URL being used is missing from the Google OAuth Client's Authorized JavaScript origins.
-- For local testing, the OAuth client should include exact origins such as:
-  - `http://127.0.0.1:4173`
-  - `http://localhost:4173`
-  - `http://192.168.68.131:4173`
-- If using older dev ports, also include matching `5173` / `5174` origins.
-- Origins must match exactly, including `http` and port.
+- Dashboard jobs/leads/tasks with dates appear in subscribed calendars.
+- Subscribed calendars can be viewed offline by the phone calendar app after it refreshes.
+- Edits made in Apple Calendar or Google Calendar do not write back to Supabase.
+- External calendar refresh timing is controlled by the calendar app/provider, not SEFS.
+- Event descriptions may include schedule/job details, material notes/list summaries, and limited mobile job links.
+- Event descriptions must not expose quote pricing, quote access, profit, admin pricing, or internal calculations.
 
 ## Field Measure
 
