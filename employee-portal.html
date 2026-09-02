@@ -363,6 +363,26 @@
       color: #ffc4c4;
     }
 
+    .estimate-alert {
+      border: 2px solid var(--bad);
+      border-left-width: 8px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, rgba(255, 98, 98, .2), rgba(45, 5, 5, .9));
+      color: #fff;
+      padding: 12px;
+      margin: 12px 0;
+      font-weight: 800;
+      line-height: 1.35;
+      box-shadow: 0 0 0 1px rgba(255, 122, 0, .28), 0 0 18px rgba(255, 98, 98, .24);
+    }
+
+    .estimate-alert b {
+      display: block;
+      color: #ffc4c4;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+    }
+
     .job-list, .entry-list {
       display: grid;
       gap: 10px;
@@ -1810,6 +1830,19 @@
       return [...base, ...custom].filter((item) => item && String(item.name || '').trim());
     }
 
+    function hasEstimatedMaterialsWarning(job) {
+      const notes = String(job?.material_notes || '').toLowerCase();
+      return notes.includes('estimated material') || notes.includes('default material list generated') || compactMaterialList(job).some((item) => item?.estimated);
+    }
+
+    function materialNotesHTML(job) {
+      if (!String(job?.material_notes || '').trim()) return '';
+      const alert = hasEstimatedMaterialsWarning(job);
+      return alert
+        ? `<div class="estimate-alert"><b>!!! Estimated materials - verify before pulling !!!</b>${esc(job.material_notes)}</div>`
+        : `<p class="muted">${esc(job.material_notes)}</p>`;
+    }
+
     function materialQtyText(item) {
       const qty = Math.ceil(Math.max(0, Number(item?.qty) || 0));
       return [qty || '', item?.unit].filter(Boolean).join(' ') || '-';
@@ -2781,7 +2814,7 @@
           </div>
           ${scheduleMapHTML(selectedItem.address)}
           ${selectedItem.notes ? `<p class="muted">${esc(selectedItem.notes)}</p>` : ''}
-          ${selectedItem.material_notes ? `<p class="muted">${esc(selectedItem.material_notes)}</p>` : ''}
+          ${materialNotesHTML(selectedItem)}
           <div class="schedule-actions">
             <a class="button-link" href="${esc(scheduleJobUrl(selectedItem, 'materials'))}" target="_blank" rel="noopener">Material List</a>
           </div>
