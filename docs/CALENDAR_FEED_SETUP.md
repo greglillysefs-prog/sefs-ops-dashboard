@@ -5,7 +5,7 @@ This feed publishes the SEFS dashboard schedule as a read-only `.ics` calendar.
 Purpose:
 - Supabase/dashboard remains the source of truth.
 - Apple Calendar and Google Calendar can subscribe to the schedule.
-- Jobs, lead follow-ups, and tasks with dates appear on the subscribed calendar.
+- Jobs, lead follow-ups, tasks, inspections, and callbacks with schedule dates appear on the subscribed calendar.
 - The feed avoids Google OAuth refresh-token failures because it does not write back from Google.
 
 Feed endpoint:

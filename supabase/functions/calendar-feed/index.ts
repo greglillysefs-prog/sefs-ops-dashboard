@@ -176,6 +176,45 @@ function taskDescription(task: AnyRecord) {
   ].join("\n");
 }
 
+function qualityStatus(type: "inspection" | "callback", record: AnyRecord) {
+  if (type === "inspection") return clean(record.status) || (record.topcoat_complete ? "Closed" : "Open");
+  return clean(record.status) || "Open";
+}
+
+function qualityIsClosed(type: "inspection" | "callback", record: AnyRecord) {
+  const status = qualityStatus(type, record).toLowerCase();
+  if (type === "inspection") return ["closed", "complete", "completed", "canceled", "cancelled"].includes(status) || !!record.topcoat_complete;
+  return ["resolved", "denied", "closed", "complete", "completed", "canceled", "cancelled"].includes(status);
+}
+
+function assigneeName(record: AnyRecord, employeesById: Map<string, string>) {
+  const assignedId = clean(record.assigned_employee_id);
+  return (assignedId && employeesById.get(assignedId)) || clean(record.inspector) || clean(record.assigned_to) || "Unassigned";
+}
+
+function qualityScheduleTitle(record: AnyRecord, type: "inspection" | "callback") {
+  const label = type === "inspection" ? "Inspection" : "Callback";
+  const job = record.job || {};
+  return `${label} - ${clean(job.customer) || clean(job.job_name) || "SEFS Job"}`;
+}
+
+function qualityDescription(record: AnyRecord, type: "inspection" | "callback", employeesById: Map<string, string>) {
+  const job = record.job || {};
+  const notes = type === "inspection" ? clean(record.notes) : [record.issue, record.resolution].map(clean).filter(Boolean).join("\n");
+  return [
+    `Type: ${type === "inspection" ? "Inspection" : "Callback"}`,
+    `Status: ${qualityStatus(type, record)}`,
+    `Assigned to: ${assigneeName(record, employeesById)}`,
+    `Customer: ${clean(job.customer)}`,
+    `Phone: ${clean(job.phone)}`,
+    `Address: ${clean(job.address)}`,
+    `System: ${clean(job.system_type)}`,
+    `Original job: ${clean(job.job_name) || clean(job.customer)}`,
+    `Notes: ${notes}`,
+    `Open SEFS dashboard: ${dashboardUrl("index.html?app=dashboard")}`,
+  ].join("\n");
+}
+
 function eventDates(record: AnyRecord) {
   const startDate = clean(record.start_date || record.due_date);
   const endDate = clean(record.end_date || record.start_date || record.due_date);
@@ -196,13 +235,21 @@ function eventDates(record: AnyRecord) {
   ];
 }
 
-function eventBlock(record: AnyRecord, type: "job" | "lead" | "task") {
+function eventBlock(record: AnyRecord, type: "job" | "lead" | "task" | "inspection" | "callback", employeesById = new Map<string, string>()) {
   const dates = eventDates(record);
   if (!dates.length) return "";
-  const idPrefix = type === "job" ? "job" : type === "lead" ? "lead" : "task";
-  const summary = type === "job" ? jobScheduleTitle(record) : type === "lead" ? `Lead follow up - ${clean(record.customer) || "Lead"}` : taskScheduleTitle(record);
-  const description = type === "job" ? jobDescription(record) : type === "lead" ? leadDescription(record) : taskDescription(record);
-  const location = type === "job" || type === "lead" ? clean(record.address) : "";
+  const idPrefix = type;
+  const summary =
+    type === "job" ? jobScheduleTitle(record) :
+    type === "lead" ? `Lead follow up - ${clean(record.customer) || "Lead"}` :
+    type === "task" ? taskScheduleTitle(record) :
+    qualityScheduleTitle(record, type);
+  const description =
+    type === "job" ? jobDescription(record) :
+    type === "lead" ? leadDescription(record) :
+    type === "task" ? taskDescription(record) :
+    qualityDescription(record, type, employeesById);
+  const location = type === "job" || type === "lead" ? clean(record.address) : clean(record.job?.address);
   const url = type === "job" ? mobileJobUrl(record.id) : dashboardUrl("index.html?app=dashboard");
   return [
     "BEGIN:VEVENT",
@@ -217,6 +264,32 @@ function eventBlock(record: AnyRecord, type: "job" | "lead" | "task") {
     prop("URL", url),
     "END:VEVENT",
   ].filter(Boolean).join("\r\n");
+}
+
+async function loadEmployeesById(supa: ReturnType<typeof supabaseAdmin>) {
+  const employeesById = new Map<string, string>();
+  const [profilesResult, employeesResult] = await Promise.all([
+    supa.from("profiles").select("id, full_name, email"),
+    supa.from("employees").select("id, name"),
+  ]);
+
+  if (!profilesResult.error) {
+    (profilesResult.data || []).forEach((profile: AnyRecord) => {
+      const id = clean(profile.id);
+      const name = clean(profile.full_name) || clean(profile.email);
+      if (id && name) employeesById.set(id, name);
+    });
+  }
+
+  if (!employeesResult.error) {
+    (employeesResult.data || []).forEach((employee: AnyRecord) => {
+      const id = clean(employee.id);
+      const name = clean(employee.name);
+      if (id && name) employeesById.set(id, name);
+    });
+  }
+
+  return employeesById;
 }
 
 function withinWindow(dateText: unknown, pastDays: number, futureDays: number) {
@@ -249,15 +322,20 @@ Deno.serve(async (req) => {
     const futureDays = Math.max(1, Math.min(1095, Number(url.searchParams.get("futureDays")) || 730));
     const supa = supabaseAdmin();
 
-    const [jobsResult, leadsResult, tasksResult] = await Promise.all([
+    const [jobsResult, leadsResult, tasksResult, inspectionsResult, callbacksResult, employeesById] = await Promise.all([
       supa.from("jobs").select("*").not("start_date", "is", null).order("start_date", { ascending: true }),
       supa.from("leads").select("*").not("next_followup", "is", null).order("next_followup", { ascending: true }),
       supa.from("tasks").select("*").not("due_date", "is", null).order("due_date", { ascending: true }),
+      supa.from("inspections").select("*, job:jobs(*)").not("inspection_date", "is", null).order("inspection_date", { ascending: true }),
+      supa.from("callbacks").select("*, job:jobs(*)").not("issue_date", "is", null).order("issue_date", { ascending: true }),
+      loadEmployeesById(supa),
     ]);
 
     if (jobsResult.error) throw jobsResult.error;
     if (leadsResult.error) throw leadsResult.error;
     if (tasksResult.error) throw tasksResult.error;
+    if (inspectionsResult.error) throw inspectionsResult.error;
+    if (callbacksResult.error) throw callbacksResult.error;
 
     const jobs = (jobsResult.data || [])
       .filter((job: AnyRecord) => !["Lost", "Canceled"].includes(clean(job.status)))
@@ -272,6 +350,26 @@ Deno.serve(async (req) => {
       .filter((task: AnyRecord) => clean(task.show_on_schedule) !== "false" && clean(task.status) !== "Done")
       .filter((task: AnyRecord) => withinWindow(task.due_date, pastDays, futureDays));
 
+    const inspections = (inspectionsResult.data || [])
+      .filter((inspection: AnyRecord) => !qualityIsClosed("inspection", inspection))
+      .filter((inspection: AnyRecord) => withinWindow(inspection.inspection_date, pastDays, futureDays))
+      .map((inspection: AnyRecord) => ({
+        ...inspection,
+        start_date: inspection.inspection_date,
+        end_date: inspection.inspection_date,
+        start_time: inspection.scheduled_time || "",
+      }));
+
+    const callbacks = (callbacksResult.data || [])
+      .filter((callback: AnyRecord) => !qualityIsClosed("callback", callback))
+      .filter((callback: AnyRecord) => withinWindow(callback.issue_date, pastDays, futureDays))
+      .map((callback: AnyRecord) => ({
+        ...callback,
+        start_date: callback.issue_date,
+        end_date: callback.issue_date,
+        start_time: callback.scheduled_time || "",
+      }));
+
     const body = [
       "BEGIN:VCALENDAR",
       "VERSION:2.0",
@@ -285,6 +383,8 @@ Deno.serve(async (req) => {
       ...jobs.map((job: AnyRecord) => eventBlock(job, "job")),
       ...leads.map((lead: AnyRecord) => eventBlock(lead, "lead")),
       ...tasks.map((task: AnyRecord) => eventBlock(task, "task")),
+      ...inspections.map((inspection: AnyRecord) => eventBlock(inspection, "inspection", employeesById)),
+      ...callbacks.map((callback: AnyRecord) => eventBlock(callback, "callback", employeesById)),
       "END:VCALENDAR",
       "",
     ].filter(Boolean).join("\r\n");
