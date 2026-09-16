@@ -217,6 +217,13 @@ img,iframe{max-width:100%}
 .mobile-record-grid b{display:block;color:#aaa;text-transform:uppercase;font-size:11px;margin-bottom:3px}
 .mobile-record-section{border-top:1px solid #2d2d2d;margin-top:12px;padding-top:12px}
 @media(max-width:760px){.record-actions{grid-template-columns:1fr;min-width:0}.record-actions select,.record-actions button{width:100%}#jobs table,#leads table{display:none}.mobile-record-cards{display:block}.mobile-record-grid{grid-template-columns:1fr}.mobile-record-card input,.mobile-record-card select,.mobile-record-card textarea,.mobile-record-card button{max-width:100%}.mobile-record-card .photo{width:84px;height:64px}}
+.hidden{display:none!important}
+.dashboard-auth{max-width:520px;margin:26px auto;padding:0 16px}
+.dashboard-auth .card{border-color:rgba(255,121,0,.55)}
+.dashboard-session-bar{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:10px 18px;border-bottom:1px solid #333;background:#070707;color:#ccc}
+.dashboard-session-bar b{color:var(--o)}
+.dashboard-session-bar button{width:auto;margin:0}
+@media(max-width:760px){.dashboard-session-bar{display:grid;grid-template-columns:1fr}.dashboard-session-bar button{width:100%}}
 @media(max-width:760px){.inventory-edit-wrap{overflow:visible!important;border:0!important;background:transparent!important}.inventory-edit-table{display:block!important;min-width:0!important;overflow:visible!important;white-space:normal!important}.inventory-edit-table thead{display:none}.inventory-edit-table tbody,.inventory-edit-table tr,.inventory-edit-table td{display:block;width:100%;min-width:0}.inventory-edit-table tr{border:1px solid #333;border-radius:12px;background:#101010;margin:12px 0;padding:12px}.inventory-edit-table td{border:0;padding:7px 0}.inventory-edit-table td:before{display:block;color:#aaa;text-transform:uppercase;font-size:11px;font-weight:900;margin-bottom:5px}.inventory-edit-table td:nth-child(1):before{content:"Select"}.inventory-edit-table td:nth-child(2):before{content:"Material"}.inventory-edit-table td:nth-child(3):before{content:"Track Qty"}.inventory-edit-table td:nth-child(4):before{content:"Category"}.inventory-edit-table td:nth-child(5):before{content:"Qty"}.inventory-edit-table td:nth-child(6):before{content:"Min"}.inventory-edit-table td:nth-child(7):before{content:"Unit"}.inventory-edit-table td:nth-child(8):before{content:"Cost"}.inventory-edit-table td:nth-child(9):before{content:"Vendor"}.inventory-edit-table td:nth-child(10):before{content:"Vendor Phone"}.inventory-edit-table td:nth-child(11):before{content:"Actions"}.inventory-edit-table input,.inventory-edit-table select,.inventory-edit-table textarea,.inventory-edit-table button{max-width:100%;width:100%}.inventory-edit-table input[type=checkbox]{width:auto}.inventory-edit-table .rowact{display:grid!important;grid-template-columns:1fr;gap:8px}.inventory-bulk-grid{grid-template-columns:1fr!important}.save-strip{display:grid!important;grid-template-columns:1fr!important}.save-strip button{width:100%!important}}
 .quality-layout{display:grid;gap:16px}.quality-filters{display:grid;grid-template-columns:minmax(220px,1fr) 180px 180px auto auto;gap:10px;align-items:end;margin:12px 0}.quality-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}.quality-job-preview{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:8px;margin-top:8px}.quality-job-preview div{border:1px solid #333;border-radius:8px;padding:8px;background:#090909}.quality-job-preview b{display:block;color:#aaa;text-transform:uppercase;font-size:11px;margin-bottom:4px}.qualityJobPicker{margin-bottom:12px}.record-count{color:#aaa;font-size:13px;margin:4px 0 10px}@media(max-width:760px){.quality-filters{grid-template-columns:1fr}.quality-job-preview{grid-template-columns:1fr}.quality-table-wrap table,.quality-table-wrap thead,.quality-table-wrap tbody,.quality-table-wrap tr,.quality-table-wrap td{display:block;width:100%}.quality-table-wrap thead{display:none}.quality-table-wrap tr{border:1px solid #333;border-radius:12px;margin:12px 0;padding:10px;background:#0b0b0b}.quality-table-wrap td{border:0;padding:6px 0}.quality-table-wrap td:before{display:block;color:#aaa;text-transform:uppercase;font-size:11px;font-weight:900;margin-bottom:3px}.quality-table-wrap td:nth-child(1):before{content:"Date"}.quality-table-wrap td:nth-child(2):before{content:"Job / Contact"}.quality-table-wrap td:nth-child(3):before{content:"System / Location"}.quality-table-wrap td:nth-child(4):before{content:"Assigned"}.quality-table-wrap td:nth-child(5):before{content:"Status"}.quality-table-wrap td:nth-child(6):before{content:"Notes"}.quality-table-wrap td:nth-child(7):before{content:"Photos"}.quality-table-wrap td:nth-child(8):before{content:"Actions"}}
 
@@ -248,6 +255,8 @@ const SB_URL='https://wjfewzutxvjbbnnvbylo.supabase.co', SB_KEY='sb_publishable_
 const EMPLOYEE_ADMIN_FUNCTION_URL=`${SB_URL}/functions/v1/employee-admin`;
 const AI_INTAKE_FUNCTION_URL=`${SB_URL}/functions/v1/ai-intake`;
 const SEFS_TIME_ZONE='America/Chicago';
+const DASHBOARD_ACCESS_ROLES=new Set(['manager','admin']);
+let dashboardSession=null,dashboardProfile=null,dashboardLoginOptions=[];
 const tables=['customers','employees','profiles','employee_job_assignments','personal_time_entries','pto_requests','leads','jobs','quotes','tasks','task_audit_logs','field_measurements','field_measurement_areas','field_scan_uploads','inventory_items','incoming_inventory','inventory_change_logs','system_recipes','system_recipe_items','quote_settings','equipment_items','vehicles','inspections','callbacks','photo_attachments'];
 const state={}; const errors={}; tables.forEach(t=>{state[t]=[]});
 const optionalTables=new Set(['task_audit_logs','quote_settings','inventory_change_logs','incoming_inventory']);
@@ -271,6 +280,105 @@ function mobileJobUrl(id){let u=new URL('mobile-job.html',location.href);u.searc
 function materialJobUrl(id){return mobileJobUrl(id)+'#materials'}
 function setStatus(t,c=''){ $('status').textContent=t; $('status').className=c; }
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+function ensureDashboardAuthUi(){
+ if($('dashboardAuth'))return;
+ let app=document.querySelector('.app');
+ if(app){app.id='dashboardApp';app.classList.add('hidden')}
+ let auth=document.createElement('section');
+ auth.id='dashboardAuth';
+ auth.className='dashboard-auth';
+ auth.innerHTML=`<div class=card><h2>Sign In</h2><div class=muted>Use an existing SEFS manager/admin login to open the operations dashboard.</div><div id=dashboardAuthMessage class="notice hidden"></div><form id=dashboardLoginForm><label>Login Name</label><select id=dashboardLoginEmail required><option value="">Loading logins...</option></select><label>Password</label><input id=dashboardPassword type=password autocomplete=current-password required><button id=dashboardSignInBtn class=primary type=submit>Sign In</button></form><div class=muted style="margin-top:12px">Employee-only users should continue using the Employee Portal.</div></div>`;
+ let bar=document.createElement('div');
+ bar.id='dashboardSessionBar';
+ bar.className='dashboard-session-bar hidden';
+ bar.innerHTML='<div id=dashboardSessionText></div><button class=secondary type=button onclick="signOutDashboard()">Sign Out</button>';
+ document.body.insertBefore(auth,app||document.body.firstChild);
+ if(app)document.body.insertBefore(bar,app);
+ $('dashboardLoginForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  setDashboardAuthMessage('Signing in...');
+  setDashboardAuthBusy(true);
+  try{await signInDashboard($('dashboardLoginEmail').value,$('dashboardPassword').value);$('dashboardPassword').value=''}
+  catch(err){setDashboardAuthMessage(err.message||String(err),true)}
+  finally{setDashboardAuthBusy(false)}
+ });
+}
+function setDashboardAuthMessage(text='',isError=false){let el=$('dashboardAuthMessage');if(!el)return;el.textContent=text;el.className=`notice ${isError?'err':''} ${text?'':'hidden'}`}
+function setDashboardAuthBusy(busy){let btn=$('dashboardSignInBtn');if(btn){btn.disabled=busy;btn.textContent=busy?'Signing In...':'Sign In'}}
+function renderDashboardLoginOptions(){
+ let sel=$('dashboardLoginEmail');if(!sel)return;
+ sel.innerHTML='<option value="">Choose login...</option>'+dashboardLoginOptions.map(o=>`<option value="${esc(o.email)}">${esc(o.name||o.email)}${o.role?` - ${esc(String(o.role).replace('_',' '))}`:''}</option>`).join('');
+}
+async function loadDashboardLoginOptions(){
+ try{
+  let r=await fetch(EMPLOYEE_ADMIN_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'login_options'})});
+  let p=await r.json().catch(()=>({}));
+  if(!r.ok||p.error)throw new Error(p.error||`Could not load logins (${r.status})`);
+  dashboardLoginOptions=(p.options||[]).filter(o=>DASHBOARD_ACCESS_ROLES.has(String(o.role||'').toLowerCase()));
+  renderDashboardLoginOptions();
+  if(!dashboardLoginOptions.length)setDashboardAuthMessage('No active manager/admin dashboard logins were returned. Add or promote a user in Employee Admin.',true);
+ }catch(e){
+  let sel=$('dashboardLoginEmail');if(sel)sel.innerHTML='<option value="">Logins unavailable</option>';
+  setDashboardAuthMessage(`Could not load logins: ${e.message||e}`,true);
+ }
+}
+async function loadDashboardProfile(){
+ if(!dashboardSession?.user?.id)throw new Error('Sign in to open the dashboard.');
+ let r=await supa.from('profiles').select('id, employee_id, role, full_name, active').eq('id',dashboardSession.user.id).maybeSingle();
+ if(r.error)throw r.error;
+ let p=r.data;
+ if(!p?.active)throw new Error('This login is inactive. Use Employee Admin to reactivate it.');
+ if(!DASHBOARD_ACCESS_ROLES.has(String(p.role||'').toLowerCase()))throw new Error('This login can use the Employee Portal, but it is not a manager/admin dashboard login.');
+ dashboardProfile=p;
+ return p;
+}
+function showDashboardAuth(){
+ ensureDashboardAuthUi();
+ $('dashboardAuth')?.classList.remove('hidden');
+ $('dashboardApp')?.classList.add('hidden');
+ $('dashboardSessionBar')?.classList.add('hidden');
+ setStatus('Sign in required');
+}
+function showDashboardApp(){
+ ensureDashboardAuthUi();
+ $('dashboardAuth')?.classList.add('hidden');
+ $('dashboardApp')?.classList.remove('hidden');
+ let label=dashboardProfile?.full_name||dashboardSession?.user?.email||'Manager';
+ let role=String(dashboardProfile?.role||'').replace('_',' ');
+ if($('dashboardSessionText'))$('dashboardSessionText').innerHTML=`Signed in as <b>${esc(label)}</b>${role?` <span class=muted>${esc(role)}</span>`:''}`;
+ $('dashboardSessionBar')?.classList.remove('hidden');
+}
+async function signInDashboard(email,password){
+ if(!email)throw new Error('Choose a login name.');
+ if(!password)throw new Error('Enter your password.');
+ let r=await supa.auth.signInWithPassword({email,password});
+ if(r.error)throw r.error;
+ dashboardSession=r.data.session;
+ await loadDashboardProfile();
+ nav();
+ await refresh();
+ showDashboardApp();
+}
+async function signOutDashboard(){
+ await supa.auth.signOut();
+ dashboardSession=null;dashboardProfile=null;
+ if($('nav'))$('nav').innerHTML='';
+ if($('main'))$('main').innerHTML='';
+ showDashboardAuth();
+ await loadDashboardLoginOptions();
+}
+async function initDashboard(){
+ ensureDashboardAuthUi();
+ await loadDashboardLoginOptions();
+ let r=await supa.auth.getSession();
+ dashboardSession=r.data.session;
+ if(dashboardSession){
+  try{await loadDashboardProfile();nav();await refresh();showDashboardApp();return}
+  catch(e){await supa.auth.signOut();setDashboardAuthMessage(e.message||String(e),true)}
+ }
+ showDashboardAuth();
+ supa.auth.onAuthStateChange((event,nextSession)=>{if(event==='SIGNED_OUT'&&!nextSession){dashboardSession=null;dashboardProfile=null;showDashboardAuth()}});
+}
 function mapUrl(address){return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(String(address||'').trim())}`}
 function addressLink(address,cls='muted'){address=String(address||'').trim();return address?`<a class="${cls}" href="${esc(mapUrl(address))}" target="_blank" rel="noopener">${esc(address)}</a>`:`<span class="${cls}">-</span>`}
 function normMaterialName(s){return String(s||'').toLowerCase().replace(/&/g,'and').replace(/\b(kit|box|bag|pail|bucket|case|part|parta|partb)\b/g,'').replace(/polyaspartic/g,'poly').replace(/[^a-z0-9]/g,'')}
@@ -1059,7 +1167,7 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden){resetStal
 window.addEventListener('pageshow',resetStaleModalSaveLock);
 window.addEventListener('focus',()=>{resetStaleModalSaveLock();autoSyncGoogleCalendar(true)});
 window.addEventListener('online',()=>autoSyncGoogleCalendar(true));
-nav(); refresh();
+initDashboard();
 </script>
 <script>
 (function(){

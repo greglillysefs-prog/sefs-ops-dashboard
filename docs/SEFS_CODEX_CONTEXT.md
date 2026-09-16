@@ -252,6 +252,12 @@ Recent mobile navigation update:
   - `employee-admin`
   - `calendar-feed`
 - Browser script syntax checks passed for `index.html` and `employee-portal.html`; local Deno/TypeScript tooling was not available in this checkout.
+- Security hardening began after a Supabase `rls_disabled_in_public` warning:
+  - `index.html` now requires an existing active Supabase Auth `manager` or `admin` profile before the main dashboard initializes.
+  - Employee-only logins should continue using Employee Portal; main dashboard access is for manager/admin profiles.
+  - Added migration `20260916223539_dashboard_auth_hardening.sql` as a narrow first database step: enable RLS on `inventory_items`, keep authenticated read/update inventory access, remove anonymous inventory access, and revoke anonymous execute access from exposed helper functions.
+  - The subscribed calendar feed remains a tokenized read-only `calendar-feed` Edge Function using service-role access internally, so dashboard login/RLS changes should not block linked Apple/Google calendar subscriptions.
+  - Do not enable RLS on every remaining public table in one broad pass without adding matching policies for dashboard, employee portal, mobile job links, quote builder, photos, and calendar feed behavior.
 
 2026-08-04:
 
