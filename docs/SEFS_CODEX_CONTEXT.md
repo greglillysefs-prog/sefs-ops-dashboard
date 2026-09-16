@@ -173,9 +173,11 @@ Employee portal goals:
 
 PTO:
 
-- Employees can request PTO only for future dates.
-- PTO requests must not exceed available PTO.
-- Only manager/admin can approve PTO.
+- Employees can request time off only for future dates.
+- Time off requests include an optional `Use PTO` choice; requesting a day off must not automatically consume PTO.
+- PTO hours are required and balance-checked only when `Use PTO` is selected.
+- Approved time off appears on the dashboard schedule and subscribed calendar feed; paid requests should be labeled PTO, unpaid requests should be labeled Time Off/No PTO.
+- Only manager/admin can approve or reject time off.
 - Removed employees should not appear as active employees, but their historical audit/time/PTO records should remain preserved.
 
 ## SMS Quick Intake Parser
@@ -235,6 +237,21 @@ Recent mobile navigation update:
 - Audit: dashboard shows recent `inventory_change_logs`; App Health warns if the SQL table is missing.
 
 ## Latest Session Notes
+
+2026-09-16:
+
+- Employee time-off requests were added to the existing PTO flow without making PTO usage mandatory.
+- Employee Portal request form now has a `Use PTO` checkbox. It is unchecked by default; PTO hours are enabled and required only when checked.
+- Unpaid time-off requests save with `use_pto = false` and `hours = 0`, do not create PTO/time-entry ledger rows, and do not reduce PTO balances.
+- Paid PTO requests still require available PTO and create the existing time-entry/ledger flow for review and approval.
+- Dashboard schedule and `calendar-feed` distinguish paid `PTO` from unpaid `Time Off`; approved items are read-only schedule visibility items.
+- Added migrations:
+  - `20260916175654_approved_pto_schedule_visibility.sql`
+  - `20260916182547_pto_requests_optional_paid_time.sql`
+- Supabase functions touched:
+  - `employee-admin`
+  - `calendar-feed`
+- Browser script syntax checks passed for `index.html` and `employee-portal.html`; local Deno/TypeScript tooling was not available in this checkout.
 
 2026-08-04:
 

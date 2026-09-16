@@ -46,7 +46,7 @@ function ptoBalance(employee: Record<string, unknown> | undefined, ledgerEntries
     return sum + (entry.entry_type === "add" ? hours : -hours);
   }, 0);
   const pending = (requests || [])
-    .filter((request) => request.status === "submitted")
+    .filter((request) => request.status === "submitted" && request.use_pto !== false)
     .reduce((sum, request) => sum + Math.abs(Number(request.hours || 0)), 0);
   const balance = accrued + ledger;
   return {
@@ -163,6 +163,7 @@ Deno.serve(async (req) => {
     }
 
     async function ensurePtoLedgerForRequest(request: Record<string, unknown>, actor: { user: Record<string, unknown>; profile: Record<string, unknown> }) {
+      if (request.use_pto === false) return null;
       if (request.personal_time_entry_id) return request.personal_time_entry_id;
 
       const [
@@ -172,7 +173,7 @@ Deno.serve(async (req) => {
       ] = await Promise.all([
         supa.from("employees").select("id, start_date").eq("id", request.employee_id).maybeSingle(),
         supa.from("personal_time_entries").select("entry_type, hours").eq("employee_id", request.employee_id),
-        supa.from("pto_requests").select("id, status, hours").eq("employee_id", request.employee_id).eq("status", "submitted"),
+        supa.from("pto_requests").select("id, status, hours, use_pto").eq("employee_id", request.employee_id).eq("status", "submitted"),
       ]);
       if (employeeError) throw employeeError;
       if (balanceLedgerError) throw balanceLedgerError;
@@ -515,12 +516,13 @@ Deno.serve(async (req) => {
       }
 
       const requestDate = cleanText(payload.request_date);
-      const hours = Number(payload.hours || 0);
+      const usePto = payload.use_pto === true || cleanText(payload.use_pto).toLowerCase() === "true";
+      const hours = usePto ? Number(payload.hours || 0) : 0;
       const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       if (!requestDate || requestDate < tomorrow) {
-        return json({ error: "PTO requests must use a future date." }, 400);
+        return json({ error: "Time off requests must use a future date." }, 400);
       }
-      if (!Number.isFinite(hours) || hours <= 0) {
+      if (usePto && (!Number.isFinite(hours) || hours <= 0)) {
         return json({ error: "PTO hours must be greater than zero." }, 400);
       }
       if (!actor.profile.employee_id) {
@@ -535,14 +537,14 @@ Deno.serve(async (req) => {
       ] = await Promise.all([
         supa.from("employees").select("id, start_date").eq("id", actor.profile.employee_id).maybeSingle(),
         supa.from("personal_time_entries").select("entry_type, hours").eq("employee_id", actor.profile.employee_id),
-        supa.from("pto_requests").select("status, hours").eq("employee_id", actor.profile.employee_id).eq("status", "submitted"),
+        supa.from("pto_requests").select("status, hours, use_pto").eq("employee_id", actor.profile.employee_id).eq("status", "submitted"),
       ]);
       if (employeeError) throw employeeError;
       if (ledgerError) throw ledgerError;
       if (pendingRequestsError) throw pendingRequestsError;
 
       const balance = ptoBalance(employee || undefined, ledgerEntries || [], pendingRequests || []);
-      if (hours > balance.available + 0.001) {
+      if (usePto && hours > balance.available + 0.001) {
         return json({ error: `Only ${balance.available.toFixed(2)} PTO hours are available.` }, 400);
       }
 
@@ -555,7 +557,7 @@ Deno.serve(async (req) => {
         .maybeSingle();
       if (duplicateRequestError) throw duplicateRequestError;
       if (duplicateRequest) {
-        return json({ error: "PTO is already requested for this date." }, 400);
+        return json({ error: "Time off is already requested for this date." }, 400);
       }
 
       const { data, error } = await supa
@@ -565,12 +567,15 @@ Deno.serve(async (req) => {
           user_id: actor.user.id,
           request_date: requestDate,
           hours,
+          use_pto: usePto,
           notes: cleanText(payload.notes) || null,
           status: "submitted",
         })
         .select()
         .single();
       if (error) throw error;
+
+      if (!usePto) return json({ ok: true, pto_entry: data, time_entry: null });
 
       const range = ptoTimeRange(hours);
       const { data: timeEntry, error: timeEntryError } = await supa
@@ -636,7 +641,9 @@ Deno.serve(async (req) => {
       }
 
       let personalTimeEntryId = request.personal_time_entry_id || null;
-      if (status === "approved" && !personalTimeEntryId) {
+      if (request.use_pto === false) {
+        personalTimeEntryId = await returnPtoLedgerForRequest(request);
+      } else if (status === "approved" && !personalTimeEntryId) {
         personalTimeEntryId = await ensurePtoLedgerForRequest(request, actor);
       } else if (status === "rejected") {
         personalTimeEntryId = await returnPtoLedgerForRequest(request);
@@ -774,7 +781,7 @@ Deno.serve(async (req) => {
         { data: duplicateRequest, error: duplicateRequestError },
       ] = await Promise.all([
         supa.from("personal_time_entries").select("entry_type, hours").eq("employee_id", employeeId),
-        supa.from("pto_requests").select("status, hours").eq("employee_id", employeeId).eq("status", "submitted"),
+        supa.from("pto_requests").select("status, hours, use_pto").eq("employee_id", employeeId).eq("status", "submitted"),
         supa
           .from("pto_requests")
           .select("id")
@@ -786,7 +793,7 @@ Deno.serve(async (req) => {
       if (ledgerError) throw ledgerError;
       if (pendingRequestsError) throw pendingRequestsError;
       if (duplicateRequestError) throw duplicateRequestError;
-      if (duplicateRequest) return json({ error: "PTO is already requested for this employee and date." }, 400);
+      if (duplicateRequest) return json({ error: "Time off is already requested for this employee and date." }, 400);
 
       const balance = ptoBalance(employee || undefined, ledgerEntries || [], pendingRequests || []);
       if (hours > balance.available + 0.001) {
@@ -800,6 +807,7 @@ Deno.serve(async (req) => {
           user_id: employeeProfile?.id || null,
           request_date: dateUsed,
           hours,
+          use_pto: true,
           notes: cleanText(payload.notes) || null,
           status: "submitted",
         })

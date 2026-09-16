@@ -142,6 +142,19 @@ create table if not exists public.pto_requests (
 );
 
 alter table public.pto_requests add column if not exists time_entry_id uuid references public.time_entries(id) on delete set null;
+alter table public.pto_requests add column if not exists use_pto boolean not null default true;
+alter table public.pto_requests drop constraint if exists pto_requests_hours_check;
+
+do $$ begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'pto_requests_hours_nonnegative_check'
+      and conrelid = 'public.pto_requests'::regclass
+  ) then
+    alter table public.pto_requests
+      add constraint pto_requests_hours_nonnegative_check check (hours >= 0);
+  end if;
+end $$;
 
 create index if not exists profiles_employee_id_idx on public.profiles(employee_id);
 create index if not exists profiles_role_idx on public.profiles(role);
@@ -152,6 +165,7 @@ create index if not exists time_entries_user_idx on public.time_entries(user_id)
 create index if not exists time_entries_job_idx on public.time_entries(job_id);
 create index if not exists time_entries_status_idx on public.time_entries(status);
 create index if not exists pto_requests_time_entry_id_idx on public.pto_requests(time_entry_id);
+create index if not exists pto_requests_use_pto_idx on public.pto_requests(use_pto);
 create index if not exists time_entry_audit_logs_entry_idx on public.time_entry_audit_logs(time_entry_id, created_at desc);
 
 create or replace function public.current_profile_role()

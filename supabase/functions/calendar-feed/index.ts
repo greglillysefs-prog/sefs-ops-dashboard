@@ -176,6 +176,20 @@ function taskDescription(task: AnyRecord) {
   ].join("\n");
 }
 
+function ptoDescription(request: AnyRecord, employeesById: Map<string, string>) {
+  const employeeName = employeesById.get(clean(request.employee_id)) || "Employee";
+  const usePto = request.use_pto !== false;
+  return [
+    `Type: ${usePto ? "Approved PTO" : "Approved Time Off"}`,
+    `Employee: ${employeeName}`,
+    usePto ? `PTO hours: ${Number(request.hours || 0).toFixed(2)}` : "PTO hours: Not used",
+    `Status: ${clean(request.status) || "approved"}`,
+    `Notes: ${clean(request.notes)}`,
+    `Manager note: ${clean(request.manager_note)}`,
+    `Open SEFS dashboard: ${dashboardUrl("index.html?app=schedule")}`,
+  ].join("\n");
+}
+
 function qualityStatus(type: "inspection" | "callback", record: AnyRecord) {
   if (type === "inspection") return clean(record.status) || (record.topcoat_complete ? "Closed" : "Open");
   return clean(record.status) || "Open";
@@ -235,7 +249,7 @@ function eventDates(record: AnyRecord) {
   ];
 }
 
-function eventBlock(record: AnyRecord, type: "job" | "lead" | "task" | "inspection" | "callback", employeesById = new Map<string, string>()) {
+function eventBlock(record: AnyRecord, type: "job" | "lead" | "task" | "pto" | "inspection" | "callback", employeesById = new Map<string, string>()) {
   const dates = eventDates(record);
   if (!dates.length) return "";
   const idPrefix = type;
@@ -243,14 +257,16 @@ function eventBlock(record: AnyRecord, type: "job" | "lead" | "task" | "inspecti
     type === "job" ? jobScheduleTitle(record) :
     type === "lead" ? `Lead follow up - ${clean(record.customer) || "Lead"}` :
     type === "task" ? taskScheduleTitle(record) :
+    type === "pto" ? `${record.use_pto !== false ? "PTO" : "Time off"} - ${employeesById.get(clean(record.employee_id)) || "Employee"}` :
     qualityScheduleTitle(record, type);
   const description =
     type === "job" ? jobDescription(record) :
     type === "lead" ? leadDescription(record) :
     type === "task" ? taskDescription(record) :
+    type === "pto" ? ptoDescription(record, employeesById) :
     qualityDescription(record, type, employeesById);
   const location = type === "job" || type === "lead" ? clean(record.address) : clean(record.job?.address);
-  const url = type === "job" ? mobileJobUrl(record.id) : dashboardUrl("index.html?app=dashboard");
+  const url = type === "job" ? mobileJobUrl(record.id) : dashboardUrl(type === "pto" ? "index.html?app=schedule" : "index.html?app=dashboard");
   return [
     "BEGIN:VEVENT",
     prop("UID", `${idPrefix}-${record.id}@sefs-ops-dashboard`),
@@ -322,10 +338,11 @@ Deno.serve(async (req) => {
     const futureDays = Math.max(1, Math.min(1095, Number(url.searchParams.get("futureDays")) || 730));
     const supa = supabaseAdmin();
 
-    const [jobsResult, leadsResult, tasksResult, inspectionsResult, callbacksResult, employeesById] = await Promise.all([
+    const [jobsResult, leadsResult, tasksResult, ptoResult, inspectionsResult, callbacksResult, employeesById] = await Promise.all([
       supa.from("jobs").select("*").not("start_date", "is", null).order("start_date", { ascending: true }),
       supa.from("leads").select("*").not("next_followup", "is", null).order("next_followup", { ascending: true }),
       supa.from("tasks").select("*").not("due_date", "is", null).order("due_date", { ascending: true }),
+      supa.from("pto_requests").select("*").eq("status", "approved").not("request_date", "is", null).order("request_date", { ascending: true }),
       supa.from("inspections").select("*, job:jobs(*)").not("inspection_date", "is", null).order("inspection_date", { ascending: true }),
       supa.from("callbacks").select("*, job:jobs(*)").not("issue_date", "is", null).order("issue_date", { ascending: true }),
       loadEmployeesById(supa),
@@ -334,6 +351,7 @@ Deno.serve(async (req) => {
     if (jobsResult.error) throw jobsResult.error;
     if (leadsResult.error) throw leadsResult.error;
     if (tasksResult.error) throw tasksResult.error;
+    if (ptoResult.error) throw ptoResult.error;
     if (inspectionsResult.error) throw inspectionsResult.error;
     if (callbacksResult.error) throw callbacksResult.error;
 
@@ -349,6 +367,15 @@ Deno.serve(async (req) => {
     const tasks = (tasksResult.data || [])
       .filter((task: AnyRecord) => clean(task.show_on_schedule) !== "false" && clean(task.status) !== "Done")
       .filter((task: AnyRecord) => withinWindow(task.due_date, pastDays, futureDays));
+
+    const pto = (ptoResult.data || [])
+      .filter((request: AnyRecord) => clean(request.status) === "approved")
+      .filter((request: AnyRecord) => withinWindow(request.request_date, pastDays, futureDays))
+      .map((request: AnyRecord) => ({
+        ...request,
+        start_date: request.request_date,
+        end_date: request.request_date,
+      }));
 
     const inspections = (inspectionsResult.data || [])
       .filter((inspection: AnyRecord) => !qualityIsClosed("inspection", inspection))
@@ -383,6 +410,7 @@ Deno.serve(async (req) => {
       ...jobs.map((job: AnyRecord) => eventBlock(job, "job")),
       ...leads.map((lead: AnyRecord) => eventBlock(lead, "lead")),
       ...tasks.map((task: AnyRecord) => eventBlock(task, "task")),
+      ...pto.map((request: AnyRecord) => eventBlock(request, "pto", employeesById)),
       ...inspections.map((inspection: AnyRecord) => eventBlock(inspection, "inspection", employeesById)),
       ...callbacks.map((callback: AnyRecord) => eventBlock(callback, "callback", employeesById)),
       "END:VCALENDAR",
