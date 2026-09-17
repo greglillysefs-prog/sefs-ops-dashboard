@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SEFS Employee Portal</title>
-  <link rel="manifest" href="employee-portal.webmanifest?v=20260817c">
+  <link rel="manifest" href="employee-portal.webmanifest?v=20260917a">
   <meta name="theme-color" content="#050505">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -14,7 +14,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="assets/sefs-app-icon-192.png">
   <link rel="icon" type="image/png" sizes="512x512" href="assets/sefs-app-icon-512.png">
   <link rel="apple-touch-icon" sizes="180x180" href="assets/sefs-app-icon-180.png">
-  <script defer src="pwa-init.js?v=20260817c"></script>
+  <script defer src="pwa-init.js?v=20260917a"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root {
@@ -1581,6 +1581,7 @@
     let jobs = [];
     let scheduleJobs = [];
     let scheduleTasks = [];
+    let schedulePtoEntries = [];
     let scheduleJobPhotos = [];
     let scheduleEmployees = [];
     let scheduleAssignments = [];
@@ -1800,6 +1801,7 @@
 
     function scheduleOwnerName(item) {
       if (item?.kind === 'task') return item.assigned_to || item.crew || 'Unassigned';
+      if (item?.kind === 'pto') return item.crew || employeeNameForId(item.employee_id) || 'Employee';
       return scheduleLeadForJob(item);
     }
 
@@ -1818,6 +1820,29 @@
     function portalCalendarColorStyle(item) {
       const color = scheduleColorForOwner(scheduleOwnerName(item));
       return `border-left-color:${color};background:linear-gradient(180deg,${hexToRgba(color, .88)},${hexToRgba(color, .35)});box-shadow:0 0 0 1px ${hexToRgba(color, .55)} inset`;
+    }
+
+    function schedulePtoItems() {
+      return schedulePtoEntries
+        .filter((entry) => entry.status === 'approved' && entry.request_date)
+        .map((entry) => {
+          const usePto = entry.use_pto !== false;
+          const employeeName = employeeNameForId(entry.employee_id) || entry.employee_name || 'Employee';
+          return {
+            ...entry,
+            kind: 'pto',
+            start_date: entry.request_date,
+            end_date: entry.request_date,
+            start_time: '',
+            end_time: '',
+            job_name: `${usePto ? 'PTO' : 'Time Off'}: ${employeeName}`,
+            customer: employeeName,
+            crew: employeeName,
+            address: '',
+            status: usePto ? 'Approved PTO' : 'Approved Time Off',
+            use_pto: usePto
+          };
+        });
     }
 
     function canUpdateScheduleJob(job) {
@@ -2151,11 +2176,13 @@
       jobs = [];
       scheduleJobs = [];
       scheduleTasks = [];
+      schedulePtoEntries = [];
       portalTasks = [];
       taskAuditLogs = [];
       scheduleEmployees = [];
       scheduleAssignments = [];
       selectedScheduleItemKey = '';
+      scheduleCalendarInitialized = false;
       entries = [];
       entryAuditLogs = [];
       timeEntryPhotos = [];
@@ -2416,6 +2443,17 @@
         }));
     }
 
+    async function loadSchedulePtoEntries() {
+      const result = await supa
+        .from('pto_requests')
+        .select('id, employee_id, request_date, hours, use_pto, status, notes, manager_note')
+        .eq('status', 'approved')
+        .not('request_date', 'is', null)
+        .order('request_date', { ascending: true })
+        .order('created_at', { ascending: false });
+      schedulePtoEntries = result.error ? [] : (result.data || []);
+    }
+
     async function loadPortalTasks() {
       let result = await supa
         .from('tasks')
@@ -2607,7 +2645,7 @@
         await loadProfile();
         if (profile?.active) {
           await loadJobs();
-          await Promise.all([loadScheduleEmployees(), loadScheduleJobs(), loadScheduleTasks(), loadEntries(), loadPtoEntries()]);
+          await Promise.all([loadScheduleEmployees(), loadScheduleJobs(), loadScheduleTasks(), loadSchedulePtoEntries(), loadEntries(), loadPtoEntries()]);
           await loadScheduleJobPhotos();
           await loadEntryAuditLogs();
           await loadManagerReviewData();
@@ -2677,32 +2715,40 @@
 
     function renderSchedule() {
       $('scheduleMonthLabel').textContent = scheduleMonthName(scheduleCalendarMonth);
+      const todayIso = today();
       const scheduleItems = [
         ...scheduleJobs.map((job) => ({ ...job, kind: 'job' })),
-        ...scheduleTasks
+        ...scheduleTasks,
+        ...schedulePtoItems()
       ].sort((a, b) => String(a.start_date || '9999').localeCompare(String(b.start_date || '9999')) || String(a.start_time || '').localeCompare(String(b.start_time || '')));
       if (!scheduleItems.length) {
         $('scheduleList').innerHTML = `
-          <div class="muted">No scheduled jobs or assigned tasks are on the calendar yet. Time can still be entered below as Other / No job or against an active job.</div>
+          <div class="muted">No scheduled jobs, assigned tasks, or approved time off are on the calendar yet. Time can still be entered below as Other / No job or against an active job.</div>
         `;
         return;
       }
 
-      if (!scheduleCalendarInitialized && scheduleItems.length) {
-        const firstScheduled = scheduleItems.find((item) => item.start_date) || scheduleItems[0];
-        const firstDate = scheduleDate(firstScheduled.start_date) || new Date();
-        scheduleCalendarMonth = new Date(firstDate.getFullYear(), firstDate.getMonth(), 1);
-        selectedScheduleItemKey = itemKey(firstScheduled);
+      if (!scheduleCalendarInitialized) {
+        const todayDate = scheduleDate(todayIso) || new Date();
+        const todayItem = scheduleItems.find((item) => jobAppearsOnDate(item, todayIso));
+        const currentMonthItem = scheduleItems.find((item) => {
+          const itemDate = scheduleDate(item.start_date);
+          return itemDate && itemDate.getFullYear() === todayDate.getFullYear() && itemDate.getMonth() === todayDate.getMonth();
+        });
+        const upcomingItem = scheduleItems.find((item) => String(item.start_date || '') >= todayIso);
+        scheduleCalendarMonth = new Date(todayDate.getFullYear(), todayDate.getMonth(), 1);
+        selectedScheduleItemKey = itemKey(todayItem || currentMonthItem || upcomingItem || scheduleItems[0]);
         scheduleCalendarInitialized = true;
       }
 
       if (!selectedScheduleItemKey || !scheduleItems.some((item) => itemKey(item) === selectedScheduleItemKey)) {
-        selectedScheduleItemKey = itemKey(scheduleItems[0]);
+        const todayItem = scheduleItems.find((item) => jobAppearsOnDate(item, todayIso));
+        const upcomingItem = scheduleItems.find((item) => String(item.start_date || '') >= todayIso);
+        selectedScheduleItemKey = itemKey(todayItem || upcomingItem || scheduleItems[0]);
       }
 
       const firstOfMonth = new Date(scheduleCalendarMonth.getFullYear(), scheduleCalendarMonth.getMonth(), 1);
       const calendarStart = addDays(firstOfMonth, -firstOfMonth.getDay());
-      const todayIso = today();
       const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
       const heads = dayNames.map((day, index) => `<div class="portal-calendar-head" style="grid-column:${index + 1};grid-row:1;">${day}</div>`).join('');
       const dayMs = 24 * 60 * 60 * 1000;
@@ -2730,7 +2776,7 @@
             span: segEndIndex - segStartIndex + 1,
             start: String(item.start_date || ''),
             time: String(item.start_time || ''),
-            name: String(item.kind === 'task' ? taskTitle(item) : moneylessJobName(item))
+            name: String(item.kind === 'task' ? taskTitle(item) : item.kind === 'pto' ? item.job_name : moneylessJobName(item))
           });
         }
       });
@@ -2757,11 +2803,11 @@
           return `
             <button
               type="button"
-              class="portal-calendar-event portal-calendar-bar ${item.kind === 'task' ? 'task-event' : ''} ${itemKey(item) === selectedScheduleItemKey ? 'active' : ''}"
+              class="portal-calendar-event portal-calendar-bar ${item.kind === 'task' ? 'task-event' : ''} ${item.kind === 'pto' ? 'pto-event' : ''} ${itemKey(item) === selectedScheduleItemKey ? 'active' : ''}"
               style="grid-column:${segment.col}/span ${segment.span};grid-row:${segment.week + 2};margin-top:${top}px;${eventStyle}"
               onclick="selectScheduleItem('${esc(itemKey(item))}')">
               ${esc(segment.name)}
-              <small>${esc(item.kind === 'task' ? ['Task', formatTime(item.start_time), item.status].filter(Boolean).join(' - ') : [formatTime(item.start_time), item.address].filter(Boolean).join(' - ') || item.status || 'Scheduled')}</small>
+              <small>${esc(item.kind === 'task' ? ['Task', formatTime(item.start_time), item.status].filter(Boolean).join(' - ') : item.kind === 'pto' ? [item.status, item.use_pto ? `${Number(item.hours || 0).toFixed(2)} PTO hrs` : 'No PTO'].filter(Boolean).join(' - ') : [formatTime(item.start_time), item.address].filter(Boolean).join(' - ') || item.status || 'Scheduled')}</small>
             </button>
           `;
         }).join('');
@@ -2803,6 +2849,23 @@
             ${selectedItem.status !== 'Done' ? `<button class="primary" type="button" onclick="completePortalTask('${esc(selectedItem.id)}', this)">Mark Complete</button>` : ''}
           </div>
           <p class="muted">Tasks can only be completed from the employee portal. Use the dashboard to edit task details.</p>
+        </article>`
+        : selectedItem.kind === 'pto'
+        ? `
+        <article class="job-card portal-schedule-detail">
+          <header>
+            <h3>${esc(selectedItem.job_name || 'Approved Time Off')}</h3>
+            <span class="status approved">${esc(selectedItem.status || 'Approved Time Off')}</span>
+          </header>
+          <div class="facts">
+            <div class="fact"><b>When</b>${esc(formatDate(selectedItem.start_date))}</div>
+            <div class="fact"><b>Employee</b>${esc(selectedItem.crew || 'Employee')}</div>
+            <div class="fact"><b>PTO</b>${selectedItem.use_pto ? `${Number(selectedItem.hours || 0).toFixed(2)} hrs` : 'Not used'}</div>
+            <div class="fact"><b>Type</b>Time Off</div>
+          </div>
+          ${selectedItem.notes ? `<p class="muted">${esc(selectedItem.notes)}</p>` : ''}
+          ${selectedItem.manager_note ? `<p class="muted">Manager: ${esc(selectedItem.manager_note)}</p>` : ''}
+          <p class="muted">Approved time off is shown here so crews can see schedule availability.</p>
         </article>`
         : `
         <article class="job-card portal-schedule-detail">
@@ -4394,9 +4457,11 @@
       jobs = [];
       scheduleJobs = [];
       scheduleTasks = [];
+      schedulePtoEntries = [];
       portalTasks = [];
       taskAuditLogs = [];
       selectedScheduleItemKey = '';
+      scheduleCalendarInitialized = false;
       entries = [];
       entryAuditLogs = [];
       timeEntryPhotos = [];
