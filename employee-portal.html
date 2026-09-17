@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SEFS Employee Portal</title>
-  <link rel="manifest" href="employee-portal.webmanifest?v=20260917a">
+  <link rel="manifest" href="employee-portal.webmanifest?v=20260917b">
   <meta name="theme-color" content="#050505">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -14,7 +14,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="assets/sefs-app-icon-192.png">
   <link rel="icon" type="image/png" sizes="512x512" href="assets/sefs-app-icon-512.png">
   <link rel="apple-touch-icon" sizes="180x180" href="assets/sefs-app-icon-180.png">
-  <script defer src="pwa-init.js?v=20260917a"></script>
+  <script defer src="pwa-init.js?v=20260917b"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root {
@@ -782,6 +782,12 @@
     .timesheet .total-col {
       background: rgba(255,122,0,.12);
       color: var(--orange2);
+      font-weight: 900;
+    }
+
+    .timesheet .pto-col {
+      background: rgba(56,189,248,.1);
+      color: #c8f3ff;
       font-weight: 900;
     }
 
@@ -3433,12 +3439,20 @@
             hourlyRate: employeeHourlyRate(employeeId),
             dayHours: Object.fromEntries(days.map((day) => [day.iso, 0])),
             total: 0,
+            pto: 0,
+            worked: 0,
             entries: []
           });
         }
         const row = employees.get(employeeId);
+        const isPto = isPtoTimeEntry(entry);
         if (row.dayHours[entry.work_date] !== undefined) row.dayHours[entry.work_date] += hours;
         row.total += hours;
+        if (isPto) {
+          row.pto += hours;
+        } else {
+          row.worked += hours;
+        }
         row.entries.push(entry);
         byStatus.set(entry.status || 'draft', (byStatus.get(entry.status || 'draft') || 0) + hours);
       }
@@ -3446,6 +3460,7 @@
       const rows = Array.from(employees.values()).sort((a, b) => a.name.localeCompare(b.name));
       const dayTotals = Object.fromEntries(days.map((day) => [day.iso, 0]));
       let totalHours = 0;
+      let ptoHours = 0;
       let regularHours = 0;
       let overtimeHours = 0;
       let regularPayTotal = 0;
@@ -3453,12 +3468,14 @@
       let totalPayTotal = 0;
 
       for (const row of rows) {
-        row.regular = Math.min(row.total, 40);
-        row.overtime = Math.max(row.total - 40, 0);
+        const regularWorked = Math.min(row.worked, 40);
+        row.regular = regularWorked + row.pto;
+        row.overtime = Math.max(row.worked - 40, 0);
         row.regularPay = row.regular * row.hourlyRate;
         row.overtimePay = row.overtime * row.hourlyRate * 1.5;
         row.totalPay = row.regularPay + row.overtimePay;
         totalHours += row.total;
+        ptoHours += row.pto;
         regularHours += row.regular;
         overtimeHours += row.overtime;
         regularPayTotal += row.regularPay;
@@ -3540,6 +3557,7 @@
                   <th class="employee-col">Employee</th>
                   ${days.map((day) => `<th>${esc(day.label)}<br>${esc(day.dateLabel)}</th>`).join('')}
                   <th>Total<br>Hours</th>
+                  <th>PTO<br>Hours</th>
                   <th>Reg<br>Time</th>
                   <th>Over<br>Time</th>
                   <th>Reg<br>Pay</th>
@@ -3554,6 +3572,7 @@
                     <td class="employee-col">${esc(row.name)}</td>
                     ${days.map((day) => `<td>${esc(formatHoursValue(row.dayHours[day.iso]))}</td>`).join('')}
                     <td class="total-col">${row.total.toFixed(2)}</td>
+                    <td class="pto-col">${row.pto ? row.pto.toFixed(2) : ''}</td>
                     <td>${row.regular.toFixed(2)}</td>
                     <td class="overtime-col">${row.overtime ? row.overtime.toFixed(2) : ''}</td>
                     <td class="pay-col">${money(row.regularPay)}</td>
@@ -3561,13 +3580,14 @@
                     <td class="pay-col">${money(row.totalPay)}</td>
                     <td>${money(row.hourlyRate)}</td>
                   </tr>
-                `).join('') : `<tr><td class="employee-col">No approved hours</td><td colspan="14" class="muted">No approved time logged for this pay period.</td></tr>`}
+                `).join('') : `<tr><td class="employee-col">No approved hours</td><td colspan="15" class="muted">No approved time logged for this pay period.</td></tr>`}
               </tbody>
               <tfoot>
                 <tr class="timesheet-foot">
                   <td class="employee-col">Totals</td>
                   ${days.map((day) => `<td>${esc(formatHoursValue(dayTotals[day.iso]))}</td>`).join('')}
                   <td>${totalHours.toFixed(2)}</td>
+                  <td>${ptoHours.toFixed(2)}</td>
                   <td>${regularHours.toFixed(2)}</td>
                   <td>${overtimeHours.toFixed(2)}</td>
                   <td>${money(regularPayTotal)}</td>
@@ -3588,7 +3608,7 @@
                       `).join('') : '<span class="muted">No notes.</span>'}
                     </td>
                   `).join('')}
-                  <td colspan="7" class="muted">Notes are grouped by work day.</td>
+                  <td colspan="8" class="muted">Notes are grouped by work day. PTO is paid at the normal hourly rate and does not count toward overtime.</td>
                 </tr>
               </tfoot>
             </table>
