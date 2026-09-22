@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>SEFS Inventory Management</title>
-  <link rel="manifest" href="inventory-management.webmanifest?v=20260817c">
+  <link rel="manifest" href="inventory-management.webmanifest?v=20260922a">
   <meta name="theme-color" content="#050505">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -13,7 +13,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="assets/sefs-inventory-icon-192.png">
   <link rel="icon" type="image/png" sizes="512x512" href="assets/sefs-inventory-icon-512.png">
   <link rel="apple-touch-icon" sizes="180x180" href="assets/sefs-inventory-icon-180.png">
-  <script defer src="pwa-init.js?v=20260817c"></script>
+  <script defer src="pwa-init.js?v=20260922a"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root {
@@ -161,6 +161,12 @@
     .inventory-table select { min-height: 40px; }
     .inventory-table .amount-input { max-width: 120px; }
     .inventory-table .new-count { color: var(--orange); font-weight: 900; white-space: nowrap; }
+    .projected-shortage { background: rgba(255, 98, 98, .08); }
+    .readonly-note {
+      color: var(--muted);
+      font-size: 13px;
+      margin: -4px 0 14px;
+    }
     .log-table-wrap {
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -352,8 +358,10 @@
         <div class="metric-grid">
           <div class="metric"><span class="muted">Materials</span><b id="metricCount">0</b></div>
           <div class="metric"><span class="muted">Low Items</span><b id="metricLow">0</b></div>
+          <div class="metric"><span class="muted">Projected Needs</span><b id="metricProjected">0</b></div>
           <div class="metric"><span class="muted">Logged Changes</span><b id="metricChanges">0</b></div>
         </div>
+        <div id="projectedNeeds"></div>
         <div id="inventoryList"></div>
         <div class="batch-actions">
           <button id="saveAllInventoryBtn" class="primary" type="button">Save All Changes</button>
@@ -380,6 +388,8 @@
     let loginOptions = [];
     let inventoryItems = [];
     let inventoryLogs = [];
+    let futureJobs = [];
+    let jobsUnavailable = false;
     let logUnavailable = false;
     let batchSaveActive = false;
     let idleTimer = null;
@@ -389,6 +399,8 @@
     const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
     const num = (value) => Math.round((Number(value || 0)) * 100) / 100;
     const fmtDateTime = (value) => value ? new Date(value).toLocaleString() : '-';
+    const today = () => new Date().toISOString().slice(0, 10);
+    const roundQty = (value) => Math.round((Number(value || 0)) * 100) / 100;
 
     function setMessage(id, text, isError = false) {
       const el = $(id);
@@ -495,16 +507,39 @@
       inventoryLogs = result.error ? [] : (result.data || []);
     }
 
+    async function loadFutureJobs() {
+      const result = await supa
+        .from('jobs')
+        .select('id, job_name, customer, start_date, status, material_list, custom_materials')
+        .gte('start_date', today())
+        .not('start_date', 'is', null)
+        .order('start_date', { ascending: true })
+        .limit(150);
+      jobsUnavailable = !!result.error;
+      futureJobs = result.error ? [] : (result.data || []).filter((job) => !['Complete', 'Lost', 'Canceled'].includes(String(job.status || '')));
+    }
+
     async function refresh() {
       if (!session) return;
       try {
         await loadProfile();
-        await Promise.all([loadInventory(), loadInventoryLogs()]);
+        await Promise.all([loadInventory(), loadInventoryLogs(), loadFutureJobs()]);
         render();
-        setMessage('appMessage', logUnavailable ? 'Inventory log table is not installed yet. Run docs/inventory-management-sql.sql before saving changes.' : '');
+        const notices = [];
+        if (logUnavailable) notices.push('Inventory log table is not installed yet. Run docs/inventory-management-sql.sql before saving changes.');
+        if (jobsUnavailable) notices.push('Future job projections could not load, but inventory adjustments are still available.');
+        setMessage('appMessage', notices.join(' '));
       } catch (error) {
         setMessage('appMessage', error.message, true);
       }
+    }
+
+    function inventoryTracked(item) {
+      return item?.tracked_quantity !== false;
+    }
+
+    function trackedInventoryItems() {
+      return inventoryItems.filter(inventoryTracked);
     }
 
     function itemStatus(item) {
@@ -517,10 +552,58 @@
       return inventoryLogs.find((log) => log.inventory_item_id === id);
     }
 
+    function materialNamesMatch(left, right) {
+      return String(left || '').trim().toLowerCase() === String(right || '').trim().toLowerCase();
+    }
+
+    function jobMaterialList(job) {
+      const base = Array.isArray(job?.material_list) ? job.material_list : [];
+      const custom = Array.isArray(job?.custom_materials) ? job.custom_materials : [];
+      return [...base, ...custom].filter((material) => material && String(material.name || '').trim());
+    }
+
+    function inventoryForMaterial(material) {
+      if (material?.inventory_item_id) {
+        const linked = inventoryItems.find((item) => item.id === material.inventory_item_id);
+        if (linked) return linked;
+      }
+      return inventoryItems.find((item) => materialNamesMatch(item.name, material?.name));
+    }
+
+    function projectedNeedRows() {
+      const usage = new Map();
+      for (const job of futureJobs) {
+        for (const material of jobMaterialList(job)) {
+          const item = inventoryForMaterial(material);
+          if (!item || !inventoryTracked(item)) continue;
+          const qty = roundQty(material.qty);
+          if (!qty) continue;
+          if (!usage.has(item.id)) {
+            usage.set(item.id, { item, needed: 0, jobs: [] });
+          }
+          const row = usage.get(item.id);
+          row.needed = roundQty(row.needed + qty);
+          row.jobs.push(job);
+        }
+      }
+      return Array.from(usage.values()).map((row) => {
+        const onHand = roundQty(row.item.qty);
+        const projected = roundQty(onHand - row.needed);
+        const minQty = roundQty(row.item.min_qty);
+        return {
+          ...row,
+          onHand,
+          projected,
+          minQty,
+          shortage: Math.max(0, roundQty(minQty - projected))
+        };
+      }).sort((a, b) => b.shortage - a.shortage || b.needed - a.needed || String(a.item.name || '').localeCompare(String(b.item.name || '')));
+    }
+
     function filteredInventory() {
       const query = $('inventorySearch').value.trim().toLowerCase();
       const filter = $('inventoryFilter').value;
-      return inventoryItems.filter((item) => {
+      return trackedInventoryItems().filter((item) => {
         const recent = latestLogForItem(item.id);
         const text = [item.name, item.category, item.unit, item.vendor_name, item.vendor_phone, item.notes].join(' ').toLowerCase();
         if (query && !text.includes(query)) return false;
@@ -554,6 +637,43 @@
           </td>
           <td data-label="New Count" id="after_${esc(item.id)}" class="new-count">-</td>
         </tr>
+      `;
+    }
+
+    function renderProjectedNeeds(rows) {
+      if (jobsUnavailable) {
+        $('projectedNeeds').innerHTML = '<div class="notice error">Future job material needs could not be loaded right now.</div>';
+        return;
+      }
+      $('projectedNeeds').innerHTML = `
+        <section class="card" style="margin-bottom:14px">
+          <h2>Projected Future Job Needs</h2>
+          <p class="readonly-note">Read-only forecast from scheduled future jobs. These values are not adjustable here; use the inventory rows below only for current on-hand changes.</p>
+          ${rows.length ? `
+            <div class="inventory-table-wrap">
+              <table class="inventory-table">
+                <thead>
+                  <tr><th>Material</th><th>On Hand</th><th>Needed For Future Jobs</th><th>Projected After Jobs</th><th>Min</th><th>Status</th></tr>
+                </thead>
+                <tbody>
+                  ${rows.map((row) => {
+                    const jobNames = [...new Set(row.jobs.map((job) => job.job_name || job.customer || 'Job'))].slice(0, 4).join(', ');
+                    return `
+                      <tr class="${row.shortage ? 'projected-shortage' : ''}">
+                        <td data-label="Material"><b>${esc(row.item.name || 'Inventory item')}</b><br><span class="muted">${esc(jobNames)}</span></td>
+                        <td data-label="On Hand">${esc(row.onHand)} ${esc(row.item.unit || '')}</td>
+                        <td data-label="Needed">${esc(row.needed)} ${esc(row.item.unit || '')}</td>
+                        <td data-label="Projected">${esc(row.projected)} ${esc(row.item.unit || '')}</td>
+                        <td data-label="Min">${esc(row.minQty)} ${esc(row.item.unit || '')}</td>
+                        <td data-label="Status">${row.shortage ? `<span class="pill bad">Short ${esc(row.shortage)} ${esc(row.item.unit || '')}</span>` : '<span class="pill good">OK</span>'}</td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+          ` : '<div class="muted">No tracked material needs found for future scheduled jobs.</div>'}
+        </section>
       `;
     }
 
@@ -596,12 +716,16 @@
         : 'Sign in to update inventory after jobs and returns.';
       if (!signedIn) return;
       const rows = filteredInventory();
-      $('metricCount').textContent = inventoryItems.length;
-      $('metricLow').textContent = inventoryItems.filter((item) => (+item.qty || 0) <= (+item.min_qty || 0)).length;
+      const trackedRows = trackedInventoryItems();
+      const projectedRows = projectedNeedRows();
+      $('metricCount').textContent = trackedRows.length;
+      $('metricLow').textContent = trackedRows.filter((item) => (+item.qty || 0) <= (+item.min_qty || 0)).length;
+      $('metricProjected').textContent = projectedRows.length;
       $('metricChanges').textContent = inventoryLogs.length;
+      renderProjectedNeeds(projectedRows);
       $('inventoryList').innerHTML = rows.length
         ? `<div class="inventory-table-wrap"><table class="inventory-table"><thead><tr><th>Material</th><th>Status</th><th>Current</th><th>Change Type</th><th>Amount</th><th>New Count</th></tr></thead><tbody>${rows.map(renderInventoryRow).join('')}</tbody></table></div>`
-        : '<div class="muted">No matching inventory items.</div>';
+        : '<div class="muted">No matching tracked inventory items.</div>';
       const saveBtn = $('saveAllInventoryBtn');
       saveBtn.disabled = logUnavailable || batchSaveActive || !rows.length;
       saveBtn.title = logUnavailable ? 'Run the inventory log SQL before saving changes.' : '';
@@ -798,6 +922,7 @@
         employee = null;
         inventoryItems = [];
         inventoryLogs = [];
+        futureJobs = [];
         clearIdleTimers();
       }
       render();
