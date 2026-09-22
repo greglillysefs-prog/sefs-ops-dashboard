@@ -55,7 +55,7 @@ create policy "inventory logs dashboard read"
 
 -- The locked inventory page signs in with the same Supabase Auth users as the
 -- employee portal. These policies only matter if RLS is enabled on inventory_items.
-grant select, update on public.inventory_items to authenticated;
+grant select, insert, update, delete on public.inventory_items to authenticated;
 
 drop policy if exists "inventory authenticated read" on public.inventory_items;
 create policy "inventory authenticated read"
@@ -71,3 +71,17 @@ create policy "inventory authenticated update"
   to authenticated
   using (true)
   with check (true);
+
+drop policy if exists "inventory authenticated insert" on public.inventory_items;
+create policy "inventory authenticated insert"
+  on public.inventory_items
+  for insert
+  to authenticated
+  with check (true);
+
+drop policy if exists "inventory authenticated delete" on public.inventory_items;
+create policy "inventory authenticated delete"
+  on public.inventory_items
+  for delete
+  to authenticated
+  using (true);
