@@ -1,5 +1,30 @@
 (function () {
-  var SEFS_PWA_VERSION = '20260927d';
+  var SEFS_PWA_VERSION = '20260927e';
+
+  function installViewportGuard() {
+    var body = document.body;
+    if (!body) return;
+
+    var computed = window.getComputedStyle(body);
+    body.style.setProperty('--sefs-base-pad-top', computed.paddingTop || '0px');
+    body.style.setProperty('--sefs-base-pad-right', computed.paddingRight || '0px');
+    body.style.setProperty('--sefs-base-pad-bottom', computed.paddingBottom || '0px');
+    body.style.setProperty('--sefs-base-pad-left', computed.paddingLeft || '0px');
+
+    var style = document.createElement('style');
+    style.id = 'sefsViewportGuard';
+    style.textContent = [
+      'html{width:100%;max-width:100%;overflow-x:hidden;background:#050505;-webkit-text-size-adjust:100%;text-size-adjust:100%}',
+      'body.sefs-safe-viewport{width:100%;max-width:100%;min-width:0;overflow-x:hidden;box-sizing:border-box;padding-top:calc(var(--sefs-base-pad-top,0px) + env(safe-area-inset-top,0px));padding-right:calc(var(--sefs-base-pad-right,0px) + env(safe-area-inset-right,0px));padding-bottom:calc(var(--sefs-base-pad-bottom,0px) + env(safe-area-inset-bottom,0px));padding-left:calc(var(--sefs-base-pad-left,0px) + env(safe-area-inset-left,0px))}',
+      'body.sefs-safe-viewport > header,.shell > .topbar,.mobile-tab-select-wrap,.print-toolbar{top:env(safe-area-inset-top,0px)}',
+      'main,section,.app,.shell,.card,.panel{min-width:0;max-width:100%}',
+      'img,video,canvas,iframe{max-width:100%}',
+      '@media(max-width:900px){input,select,textarea{font-size:16px!important}}'
+    ].join('\n');
+    document.head.appendChild(style);
+    body.classList.add('sefs-safe-viewport');
+  }
+  installViewportGuard();
 
   function toast(text) {
     var el = document.getElementById('sefsPwaToast');
