@@ -238,6 +238,15 @@ Recent mobile navigation update:
 
 ## Latest Session Notes
 
+2026-10-06:
+
+- Equipment is now a machine maintenance workspace instead of a check-in/check-out list.
+- Equipment records keep a condition, meter type, current hours/current miles, category, and machine notes. The old assigned-to and due-back fields remain in the database for compatibility but are not part of the Equipment UI.
+- Each machine has an editable dated history for usage updates, routine maintenance, repairs, inspections, and other work. New entries default to the current America/Chicago date, while users may select a different date.
+- Saving a log entry updates the machine's displayed hours/miles from its latest dated readings. Maintenance history supports editing and deleting individual entries.
+- Added migration `20261006114223_equipment_maintenance_logs.sql` with the `equipment_maintenance_logs` table, meter columns on `equipment_items`, authenticated manager/admin RLS policies, explicit grants, and anonymous-access revocation.
+- PWA cache/version references were advanced to `20261006a` so deployed phones refresh the equipment workflow.
+
 2026-09-16:
 
 - Employee time-off requests were added to the existing PTO flow without making PTO usage mandatory.
