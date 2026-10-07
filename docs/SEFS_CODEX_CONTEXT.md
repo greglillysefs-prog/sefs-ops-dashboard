@@ -238,6 +238,14 @@ Recent mobile navigation update:
 
 ## Latest Session Notes
 
+2026-10-07:
+
+- Vehicles now use responsive summary cards with current mileage, last service, next service, vehicle notes, and due/overdue status.
+- Each vehicle has an editable service history with service date, type, mileage, performed-by/shop, next-service date, work performed, and notes. New entries default to the current America/Chicago date.
+- Saving a service entry updates the vehicle summary from its latest dated service record. Individual service entries can be edited or deleted.
+- Added migration `20261007122245_vehicle_service_logs.sql`, including manager/admin RLS on both `vehicles` and `vehicle_service_logs`, explicit authenticated grants, and anonymous-access revocation.
+- PWA cache/version references were advanced to `20261007a`.
+
 2026-10-06:
 
 - Equipment is now a machine maintenance workspace instead of a check-in/check-out list.
