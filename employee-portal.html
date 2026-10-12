@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>SEFS Employee Portal</title>
-  <link rel="manifest" href="employee-portal.webmanifest?v=20261007a">
+  <link rel="manifest" href="employee-portal.webmanifest?v=20261012a">
   <meta name="theme-color" content="#050505">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -14,7 +14,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="assets/sefs-app-icon-192.png">
   <link rel="icon" type="image/png" sizes="512x512" href="assets/sefs-app-icon-512.png">
   <link rel="apple-touch-icon" sizes="180x180" href="assets/sefs-app-icon-180.png">
-  <script defer src="pwa-init.js?v=20261007a"></script>
+  <script defer src="pwa-init.js?v=20261012a"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root {
@@ -1591,6 +1591,8 @@
     let scheduleJobPhotos = [];
     let scheduleEmployees = [];
     let scheduleAssignments = [];
+    let scheduleCustomerContacts = [];
+    let scheduleLeadContacts = [];
     let portalTasks = [];
     let taskAuditLogs = [];
     let taskSearch = '';
@@ -2088,6 +2090,19 @@
       return `<a class="address-link" href="${esc(mapUrl(value))}" target="_blank" rel="noopener">${esc(value)}</a>`;
     }
 
+    function phoneLinkHTML(phone) {
+      const value = String(phone || '').trim();
+      if (!value) return '-';
+      const dial = value.replace(/[^+\d]/g, '');
+      return `<a class="address-link" href="tel:${esc(dial)}">${esc(value)}</a>`;
+    }
+
+    function emailLinkHTML(email) {
+      const value = String(email || '').trim();
+      if (!value) return '-';
+      return `<a class="address-link" href="mailto:${esc(encodeURIComponent(value))}">${esc(value)}</a>`;
+    }
+
     function scheduleMapHTML(address) {
       const value = String(address || '').trim();
       if (!value) return '';
@@ -2187,6 +2202,8 @@
       taskAuditLogs = [];
       scheduleEmployees = [];
       scheduleAssignments = [];
+      scheduleCustomerContacts = [];
+      scheduleLeadContacts = [];
       selectedScheduleItemKey = '';
       scheduleCalendarInitialized = false;
       entries = [];
@@ -2346,6 +2363,30 @@
       scheduleJobs = Array.from(byId.values())
         .filter((job) => job.start_date)
         .sort((a, b) => String(a.start_date || '9999').localeCompare(String(b.start_date || '9999')) || String(a.start_time || '').localeCompare(String(b.start_time || '')));
+    }
+
+    async function loadScheduleCustomerContacts() {
+      scheduleCustomerContacts = [];
+      scheduleLeadContacts = [];
+      const customerIds = [...new Set(scheduleJobs.map((job) => job.customer_id).filter(Boolean))];
+      const leadIds = [...new Set(scheduleJobs.map((job) => job.source_lead_id).filter(Boolean))];
+      const [customersResult, leadsResult] = await Promise.all([
+        customerIds.length ? supa.from('customers').select('id, name, phone, email, address').in('id', customerIds) : Promise.resolve({ data: [], error: null }),
+        leadIds.length ? supa.from('leads').select('id, customer, phone, email, address').in('id', leadIds) : Promise.resolve({ data: [], error: null })
+      ]);
+      if (!customersResult.error) scheduleCustomerContacts = customersResult.data || [];
+      if (!leadsResult.error) scheduleLeadContacts = leadsResult.data || [];
+    }
+
+    function scheduleContactForJob(job) {
+      const customer = scheduleCustomerContacts.find((item) => String(item.id) === String(job?.customer_id));
+      const lead = scheduleLeadContacts.find((item) => String(item.id) === String(job?.source_lead_id));
+      return {
+        name: customer?.name || lead?.customer || job?.customer || '',
+        phone: customer?.phone || lead?.phone || job?.phone || '',
+        email: customer?.email || lead?.email || '',
+        address: customer?.address || lead?.address || job?.address || ''
+      };
     }
 
     async function loadScheduleJobPhotos() {
@@ -2652,6 +2693,7 @@
         if (profile?.active) {
           await loadJobs();
           await Promise.all([loadScheduleEmployees(), loadScheduleJobs(), loadScheduleTasks(), loadSchedulePtoEntries(), loadEntries(), loadPtoEntries()]);
+          await loadScheduleCustomerContacts();
           await loadScheduleJobPhotos();
           await loadEntryAuditLogs();
           await loadManagerReviewData();
@@ -2836,6 +2878,7 @@
 
       const selectedItem = scheduleItems.find((item) => itemKey(item) === selectedScheduleItemKey) || scheduleItems[0];
       const canEditSelectedJob = selectedItem.kind === 'job' && canUpdateScheduleJob(selectedItem);
+      const selectedContact = selectedItem.kind === 'job' ? scheduleContactForJob(selectedItem) : {};
       const selectedDetail = selectedItem.kind === 'task'
         ? `
         <article class="job-card portal-schedule-detail">
@@ -2880,8 +2923,12 @@
             <span class="status">${esc(selectedItem.status || 'Scheduled')}</span>
           </header>
           <div class="facts">
+            <div class="fact"><b>Customer</b>${esc(selectedContact.name || '-')}</div>
+            <div class="fact"><b>Phone</b>${phoneLinkHTML(selectedContact.phone)}</div>
+            <div class="fact"><b>Email</b>${emailLinkHTML(selectedContact.email)}</div>
+            <div class="fact"><b>Customer Address</b>${addressLinkHTML(selectedContact.address)}</div>
+            <div class="fact"><b>Job Address</b>${addressLinkHTML(selectedItem.address)}</div>
             <div class="fact"><b>When</b>${esc(formatRange(selectedItem))}</div>
-            <div class="fact"><b>Address</b>${addressLinkHTML(selectedItem.address)}</div>
             <div class="fact"><b>Square Feet</b>${Number(selectedItem.square_feet || 0).toLocaleString()}</div>
             <div class="fact"><b>Crew Lead</b>${esc(scheduleLeadForJob(selectedItem))}</div>
           </div>
@@ -4478,6 +4525,8 @@
       scheduleJobs = [];
       scheduleTasks = [];
       schedulePtoEntries = [];
+      scheduleCustomerContacts = [];
+      scheduleLeadContacts = [];
       portalTasks = [];
       taskAuditLogs = [];
       selectedScheduleItemKey = '';

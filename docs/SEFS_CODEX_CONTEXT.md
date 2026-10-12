@@ -238,6 +238,13 @@ Recent mobile navigation update:
 
 ## Latest Session Notes
 
+2026-10-12:
+
+- Employee Portal scheduled-job details now show customer name, phone, email, customer address, and job address.
+- Phone and email are actionable `tel:` and `mailto:` links; the job address remains the map destination.
+- Contact details resolve from the linked customer first, then the source lead, and finally the contact fields saved directly on the job.
+- PWA cache/version references were advanced to `20261012a`.
+
 2026-10-07:
 
 - Vehicles now use responsive summary cards with current mileage, last service, next service, vehicle notes, and due/overdue status.
