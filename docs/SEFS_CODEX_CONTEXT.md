@@ -243,7 +243,9 @@ Recent mobile navigation update:
 - Employee Portal scheduled-job details now show customer name, phone, email, customer address, and job address.
 - Phone and email are actionable `tel:` and `mailto:` links; the job address remains the map destination.
 - Contact details resolve from the linked customer first, then the source lead, and finally the contact fields saved directly on the job.
-- PWA cache/version references were advanced to `20261012a`.
+- Direct edits to equipment hours or miles now create an automatic `Usage Update` maintenance-history entry with the old and new readings.
+- Equipment maintenance history now displays the service date and the exact Central-time timestamp when each entry was logged.
+- PWA cache/version references were advanced to `20261012b`.
 
 2026-10-07:
 
