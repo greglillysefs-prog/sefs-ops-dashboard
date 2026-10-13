@@ -1,5 +1,5 @@
 (function () {
-  var SEFS_PWA_VERSION = '20261012b';
+  var SEFS_PWA_VERSION = '20261012c';
 
   function installViewportGuard() {
     var body = document.body;
